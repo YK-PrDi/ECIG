@@ -59,21 +59,6 @@ public class QwenImageAgent implements ImageGeneratorAgent {
         }
     }
 
-    /** 纯文生图，仅返回 URL（用于测试） */
-    public String generateUrl(String prompt) {
-        OkHttpClient client = buildClient();
-        try {
-            String taskId = createTask(client, prompt, null, null);
-            log.info("Qwen-Image 任务已创建，task_id={}", taskId);
-            return pollTask(client, taskId);
-        } catch (IOException e) {
-            throw new RuntimeException("Qwen-Image 调用失败: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Qwen-Image 任务被中断");
-        }
-    }
-
     private String createTask(OkHttpClient client, String prompt,
                                String refImagePath, String whiteBgPath) throws IOException {
         ArrayNode content = objectMapper.createArrayNode();

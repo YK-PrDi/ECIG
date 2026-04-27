@@ -456,11 +456,6 @@
                 const formData = new FormData();
                 if (droppedFiles.length > 0) {
                     droppedFiles.forEach(f => formData.append('images', f));
-                } else {
-                    const url = document.getElementById('customImgUrl').value;
-                    if (url) {
-                        // formData.append('imageUrl', url);
-                    }
                 }
 
                 formData.append('prompt', prompt || '基于参考图生成');
@@ -486,7 +481,7 @@
                     appendMessage('ai', '生成失败：' + e.message);
                 }
             } else if (currentMode === 'video') {
-                apiPath = '/api/video-generate';
+                apiPath = '/api/video/generate';
                 payload.style = document.getElementById('videoStyle').value;
                 payload.motion = document.getElementById('videoMotion').value;
                 appendMessage('user', `[视频] 风格:${payload.style} 强度:${payload.motion}\n模型: ${agentId}\n提示词: ${prompt}`);

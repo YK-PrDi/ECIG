@@ -228,8 +228,6 @@ public class DingTalkService {
 
     public ProductInfo parseProductInfo(DingTalkRecord record) {
         ProductInfo info = new ProductInfo();
-        info.setRecordId(record.getId());
-
         String description = record.getFieldAsString("123");
         String productName = record.getFieldAsString("标题");
 
