@@ -24,5 +24,8 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Sensitive config - DO NOT commit
+src/main/resources/application-prod.yml
+
 # Logs
 *.log
