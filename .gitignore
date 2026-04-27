@@ -1,0 +1,28 @@
+# Java
+target/
+*.class
+*.jar
+
+# Large build outputs - DO NOT commit
+dist-electron/
+dist-electron.zip
+dist/app.jar
+dist/runtime/
+ele-business-java/
+
+# Node / Electron
+electron/node_modules/
+electron/dist/
+node_modules/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

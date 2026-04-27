@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #F8FAFC; color: #0F172A;
+    height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 24px;
+    user-select: none;
+  }
+  .icon {
+    width: 72px; height: 72px; border-radius: 20px;
+    background: linear-gradient(135deg, #4F46E5, #7C3AED);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 12px 32px rgba(79,70,229,.35);
+    animation: float 2.4s ease-in-out infinite;
+  }
+  .icon svg { fill: white; }
+  .title { font-size: 22px; font-weight: 800; letter-spacing: -.5px; color: #0F172A; }
+  .sub   { font-size: 13px; color: #64748B; }
+  .dots  { display: flex; gap: 7px; }
+  .dot   {
+    width: 7px; height: 7px; border-radius: 50%; background: #4F46E5;
+    animation: bounce .9s ease-in-out infinite;
+  }
+  .dot:nth-child(2) { animation-delay: .15s; }
+  .dot:nth-child(3) { animation-delay: .3s;  }
+  @keyframes float  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+  @keyframes bounce { 0%,80%,100%{transform:scale(.6);opacity:.4} 40%{transform:scale(1);opacity:1} }
+</style>
+</head>
+<body>
+  <div class="icon">
+    <svg width="38" height="38" viewBox="0 0 24 24">
+      <path d="M12 1L14.7 8.3L22 11L14.7 13.7L12 21L9.3 13.7L2 11L9.3 8.3L12 1Z"/>
+      <path d="M19.5 2.5L20.5 5.5L23.5 6.5L20.5 7.5L19.5 10.5L18.5 7.5L15.5 6.5L18.5 5.5L19.5 2.5Z" opacity=".6"/>
+    </svg>
+  </div>
+  <div class="title">AI Studio</div>
+  <div class="sub">正在启动服务，请稍候…</div>
+  <div class="dots">
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+</body>
+</html>

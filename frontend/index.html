@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Studio — 创意中心</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+    <style>
+        .empty-state { z-index: 2000; position: relative; }
+    </style>
+</head>
+
+<body class="theme-light">
+
+    <!-- ── 登录层 ── -->
+    <div id="loginOverlay">
+        <div class="login-card">
+            <div
+                style="width:48px; height:48px; background:var(--primary); border-radius:12px; margin:0 auto 20px; display:flex; align-items:center; justify-content:center; color:white; font-size:24px;">
+                ✧</div>
+            <h2>身份验证</h2>
+            <input type="password" class="input-field" style="margin:20px 0; padding:12px;" placeholder="请输入访问密钥"
+                id="loginPass" value="123456">
+            <button class="btn-primary" style="width:100%; height:44px;" onclick="handleLogin()">进入工坊</button>
+        </div>
+    </div>
+
+    <!-- ── 导航 ── -->
+    <nav class="topnav">
+        <a href="#" class="brand">
+            <div class="brand-icon">✧</div> AI Studio
+        </a>
+        <div style="margin-left:auto; display:flex; gap:16px; align-items:center;">
+            <div class="user-menu-container">
+                <div class="avatar-btn" onclick="toggleUserMenu(event)">A</div>
+                <div class="user-dropdown" id="userMenu" onclick="event.stopPropagation()">
+                    <div class="user-info">
+                        <div class="user-avatar-large">A</div>
+                        <div>
+                            <h4>Admin 用户</h4>
+                            <p>ID: 1008611</p>
+                        </div>
+                    </div>
+                    <div class="user-balance">
+                        <span>当前可用额度</span>
+                        <h3>1,250 <small>点</small></h3>
+                    </div>
+                    <button class="btn-primary"
+                        style="width:100%; margin-top: 16px; margin-bottom: 16px; background: linear-gradient(135deg, #10B981, #059669); height: 44px; font-size: 1rem; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
+                        onclick="alert('即将跳转充值页面...')">立即充值</button>
+                    <div style="height: 1px; background: var(--border); margin: 8px -20px 0;"></div>
+                    <div class="user-menu-item" style="color: #EF4444;" onclick="document.getElementById('loginOverlay').style.display='flex'">退出登录</div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="app-content">
+        <aside class="sidebar" id="mainSidebar">
+            <div style="padding:20px; border-bottom:1px solid var(--border);">
+                <button class="btn-primary" style="width:100%; height:40px;" onclick="loadProducts()">同步产品</button>
+            </div>
+            <div class="section-label" style="display:flex; justify-content:space-between; padding:0 20px;">
+                <span>产品目录</span>
+                <span id="listCount" style="color:var(--primary);">0</span>
+            </div>
+            <div class="product-list" id="productList" style="flex:1; overflow-y:auto; padding:10px;"></div>
+        </aside>
+
+        <main class="workspace">
+            <div class="chat-messages" id="chatMessages">
+                <div class="empty-state" id="emptyState">
+                    <div class="glow-icon" onclick="switchTheme()">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 1L14.7 8.3L22 11L14.7 13.7L12 21L9.3 13.7L2 11L9.3 8.3L12 1Z" />
+                            <path
+                                d="M19.5 2.5L20.5 5.5L23.5 6.5L20.5 7.5L19.5 10.5L18.5 7.5L15.5 6.5L18.5 5.5L19.5 2.5Z" />
+                            <path
+                                d="M4.5 15.5L5.5 18.5L8.5 19.5L5.5 20.5L4.5 23.5L3.5 20.5L0.5 19.5L3.5 18.5L4.5 15.5Z" />
+                        </svg>
+                    </div>
+                    <h2>果敢直行，果然很行</h2>
+                    <p>开启您的 AI 创想之旅</p>
+                    <div class="suggestion-grid">
+                        <div class="suggestion-card"
+                            onclick="document.getElementById('promptInput').value='赛博朋克风格产品图，霓虹灯背景，高细节'">🎨 赛博朋克风格产品图
+                        </div>
+                        <div class="suggestion-card"
+                            onclick="document.getElementById('promptInput').value='商业大片光影转场，镜头平移，4k'">🎬 电影级光影视频</div>
+                        <div class="suggestion-card" onclick="setMode('custom')">✏️ 参考图风格迁移</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area-wrapper">
+                <div style="width:100%; max-width:960px; margin:0 auto; position:relative;">
+                    <!-- 配置抽屉 (在输入框之下，受 z-index 控制滑动层级) -->
+                    <div class="config-drawer" id="configDrawer">
+                        <div id="customConfig" class="panel-view">
+                            <div class="config-group">
+                                <label>参考图 URL</label>
+                                <input type="text" class="input-field" id="customImgUrl" placeholder="https://...">
+                            </div>
+                            <div class="config-group" style="max-width:150px;">
+                                <label>比例</label>
+                                <!-- 自定义下拉 -->
+                                <div class="gf-select drop-up" tabindex="0">
+                                    <input type="hidden" id="customAspect" value="free">
+                                    <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                        <span class="gf-select-text">不限制</span>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div class="gf-select-options">
+                                        <div class="gf-option selected" data-value="free"
+                                            onclick="selectOption(this, event)">不限制</div>
+                                        <div class="gf-option" data-value="1:1" onclick="selectOption(this, event)">1:1
+                                        </div>
+                                        <div class="gf-option" data-value="16:9" onclick="selectOption(this, event)">
+                                            16:9</div>
+                                        <div class="gf-option" data-value="3:4" onclick="selectOption(this, event)">3:4
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="videoConfig" class="panel-view">
+                            <div class="config-group">
+                                <label>视频风格</label>
+                                <div class="gf-select drop-up" tabindex="0">
+                                    <input type="hidden" id="videoStyle" value="free">
+                                    <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                        <span class="gf-select-text">不限制</span>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div class="gf-select-options">
+                                        <div class="gf-option selected" data-value="free"
+                                            onclick="selectOption(this, event)">不限制</div>
+                                        <div class="gf-option" data-value="cinematic"
+                                            onclick="selectOption(this, event)">电影感</div>
+                                        <div class="gf-option" data-value="commercial"
+                                            onclick="selectOption(this, event)">商业广告</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="config-group">
+                                <label>动态强度</label>
+                                <div class="gf-select drop-up" tabindex="0">
+                                    <input type="hidden" id="videoMotion" value="free">
+                                    <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                        <span class="gf-select-text">不限制</span>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div class="gf-select-options">
+                                        <div class="gf-option selected" data-value="free"
+                                            onclick="selectOption(this, event)">不限制</div>
+                                        <div class="gf-option" data-value="5" onclick="selectOption(this, event)">标准 (5)
+                                        </div>
+                                        <div class="gf-option" data-value="10" onclick="selectOption(this, event)">高强度
+                                            (10)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 拖拽上传指示器 -->
+                    <div class="drop-overlay" id="dropOverlay">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        <span>松开鼠标上传图片并开始创作</span>
+                    </div>
+
+                    <!-- 输入主体 (拥有最高 z-index) -->
+                    <div class="input-container">
+                        <div
+                            style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                            <div class="mode-selector">
+                                <button class="mode-btn active" id="btn-standard"
+                                    onclick="setMode('standard')">标准生图</button>
+                                <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义</button>
+                                <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频生成</button>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                                <span
+                                    style="font-size:0.7rem; color:var(--text-dim); font-weight:600; text-transform:uppercase; white-space:nowrap; flex-shrink:0;">AI
+                                    模型</span>
+                                <div class="gf-select sm drop-up" id="agentSelectWrapper">
+                                    <input type="hidden" id="agentSelect" value="">
+                                    <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                        <span class="gf-select-text">加载中...</span>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div class="gf-select-options" id="agentSelectOptions"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 图片预览区 -->
+                        <div id="imagePreviewContainer" class="image-preview-container" style="display:none;"></div>
+
+                        <div style="display:flex; align-items:flex-end; gap:12px;">
+                            <textarea id="promptInput" rows="1" placeholder="输入风格提示词，或留空使用默认描述..."
+                                onkeydown="handleKey(event)"></textarea>
+                            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                                <span style="font-size:0.65rem; color:var(--text-dim);">已选 <b
+                                        id="selectedCount">0</b></span>
+                                <button class="btn-send" id="generateBtn" onclick="executeTask()">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="22" y1="2" x2="11" y2="13" />
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <aside class="info-panel">
+            <div class="section-label" style="margin-top:0;">任务队列</div>
+            <div id="progressBox"
+                style="display:none; padding:16px; border:1px solid var(--border); border-radius:12px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:8px;">
+                    <span id="statusLabel">处理中</span>
+                    <b id="progressCount">0/0</b>
+                </div>
+                <div style="background:#F3F4F6; height:4px; border-radius:2px; overflow:hidden;">
+                    <div id="progressBar"
+                        style="background:var(--primary); width:0%; height:100%; transition:width 0.3s;"></div>
+                </div>
+            </div>
+            <div id="progressIdle" style="text-align:center; padding:40px; color:var(--text-dim); font-size:0.85rem;">
+                队列空闲</div>
+        </aside>
+    </div>
+
+    <script>
+        let products = [];
+        let currentMode = 'standard';
+        let pollTimer = null;
+        let droppedFiles = [];
+        let currentThemeIndex = 0;
+        const themes = ['theme-light', 'theme-dark'];
+
+        function switchTheme() {
+            const icon = document.querySelector('.glow-icon');
+            const rect = icon.getBoundingClientRect();
+
+            const nextIndex = (currentThemeIndex + 1) % themes.length;
+            const nextTheme = themes[nextIndex];
+
+            const doSwitch = () => {
+                currentThemeIndex = nextIndex;
+                document.body.classList.remove('theme-light', 'theme-dark');
+                if (nextTheme !== 'theme-light') {
+                    document.body.classList.add(nextTheme);
+                }
+            };
+
+            if (document.startViewTransition) {
+                document.documentElement.style.setProperty('--click-x', `${rect.left + rect.width / 2}px`);
+                document.documentElement.style.setProperty('--click-y', `${rect.top + rect.height / 2}px`);
+                document.startViewTransition(doSwitch);
+            } else {
+                doSwitch();
+            }
+        }
+
+        // ── 自定义下拉菜单逻辑 ──
+        function toggleSelect(el, event) {
+            event.stopPropagation();
+            const wrapper = el.closest('.gf-select');
+            const wasOpen = wrapper.classList.contains('open');
+            document.querySelectorAll('.gf-select').forEach(sel => sel.classList.remove('open'));
+            if (!wasOpen) wrapper.classList.add('open');
+        }
+
+        function selectOption(el, event) {
+            event.stopPropagation();
+            const wrapper = el.closest('.gf-select');
+            const val = el.getAttribute('data-value');
+            const text = el.textContent;
+
+            wrapper.querySelector('input').value = val;
+            wrapper.querySelector('.gf-select-text').textContent = text;
+
+            wrapper.querySelectorAll('.gf-option').forEach(o => o.classList.remove('selected'));
+            el.classList.add('selected');
+            wrapper.classList.remove('open');
+        }
+
+        document.addEventListener('click', (e) => {
+            document.querySelectorAll('.gf-select').forEach(sel => sel.classList.remove('open'));
+
+            const um = document.getElementById('userMenu');
+            if (um && !e.target.closest('.user-menu-container')) {
+                um.classList.remove('show');
+            }
+        });
+
+        function toggleUserMenu(e) {
+            e.stopPropagation();
+            document.getElementById('userMenu').classList.toggle('show');
+        }
+
+        function handleLogin() {
+            if (document.getElementById('loginPass').value === '123456') {
+                document.getElementById('loginOverlay').style.display = 'none';
+                initApp();
+            } else {
+                alert('验证失败');
+            }
+        }
+
+        async function initApp() {
+            await loadAgents();
+            loadProducts();
+        }
+
+        function setMode(mode) {
+            const drawer = document.getElementById('configDrawer');
+            const customCfg = document.getElementById('customConfig');
+            const videoCfg = document.getElementById('videoConfig');
+            const sidebar = document.getElementById('mainSidebar');
+            const input = document.getElementById('promptInput');
+            const sendBtn = document.getElementById('generateBtn');
+
+            let oldPanel = currentMode === 'custom' ? customCfg : (currentMode === 'video' ? videoCfg : null);
+            let newPanel = mode === 'custom' ? customCfg : (mode === 'video' ? videoCfg : null);
+
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+
+            if (mode === 'standard') {
+                drawer.classList.remove('open');
+                sidebar.classList.remove('minimized');
+                if (oldPanel) {
+                    oldPanel.className = 'panel-view exit';
+                    setTimeout(() => oldPanel.className = 'panel-view', 300);
+                }
+                input.placeholder = '输入风格提示词，或留空使用默认描述...';
+                sendBtn.className = 'btn-send';
+            } else {
+                drawer.classList.add('open');
+                sidebar.classList.add('minimized');
+
+                if (oldPanel && oldPanel !== newPanel) {
+                    oldPanel.className = 'panel-view exit';
+                    setTimeout(() => { if (!oldPanel.classList.contains('active')) oldPanel.className = 'panel-view'; }, 300);
+                }
+                if (newPanel) {
+                    newPanel.className = 'panel-view active';
+                }
+
+                if (mode === 'custom') {
+                    input.placeholder = '描述您想对参考图进行的修改...';
+                    sendBtn.className = 'btn-send custom';
+                } else {
+                    input.placeholder = '描述视频动态效果...';
+                    sendBtn.className = 'btn-send video';
+                }
+            }
+            input.focus();
+        }
+
+        async function loadAgents() {
+            let agents = [{ id: 'gemini', name: 'Gemini' }];
+            try {
+                const res = await fetch('/api/agents');
+                const data = await res.json();
+                if (data && data.length) agents = data;
+            } catch (e) { }
+
+            const wrapper = document.getElementById('agentSelectWrapper');
+            wrapper.querySelector('input').value = agents[0].id;
+            wrapper.querySelector('.gf-select-text').textContent = agents[0].name;
+
+            document.getElementById('agentSelectOptions').innerHTML = agents.map((a, i) =>
+                `<div class="gf-option ${i === 0 ? 'selected' : ''}" data-value="${a.id}" onclick="selectOption(this, event)">${a.name}</div>`
+            ).join('');
+        }
+
+        async function loadProducts() {
+            try {
+                const response = await fetch('/api/products');
+                const data = await response.json();
+                products = data.products || [];
+                displayProducts();
+            } catch (e) {
+                document.getElementById('productList').innerHTML = '<div style="padding:20px;text-align:center;">暂无数据</div>';
+            }
+        }
+
+        function displayProducts() {
+            const list = document.getElementById('productList');
+            document.getElementById('listCount').textContent = products.length;
+            list.innerHTML = products.map(p => `
+            <div style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; cursor:pointer;" onclick="this.querySelector('input').click()">
+                <input type="checkbox" value="${p.id}" onclick="event.stopPropagation(); updateCount()">
+                <span style="font-size:0.85rem;">${p.name}</span>
+            </div>
+        `).join('');
+        }
+
+        function updateCount() {
+            document.getElementById('selectedCount').textContent = document.querySelectorAll('input[type="checkbox"]:checked').length;
+        }
+
+        async function executeTask() {
+            const prompt = document.getElementById('promptInput').value.trim();
+            const agentId = document.getElementById('agentSelect').value;
+            const ids = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+
+            let payload = { prompt, agentId };
+            let apiPath = '/api/generate';
+
+            if (currentMode === 'standard') {
+                if (ids.length === 0) return alert('请选择产品');
+                payload.productIds = ids;
+                appendMessage('user', `[标准] 批量生成 ${ids.length} 个产品图\n模型: ${agentId}\n提示词: ${prompt || '自动'}`);
+
+                try {
+                    const resp = await fetch(apiPath, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await resp.json();
+                    if (data.error) throw new Error(data.error);
+                    startPolling(data.taskId);
+                } catch (e) {
+                    document.getElementById('generateBtn').disabled = false;
+                    appendMessage('ai', '启动失败：' + e.message);
+                }
+            } else if (currentMode === 'custom') {
+                apiPath = '/api/custom_generate';
+
+                const formData = new FormData();
+                if (droppedFiles.length > 0) {
+                    droppedFiles.forEach(f => formData.append('images', f));
+                } else {
+                    const url = document.getElementById('customImgUrl').value;
+                    if (url) {
+                        // formData.append('imageUrl', url);
+                    }
+                }
+
+                formData.append('prompt', prompt || '基于参考图生成');
+                formData.append('agentId', agentId);
+                formData.append('count', 1);
+
+                appendMessage('user', `[自定义] 已上传 ${droppedFiles.length} 张图片\n模型: ${agentId}\n提示词: ${prompt}`);
+
+                try {
+                    const resp = await fetch(apiPath, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await resp.json();
+                    if (data.error) throw new Error(data.error);
+
+                    if (data.results) {
+                        appendMessage('ai', `✅ 生成完成！结果已保存至: ${data.output_dir}`);
+                        clearFiles();
+                    }
+                } catch (e) {
+                    document.getElementById('generateBtn').disabled = false;
+                    appendMessage('ai', '生成失败：' + e.message);
+                }
+            } else if (currentMode === 'video') {
+                apiPath = '/api/video-generate';
+                payload.style = document.getElementById('videoStyle').value;
+                payload.motion = document.getElementById('videoMotion').value;
+                appendMessage('user', `[视频] 风格:${payload.style} 强度:${payload.motion}\n模型: ${agentId}\n提示词: ${prompt}`);
+
+                try {
+                    const resp = await fetch(apiPath, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await resp.json();
+                    if (data.error) throw new Error(data.error);
+                    startPolling(data.taskId);
+                } catch (e) {
+                    document.getElementById('generateBtn').disabled = false;
+                    appendMessage('ai', '启动失败：' + e.message);
+                }
+            }
+
+            document.getElementById('promptInput').value = '';
+            document.getElementById('generateBtn').disabled = true;
+        }
+
+        function startPolling(taskId) {
+            document.getElementById('progressBox').style.display = 'block';
+            document.getElementById('progressIdle').style.display = 'none';
+            clearInterval(pollTimer);
+            pollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch(`/api/task/${taskId}`);
+                    const data = await res.json();
+                    document.getElementById('progressBar').style.width = Math.round(((data.progress || 0) / (data.total || 1)) * 100) + '%';
+                    document.getElementById('progressCount').textContent = `${data.progress || 0}/${data.total || 1}`;
+                    if (data.status !== 'running' && data.status !== 'pending') {
+                        clearInterval(pollTimer);
+                        document.getElementById('generateBtn').disabled = false;
+                        appendMessage('ai', `✅ 任务完成！`);
+                        document.getElementById('progressBox').style.display = 'none';
+                        document.getElementById('progressIdle').style.display = 'block';
+                    }
+                } catch (e) {
+                    // polling error
+                }
+            }, 2000);
+        }
+
+        function appendMessage(role, text) {
+            const container = document.getElementById('chatMessages');
+            const emptyState = document.getElementById('emptyState');
+            if (emptyState) emptyState.style.display = 'none';
+
+            const msg = document.createElement('div');
+            msg.className = `msg-bubble ${role === 'user' ? 'msg-user' : ''}`;
+            msg.innerText = text;
+            container.appendChild(msg);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); executeTask(); } }
+
+        // ── 拖拽上传逻辑 ──
+        const wrapper = document.querySelector('.input-area-wrapper');
+        const overlay = document.getElementById('dropOverlay');
+
+        window.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.types.includes('Files')) {
+                overlay.classList.add('active');
+            }
+        });
+
+        overlay.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+
+        overlay.addEventListener('dragleave', (e) => {
+            if (!e.relatedTarget || !overlay.contains(e.relatedTarget)) {
+                overlay.classList.remove('active');
+            }
+        });
+
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            overlay.classList.remove('active');
+
+            const files = Array.from(e.dataTransfer.files);
+            const imageFiles = files.filter(f => f.type.startsWith('image/'));
+
+            if (imageFiles.length > 0) {
+                handleImageDrop(imageFiles);
+            }
+        });
+
+        function handleImageDrop(files) {
+            setMode('custom');
+
+            files.forEach(file => {
+                if (droppedFiles.length >= 10) {
+                    return;
+                }
+                droppedFiles.push(file);
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    addPreviewItem(e.target.result, file.name);
+                };
+                reader.readAsDataURL(file);
+            });
+
+            if (droppedFiles.length > 0) {
+                document.getElementById('imagePreviewContainer').style.display = 'flex';
+                appendMessage('ai', `已接收 ${droppedFiles.length} 张图片，正在为您准备自由创作模式...`);
+                const input = document.getElementById('promptInput');
+                if (!input.value) input.value = "结合这些图片生成...";
+                input.focus();
+            }
+        }
+
+        function addPreviewItem(src, name) {
+            const container = document.getElementById('imagePreviewContainer');
+            const index = droppedFiles.length - 1;
+            const label = `图 ${index + 1}`;
+
+            const item = document.createElement('div');
+            item.className = 'preview-item';
+            item.innerHTML = `
+            <img src="${src}" alt="${name}">
+            <div class="preview-badge">${label}</div>
+            <div class="preview-remove" onclick="removeFile(${index})">×</div>
+        `;
+            container.appendChild(item);
+        }
+
+        function removeFile(index) {
+            droppedFiles.splice(index, 1);
+            renderPreviews();
+            if (droppedFiles.length === 0) {
+                document.getElementById('imagePreviewContainer').style.display = 'none';
+            }
+        }
+
+        function renderPreviews() {
+            const container = document.getElementById('imagePreviewContainer');
+            container.innerHTML = '';
+            droppedFiles.forEach((file, i) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const label = `图 ${i + 1}`;
+                    const item = document.createElement('div');
+                    item.className = 'preview-item';
+                    item.innerHTML = `
+                    <img src="${e.target.result}" alt="${file.name}">
+                    <div class="preview-badge">${label}</div>
+                    <div class="preview-remove" onclick="removeFile(${i})">×</div>
+                `;
+                    container.appendChild(item);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function clearFiles() {
+            droppedFiles = [];
+            document.getElementById('imagePreviewContainer').innerHTML = '';
+            document.getElementById('imagePreviewContainer').style.display = 'none';
+            document.getElementById('generateBtn').disabled = false;
+        }
+    </script>
+    <!-- ── 企业标签 ── -->
+    <div class="footer-company-label">
+        <span class="label-icon">©</span>
+        东莞市果行创新电商有限公司
+    </div>
+</body>
+
+</html>

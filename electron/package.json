@@ -1,0 +1,35 @@
+{
+  "name": "ai-studio",
+  "version": "1.0.0",
+  "description": "AI 产品图片生成系统",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.elebusiness.aistudio",
+    "productName": "AI Studio",
+    "copyright": "ELE Business",
+    "win": {
+      "target": [
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "dir",      "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico",
+      "sign": null
+    },
+    "extraResources": [
+      { "from": "../dist/app.jar",  "to": "app.jar"  },
+      { "from": "../dist/runtime",  "to": "runtime"  },
+      { "from": "../dist/frontend", "to": "frontend" }
+    ],
+    "directories": {
+      "output": "../dist-electron"
+    }
+  }
+}

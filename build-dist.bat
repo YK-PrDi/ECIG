@@ -1,0 +1,33 @@
+@echo off
+echo ====================================
+echo  AI Studio — 一键构建发布包
+echo ====================================
+
+cd /d "%~dp0"
+
+echo [1/4] 构建 Maven 项目...
+call mvn package -DskipTests -q
+if errorlevel 1 (
+    echo 构建失败！请检查 IDEA 错误信息。
+    pause
+    exit /b 1
+)
+
+echo [2/4] 更新 app.jar...
+copy /Y "target\ele-business-java-1.0.0.jar" "dist\app.jar"
+
+echo [3/4] 同步前端文件...
+xcopy /Y /I "frontend\*" "dist\frontend\"
+
+echo [4/4] 打包 Electron 安装包...
+cd electron
+set CSC_IDENTITY_AUTO_DISCOVERY=false
+call node_modules\.bin\electron-builder.cmd --win nsis
+cd ..
+
+echo.
+echo ====================================
+echo  完成！安装包位于：
+echo  dist-electron\AI Studio Setup 1.0.0.exe
+echo ====================================
+pause
