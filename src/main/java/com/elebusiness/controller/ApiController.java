@@ -218,16 +218,16 @@ public class ApiController {
 
     @PostMapping("/api/custom_generate")
     public ResponseEntity<Map<String, Object>> customGenerate(
-            @RequestParam("images") List<MultipartFile> images,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images,
             @RequestParam("prompt") String prompt,
             @RequestParam(value = "count", defaultValue = "1") int count,
             @RequestParam(value = "agentId", defaultValue = "gemini") String agentId) {
 
-        if (images == null || images.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "需要至少1张图片（参考图）"));
-        }
-        if (prompt == null || prompt.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "需要提供提示词"));
+        boolean hasImages = images != null && !images.isEmpty();
+
+        // 纯文生图时 prompt 必填；有图片时 prompt 可为空（模型自行发挥）
+        if (!hasImages && (prompt == null || prompt.isBlank())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "纯文生图模式需要提供提示词"));
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
@@ -235,37 +235,54 @@ public class ApiController {
                 "自定义生成/" + timestamp).getAbsolutePath();
         new File(outputDir).mkdirs();
 
-        // images[0] = 参考图，images[1..n] = 白底图（支持文件夹批量上传）
+        // images[0] = 参考图（可选），images[1..n] = 白底图（可选）
         File refTempFile = null;
         List<File> whiteTempFiles = new ArrayList<>();
-        try {
-            refTempFile = File.createTempFile("ref_", ".jpg");
-            images.get(0).transferTo(refTempFile);
-            for (int i = 1; i < images.size(); i++) {
-                File wf = File.createTempFile("white_" + i + "_", ".jpg");
-                images.get(i).transferTo(wf);
-                whiteTempFiles.add(wf);
+        if (hasImages) {
+            try {
+                refTempFile = File.createTempFile("ref_", ".jpg");
+                images.get(0).transferTo(refTempFile);
+                for (int i = 1; i < images.size(); i++) {
+                    File wf = File.createTempFile("white_" + i + "_", ".jpg");
+                    images.get(i).transferTo(wf);
+                    whiteTempFiles.add(wf);
+                }
+            } catch (Exception e) {
+                return ResponseEntity.internalServerError()
+                        .body(Map.of("error", "处理上传文件失败: " + e.getMessage()));
             }
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "处理上传文件失败: " + e.getMessage()));
         }
 
         List<Object> results = new ArrayList<>();
         int delaySeconds = appProperties.getApi().getDelaySeconds();
-        // 没有白底图时用参考图自身
-        List<File> bgFiles = whiteTempFiles.isEmpty() ? List.of(refTempFile) : whiteTempFiles;
 
-        for (File bgFile : bgFiles) {
+        if (!hasImages) {
+            // 纯文生图：无参考图、无白底图
             for (int i = 0; i < count; i++) {
                 try {
                     Thread.sleep(delaySeconds * 1000L);
                     String outputPath = new File(outputDir, (results.size() + 1) + ".jpg").getAbsolutePath();
-                    boolean ok = imageGenerationService.generateImage(
-                            prompt, refTempFile.getAbsolutePath(), bgFile.getAbsolutePath(), outputPath, agentId);
+                    boolean ok = imageGenerationService.generateImage(prompt, null, null, outputPath, agentId);
                     results.add(ok ? outputPath : "失败: 生成未返回图片");
                 } catch (Exception e) {
                     results.add("失败: " + e.getMessage());
+                }
+            }
+        } else {
+            // 有图片：白底图为空时用参考图自身作为背景底图
+            List<File> bgFiles = whiteTempFiles.isEmpty() ? List.of(refTempFile) : whiteTempFiles;
+            String refPath = refTempFile.getAbsolutePath();
+            for (File bgFile : bgFiles) {
+                for (int i = 0; i < count; i++) {
+                    try {
+                        Thread.sleep(delaySeconds * 1000L);
+                        String outputPath = new File(outputDir, (results.size() + 1) + ".jpg").getAbsolutePath();
+                        boolean ok = imageGenerationService.generateImage(
+                                prompt, refPath, bgFile.getAbsolutePath(), outputPath, agentId);
+                        results.add(ok ? outputPath : "失败: 生成未返回图片");
+                    } catch (Exception e) {
+                        results.add("失败: " + e.getMessage());
+                    }
                 }
             }
         }

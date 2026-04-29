@@ -15,6 +15,12 @@
 
 <body class="theme-light">
 
+    <!-- ── 图片灯箱 ── -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+        <img id="lightboxImg" onclick="event.stopPropagation()">
+    </div>
+
     <!-- ── 登录层 ── -->
     <div id="loginOverlay">
         <div class="login-card">
@@ -30,10 +36,15 @@
 
     <!-- ── 导航 ── -->
     <nav class="topnav">
-        <a href="#" class="brand">
+        <a href="#" class="brand" style="flex:1;">
             <div class="brand-icon rainbow-logo">✧</div> AI Studio
         </a>
-        <div style="margin-left:auto; display:flex; gap:16px; align-items:center;">
+        <div class="mode-selector">
+            <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">标准生图</button>
+            <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义</button>
+            <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频生成</button>
+        </div>
+        <div style="flex:1; display:flex; gap:16px; align-items:center; justify-content:flex-end;">
             <div class="user-menu-container">
                 <div class="avatar-btn" onclick="toggleUserMenu(event)">A</div>
                 <div class="user-dropdown" id="userMenu" onclick="event.stopPropagation()">
@@ -49,10 +60,10 @@
                         <h3>1,250 <small>点</small></h3>
                     </div>
                     <button class="btn-primary"
-                        style="width:100%; margin-top: 16px; margin-bottom: 16px; background: linear-gradient(135deg, #10B981, #059669); height: 44px; font-size: 1rem; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
+                        style="width:100%; margin-top:16px; margin-bottom:16px; background:linear-gradient(135deg,#10B981,#059669); height:44px; font-size:1rem; box-shadow:0 4px 12px rgba(16,185,129,0.3);"
                         onclick="alert('即将跳转充值页面...')">立即充值</button>
-                    <div style="height: 1px; background: var(--border); margin: 8px -20px 0;"></div>
-                    <div class="user-menu-item" style="color: #EF4444;" onclick="document.getElementById('loginOverlay').style.display='flex'">退出登录</div>
+                    <div style="height:1px; background:var(--border); margin:8px -20px 0;"></div>
+                    <div class="user-menu-item" style="color:#EF4444;" onclick="document.getElementById('loginOverlay').style.display='flex'">退出登录</div>
                 </div>
             </div>
         </div>
@@ -60,14 +71,25 @@
 
     <div class="app-content">
         <aside class="sidebar" id="mainSidebar">
-            <div style="padding:20px; border-bottom:1px solid var(--border);">
-                <button class="btn-primary" style="width:100%; height:40px;" onclick="loadProducts()">同步产品</button>
+            <!-- 产品目录（标准模式） -->
+            <div id="productPanel" style="display:flex; flex-direction:column; height:100%;">
+                <div style="padding:20px; border-bottom:1px solid var(--border);">
+                    <button class="btn-primary" style="width:100%; height:40px;" onclick="loadProducts()">同步产品</button>
+                </div>
+                <div class="section-label" style="display:flex; justify-content:space-between; padding:0 20px;">
+                    <span>产品目录</span>
+                    <span id="listCount" style="color:var(--primary);">0</span>
+                </div>
+                <div class="product-list" id="productList" style="flex:1; overflow-y:auto; padding:10px;"></div>
             </div>
-            <div class="section-label" style="display:flex; justify-content:space-between; padding:0 20px;">
-                <span>产品目录</span>
-                <span id="listCount" style="color:var(--primary);">0</span>
+            <!-- 生图历史（自定义 / 视频模式） -->
+            <div id="historyPanel" class="history-panel" style="display:none;">
+                <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
+                    <span style="font-size:0.75rem; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em;">生图历史</span>
+                    <button onclick="clearHistory()" style="font-size:0.7rem; color:var(--text-dim); background:none; border:none; cursor:pointer; padding:4px 8px; border-radius:6px; font-family:var(--font); transition:color 0.2s;" onmouseover="this.style.color='var(--text-main)'" onmouseout="this.style.color='var(--text-dim)'">清空</button>
+                </div>
+                <div id="historyList" style="flex:1; overflow-y:auto; padding:10px;"></div>
             </div>
-            <div class="product-list" id="productList" style="flex:1; overflow-y:auto; padding:10px;"></div>
         </aside>
 
         <main class="workspace">
@@ -76,10 +98,8 @@
                     <div class="glow-icon" onclick="switchTheme()">
                         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 1L14.7 8.3L22 11L14.7 13.7L12 21L9.3 13.7L2 11L9.3 8.3L12 1Z" />
-                            <path
-                                d="M19.5 2.5L20.5 5.5L23.5 6.5L20.5 7.5L19.5 10.5L18.5 7.5L15.5 6.5L18.5 5.5L19.5 2.5Z" />
-                            <path
-                                d="M4.5 15.5L5.5 18.5L8.5 19.5L5.5 20.5L4.5 23.5L3.5 20.5L0.5 19.5L3.5 18.5L4.5 15.5Z" />
+                            <path d="M19.5 2.5L20.5 5.5L23.5 6.5L20.5 7.5L19.5 10.5L18.5 7.5L15.5 6.5L18.5 5.5L19.5 2.5Z" />
+                            <path d="M4.5 15.5L5.5 18.5L8.5 19.5L5.5 20.5L4.5 23.5L3.5 20.5L0.5 19.5L3.5 18.5L4.5 15.5Z" />
                         </svg>
                     </div>
                     <h2>果敢直行，果然很行</h2>
@@ -97,37 +117,72 @@
 
             <div class="input-area-wrapper">
                 <div style="width:100%; max-width:960px; margin:0 auto; position:relative;">
-                    <!-- 配置抽屉 (在输入框之下，受 z-index 控制滑动层级) -->
+                    <!-- 配置抽屉 -->
                     <div class="config-drawer" id="configDrawer">
+
+                        <!-- 自定义生图配置 -->
                         <div id="customConfig" class="panel-view">
-                            <div class="config-group">
-                                <label>参考图 URL</label>
-                                <input type="text" class="input-field" id="customImgUrl" placeholder="https://...">
+                            <!-- 参考图上传 -->
+                            <div class="config-group custom-img-group">
+                                <label>参考图 <span class="opt-badge">可选</span></label>
+                                <div class="upload-zone" id="refZone"
+                                     onclick="if(!event.target.closest('.upload-remove-btn'))document.getElementById('refFileInput').click()"
+                                     ondragover="event.preventDefault();event.stopPropagation();this.classList.add('drag-over')"
+                                     ondragleave="this.classList.remove('drag-over')"
+                                     ondrop="handleRefZoneDrop(event,this)">
+                                    <input type="file" id="refFileInput" accept="image/*" style="display:none" onchange="handleRefFileChange(this)">
+                                    <div id="refEmpty" class="upload-zone-placeholder">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                                        </svg>
+                                        <span>点击或拖入参考图</span>
+                                    </div>
+                                    <div id="refPreview" style="display:none; position:relative; width:100%;">
+                                        <img id="refThumb" style="width:100%; max-height:110px; object-fit:cover; border-radius:8px; display:block; pointer-events:none;">
+                                        <button class="upload-remove-btn" onclick="clearRefImage(event)">×</button>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="config-group" style="max-width:150px;">
+
+                            <!-- 白底图上传 -->
+                            <div class="config-group custom-img-group">
+                                <label>白底图 <span class="opt-badge">可选 · 多张</span></label>
+                                <div class="upload-zone" id="whiteBgZone"
+                                     onclick="if(!event.target.closest('.upload-thumb-remove')&&!event.target.closest('.upload-add-btn'))document.getElementById('whiteBgFileInput').click()"
+                                     ondragover="event.preventDefault();event.stopPropagation();this.classList.add('drag-over')"
+                                     ondragleave="this.classList.remove('drag-over')"
+                                     ondrop="handleWhiteBgZoneDrop(event,this)">
+                                    <input type="file" id="whiteBgFileInput" accept="image/*" multiple style="display:none" onchange="handleWhiteBgFileChange(this)">
+                                    <div id="whiteBgEmpty" class="upload-zone-placeholder">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                                        </svg>
+                                        <span>点击或拖入白底图</span>
+                                    </div>
+                                    <div id="whiteBgPreviews" class="upload-zone-thumbs" style="display:none;"></div>
+                                </div>
+                            </div>
+
+                            <!-- 比例 -->
+                            <div class="config-group" style="max-width:140px; flex-shrink:0;">
                                 <label>比例</label>
-                                <!-- 自定义下拉 -->
                                 <div class="gf-select drop-up" tabindex="0">
                                     <input type="hidden" id="customAspect" value="free">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
                                         <span class="gf-select-text">不限制</span>
-                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option selected" data-value="free"
-                                            onclick="selectOption(this, event)">不限制</div>
-                                        <div class="gf-option" data-value="1:1" onclick="selectOption(this, event)">1:1
-                                        </div>
-                                        <div class="gf-option" data-value="16:9" onclick="selectOption(this, event)">
-                                            16:9</div>
-                                        <div class="gf-option" data-value="3:4" onclick="selectOption(this, event)">3:4
-                                        </div>
+                                        <div class="gf-option selected" data-value="free" onclick="selectOption(this, event)">不限制</div>
+                                        <div class="gf-option" data-value="1:1" onclick="selectOption(this, event)">1:1</div>
+                                        <div class="gf-option" data-value="16:9" onclick="selectOption(this, event)">16:9</div>
+                                        <div class="gf-option" data-value="3:4" onclick="selectOption(this, event)">3:4</div>
                                     </div>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- 视频生成配置 -->
                         <div id="videoConfig" class="panel-view">
                             <div class="config-group">
                                 <label>视频风格</label>
@@ -135,17 +190,12 @@
                                     <input type="hidden" id="videoStyle" value="free">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
                                         <span class="gf-select-text">不限制</span>
-                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option selected" data-value="free"
-                                            onclick="selectOption(this, event)">不限制</div>
-                                        <div class="gf-option" data-value="cinematic"
-                                            onclick="selectOption(this, event)">电影感</div>
-                                        <div class="gf-option" data-value="commercial"
-                                            onclick="selectOption(this, event)">商业广告</div>
+                                        <div class="gf-option selected" data-value="free" onclick="selectOption(this, event)">不限制</div>
+                                        <div class="gf-option" data-value="cinematic" onclick="selectOption(this, event)">电影感</div>
+                                        <div class="gf-option" data-value="commercial" onclick="selectOption(this, event)">商业广告</div>
                                     </div>
                                 </div>
                             </div>
@@ -155,75 +205,51 @@
                                     <input type="hidden" id="videoMotion" value="free">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
                                         <span class="gf-select-text">不限制</span>
-                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option selected" data-value="free"
-                                            onclick="selectOption(this, event)">不限制</div>
-                                        <div class="gf-option" data-value="5" onclick="selectOption(this, event)">标准 (5)
-                                        </div>
-                                        <div class="gf-option" data-value="10" onclick="selectOption(this, event)">高强度
-                                            (10)</div>
+                                        <div class="gf-option selected" data-value="free" onclick="selectOption(this, event)">不限制</div>
+                                        <div class="gf-option" data-value="5" onclick="selectOption(this, event)">标准 (5)</div>
+                                        <div class="gf-option" data-value="10" onclick="selectOption(this, event)">高强度 (10)</div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 拖拽上传指示器 -->
+                    <!-- 拖拽全局指示器 -->
                     <div class="drop-overlay" id="dropOverlay">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                            <polyline points="17 8 12 3 7 8" />
-                            <line x1="12" y1="3" x2="12" y2="15" />
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
                         </svg>
-                        <span>松开鼠标上传图片并开始创作</span>
+                        <span>松开鼠标上传图片</span>
+                        <small style="font-size:0.75rem; opacity:0.7;">首张→参考图，其余→白底图</small>
                     </div>
 
-                    <!-- 输入主体 (拥有最高 z-index) -->
+                    <!-- 输入主体 -->
                     <div class="input-container">
-                        <div
-                            style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-                            <div class="mode-selector">
-                                <button class="mode-btn active" id="btn-standard"
-                                    onclick="setMode('standard')">标准生图</button>
-                                <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义</button>
-                                <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频生成</button>
-                            </div>
+                        <div style="display:flex; align-items:center; justify-content:flex-end; margin-bottom:16px;">
                             <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-                                <span
-                                    style="font-size:0.7rem; color:var(--text-dim); font-weight:600; text-transform:uppercase; white-space:nowrap; flex-shrink:0;">AI
-                                    模型</span>
+                                <span style="font-size:0.7rem; color:var(--text-dim); font-weight:600; text-transform:uppercase; white-space:nowrap; flex-shrink:0;">AI 模型</span>
                                 <div class="gf-select sm drop-up" id="agentSelectWrapper">
                                     <input type="hidden" id="agentSelect" value="">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
                                         <span class="gf-select-text">加载中...</span>
-                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options" id="agentSelectOptions"></div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- 图片预览区 -->
-                        <div id="imagePreviewContainer" class="image-preview-container" style="display:none;"></div>
-
                         <div style="display:flex; align-items:flex-end; gap:12px;">
                             <textarea id="promptInput" rows="1" placeholder="输入风格提示词，或留空使用默认描述..."
                                 onkeydown="handleKey(event)"></textarea>
                             <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-                                <span style="font-size:0.65rem; color:var(--text-dim);">已选 <b
-                                        id="selectedCount">0</b></span>
+                                <span style="font-size:0.65rem; color:var(--text-dim);">已选 <b id="selectedCount">0</b></span>
                                 <button class="btn-send" id="generateBtn" onclick="executeTask()">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                        <line x1="22" y1="2" x2="11" y2="13" />
-                                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
                                     </svg>
                                 </button>
                             </div>
@@ -235,19 +261,16 @@
 
         <aside class="info-panel">
             <div class="section-label" style="margin-top:0;">任务队列</div>
-            <div id="progressBox"
-                style="display:none; padding:16px; border:1px solid var(--border); border-radius:12px;">
+            <div id="progressBox" style="display:none; padding:16px; border:1px solid var(--border); border-radius:12px;">
                 <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:8px;">
                     <span id="statusLabel">处理中</span>
                     <b id="progressCount">0/0</b>
                 </div>
                 <div style="background:#F3F4F6; height:4px; border-radius:2px; overflow:hidden;">
-                    <div id="progressBar"
-                        style="background:var(--primary); width:0%; height:100%; transition:width 0.3s;"></div>
+                    <div id="progressBar" style="background:var(--primary); width:0%; height:100%; transition:width 0.3s;"></div>
                 </div>
             </div>
-            <div id="progressIdle" style="text-align:center; padding:40px; color:var(--text-dim); font-size:0.85rem;">
-                队列空闲</div>
+            <div id="progressIdle" style="text-align:center; padding:40px; color:var(--text-dim); font-size:0.85rem;">队列空闲</div>
         </aside>
     </div>
 
@@ -255,35 +278,44 @@
         let products = [];
         let currentMode = 'standard';
         let pollTimer = null;
-        let droppedFiles = [];
         let currentThemeIndex = 0;
         const themes = ['theme-light', 'theme-dark'];
 
+        // ── 图片上传状态 ──
+        let refImage = null;
+        let whiteBgImages = [];
+
+        // ── 历史记录 ──
+        let historyRecords = [];
+        let _lastTaskPrompt = '';
+        let _lastTaskMode = '';
+        let _lastTaskAgentId = '';
+
+        // ── AI 头像 SVG ──
+        const AI_AVATAR_SVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;fill:white;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.2))">
+            <path d="M12 1L14.7 8.3L22 11L14.7 13.7L12 21L9.3 13.7L2 11L9.3 8.3L12 1Z"/>
+            <path d="M19.5 2.5L20.5 5.5L23.5 6.5L20.5 7.5L19.5 10.5L18.5 7.5L15.5 6.5L18.5 5.5L19.5 2.5Z"/>
+        </svg>`;
+
+        // ── 主题切换 ──
         function switchTheme() {
             const icon = document.querySelector('.glow-icon');
             const rect = icon.getBoundingClientRect();
-
             const nextIndex = (currentThemeIndex + 1) % themes.length;
             const nextTheme = themes[nextIndex];
-
             const doSwitch = () => {
                 currentThemeIndex = nextIndex;
                 document.body.classList.remove('theme-light', 'theme-dark');
-                if (nextTheme !== 'theme-light') {
-                    document.body.classList.add(nextTheme);
-                }
+                if (nextTheme !== 'theme-light') document.body.classList.add(nextTheme);
             };
-
             if (document.startViewTransition) {
                 document.documentElement.style.setProperty('--click-x', `${rect.left + rect.width / 2}px`);
                 document.documentElement.style.setProperty('--click-y', `${rect.top + rect.height / 2}px`);
                 document.startViewTransition(doSwitch);
-            } else {
-                doSwitch();
-            }
+            } else { doSwitch(); }
         }
 
-        // ── 自定义下拉菜单逻辑 ──
+        // ── 下拉菜单 ──
         function toggleSelect(el, event) {
             event.stopPropagation();
             const wrapper = el.closest('.gf-select');
@@ -295,12 +327,8 @@
         function selectOption(el, event) {
             event.stopPropagation();
             const wrapper = el.closest('.gf-select');
-            const val = el.getAttribute('data-value');
-            const text = el.textContent;
-
-            wrapper.querySelector('input').value = val;
-            wrapper.querySelector('.gf-select-text').textContent = text;
-
+            wrapper.querySelector('input').value = el.getAttribute('data-value');
+            wrapper.querySelector('.gf-select-text').textContent = el.textContent;
             wrapper.querySelectorAll('.gf-option').forEach(o => o.classList.remove('selected'));
             el.classList.add('selected');
             wrapper.classList.remove('open');
@@ -308,11 +336,8 @@
 
         document.addEventListener('click', (e) => {
             document.querySelectorAll('.gf-select').forEach(sel => sel.classList.remove('open'));
-
             const um = document.getElementById('userMenu');
-            if (um && !e.target.closest('.user-menu-container')) {
-                um.classList.remove('show');
-            }
+            if (um && !e.target.closest('.user-menu-container')) um.classList.remove('show');
         });
 
         function toggleUserMenu(e) {
@@ -320,25 +345,25 @@
             document.getElementById('userMenu').classList.toggle('show');
         }
 
+        // ── 登录 ──
         function handleLogin() {
             if (document.getElementById('loginPass').value === '123456') {
                 document.getElementById('loginOverlay').style.display = 'none';
                 initApp();
-            } else {
-                alert('验证失败');
-            }
+            } else { alert('验证失败'); }
         }
 
         async function initApp() {
-            await loadAgents();
-            loadProducts();
+            renderHistory();
         }
 
+        // ── 模式切换 ──
         function setMode(mode) {
             const drawer = document.getElementById('configDrawer');
             const customCfg = document.getElementById('customConfig');
             const videoCfg = document.getElementById('videoConfig');
-            const sidebar = document.getElementById('mainSidebar');
+            const productPanel = document.getElementById('productPanel');
+            const historyPanel = document.getElementById('historyPanel');
             const input = document.getElementById('promptInput');
             const sendBtn = document.getElementById('generateBtn');
 
@@ -351,7 +376,8 @@
 
             if (mode === 'standard') {
                 drawer.classList.remove('open');
-                sidebar.classList.remove('minimized');
+                productPanel.style.display = 'flex';
+                historyPanel.style.display = 'none';
                 if (oldPanel) {
                     oldPanel.className = 'panel-view exit';
                     setTimeout(() => oldPanel.className = 'panel-view', 300);
@@ -360,18 +386,16 @@
                 sendBtn.className = 'btn-send';
             } else {
                 drawer.classList.add('open');
-                sidebar.classList.add('minimized');
-
+                productPanel.style.display = 'none';
+                historyPanel.style.display = 'flex';
+                renderHistory();
                 if (oldPanel && oldPanel !== newPanel) {
                     oldPanel.className = 'panel-view exit';
                     setTimeout(() => { if (!oldPanel.classList.contains('active')) oldPanel.className = 'panel-view'; }, 300);
                 }
-                if (newPanel) {
-                    newPanel.className = 'panel-view active';
-                }
-
+                if (newPanel) newPanel.className = 'panel-view active';
                 if (mode === 'custom') {
-                    input.placeholder = '描述您想对参考图进行的修改...';
+                    input.placeholder = '描述您想生成的图像，留空由模型自行发挥...';
                     sendBtn.className = 'btn-send custom';
                 } else {
                     input.placeholder = '描述视频动态效果...';
@@ -381,23 +405,35 @@
             input.focus();
         }
 
+        // ── 模型列表 ──
         async function loadAgents() {
-            let agents = [{ id: 'gemini', name: 'Gemini' }];
+            const wrapper = document.getElementById('agentSelectWrapper');
+            const textEl = wrapper.querySelector('.gf-select-text');
+            const optionsEl = document.getElementById('agentSelectOptions');
+            textEl.textContent = '加载中...';
+            let agents = [];
             try {
                 const res = await fetch('/api/agents');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
-                if (data && data.length) agents = data;
-            } catch (e) { }
+                if (Array.isArray(data) && data.length > 0) agents = data;
+            } catch (e) { console.error('[loadAgents] 获取模型列表失败:', e); }
 
-            const wrapper = document.getElementById('agentSelectWrapper');
+            if (agents.length === 0) {
+                textEl.textContent = '加载失败 — 点击重试';
+                wrapper.querySelector('.gf-select-header').onclick = (ev) => { ev.stopPropagation(); loadAgents(); };
+                optionsEl.innerHTML = '<div style="padding:12px;color:#EF4444;font-size:0.8rem;">未获取到模型，请检查后端服务</div>';
+                return;
+            }
+            wrapper.querySelector('.gf-select-header').onclick = function(ev) { toggleSelect(this, ev); };
             wrapper.querySelector('input').value = agents[0].id;
-            wrapper.querySelector('.gf-select-text').textContent = agents[0].name;
-
-            document.getElementById('agentSelectOptions').innerHTML = agents.map((a, i) =>
+            textEl.textContent = agents[0].name;
+            optionsEl.innerHTML = agents.map((a, i) =>
                 `<div class="gf-option ${i === 0 ? 'selected' : ''}" data-value="${a.id}" onclick="selectOption(this, event)">${a.name}</div>`
             ).join('');
         }
 
+        // ── 产品列表 ──
         async function loadProducts() {
             try {
                 const response = await fetch('/api/products');
@@ -413,35 +449,236 @@
             const list = document.getElementById('productList');
             document.getElementById('listCount').textContent = products.length;
             list.innerHTML = products.map(p => `
-            <div style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; cursor:pointer;" onclick="this.querySelector('input').click()">
-                <input type="checkbox" value="${p.id}" onclick="event.stopPropagation(); updateCount()">
-                <span style="font-size:0.85rem;">${p.name}</span>
-            </div>
-        `).join('');
+                <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;" onclick="this.querySelector('input').click()">
+                    <input type="checkbox" value="${p.id}" onclick="event.stopPropagation();updateCount()">
+                    <span style="font-size:0.85rem;">${p.name}</span>
+                </div>
+            `).join('');
         }
 
         function updateCount() {
             document.getElementById('selectedCount').textContent = document.querySelectorAll('input[type="checkbox"]:checked').length;
         }
 
+        // ── 参考图上传 ──
+        function handleRefFileChange(input) {
+            if (input.files[0]) setRefImage(input.files[0]);
+            input.value = '';
+        }
+        function setRefImage(file) {
+            refImage = file;
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById('refThumb').src = e.target.result;
+                document.getElementById('refEmpty').style.display = 'none';
+                document.getElementById('refPreview').style.display = 'block';
+                document.getElementById('refZone').classList.add('has-file');
+            };
+            reader.readAsDataURL(file);
+        }
+        function clearRefImage(e) {
+            if (e) e.stopPropagation();
+            refImage = null;
+            document.getElementById('refThumb').src = '';
+            document.getElementById('refEmpty').style.display = 'flex';
+            document.getElementById('refPreview').style.display = 'none';
+            document.getElementById('refZone').classList.remove('has-file');
+        }
+        function handleRefZoneDrop(event, zone) {
+            event.preventDefault(); event.stopPropagation();
+            zone.classList.remove('drag-over');
+            const files = Array.from(event.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+            if (files[0]) setRefImage(files[0]);
+        }
+
+        // ── 白底图上传 ──
+        function handleWhiteBgFileChange(input) {
+            Array.from(input.files).forEach(addWhiteBg);
+            input.value = '';
+        }
+        function addWhiteBg(file) {
+            if (whiteBgImages.length >= 20) return;
+            whiteBgImages.push(file);
+            renderWhiteBgPreviews();
+        }
+        function removeWhiteBg(index, e) {
+            if (e) e.stopPropagation();
+            whiteBgImages.splice(index, 1);
+            renderWhiteBgPreviews();
+        }
+        function renderWhiteBgPreviews() {
+            const zone = document.getElementById('whiteBgZone');
+            const empty = document.getElementById('whiteBgEmpty');
+            const previewsEl = document.getElementById('whiteBgPreviews');
+            if (whiteBgImages.length === 0) {
+                empty.style.display = 'flex'; previewsEl.style.display = 'none';
+                previewsEl.innerHTML = ''; zone.classList.remove('has-file'); return;
+            }
+            empty.style.display = 'none'; previewsEl.style.display = 'flex';
+            zone.classList.add('has-file'); previewsEl.innerHTML = '';
+            whiteBgImages.forEach((file, i) => {
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    const div = document.createElement('div');
+                    div.className = 'upload-thumb';
+                    div.innerHTML = `<img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;">
+                        <div class="upload-thumb-remove" onclick="removeWhiteBg(${i},event)">×</div>`;
+                    previewsEl.appendChild(div);
+                };
+                reader.readAsDataURL(file);
+            });
+            const addBtn = document.createElement('div');
+            addBtn.className = 'upload-thumb upload-add-btn';
+            addBtn.innerHTML = '<span style="font-size:1.4rem;color:var(--text-dim);line-height:1;">+</span>';
+            addBtn.onclick = e => { e.stopPropagation(); document.getElementById('whiteBgFileInput').click(); };
+            previewsEl.appendChild(addBtn);
+        }
+        function handleWhiteBgZoneDrop(event, zone) {
+            event.preventDefault(); event.stopPropagation();
+            zone.classList.remove('drag-over');
+            Array.from(event.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(addWhiteBg);
+        }
+        function clearAllImages() {
+            clearRefImage(null); whiteBgImages = []; renderWhiteBgPreviews();
+        }
+
+        // ── 对话消息（带头像） ──
+        function appendMessage(role, text) {
+            const container = document.getElementById('chatMessages');
+            const emptyState = document.getElementById('emptyState');
+            if (emptyState) emptyState.style.display = 'none';
+
+            const row = document.createElement('div');
+            row.className = `msg-row ${role === 'user' ? 'msg-row-user' : ''}`;
+
+            if (role !== 'user') {
+                const av = document.createElement('div');
+                av.className = 'msg-avatar msg-avatar-ai';
+                av.innerHTML = AI_AVATAR_SVG;
+                row.appendChild(av);
+            }
+
+            const bubble = document.createElement('div');
+            bubble.className = `msg-bubble ${role === 'user' ? 'msg-user' : ''}`;
+            bubble.innerText = text;
+            row.appendChild(bubble);
+
+            if (role === 'user') {
+                const av = document.createElement('div');
+                av.className = 'msg-avatar msg-avatar-user';
+                av.textContent = 'A';
+                row.appendChild(av);
+            }
+
+            container.appendChild(row);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ── 图片预览消息 ──
+        function appendImageGrid(imagePaths, caption) {
+            if (!imagePaths || imagePaths.length === 0) return;
+            const container = document.getElementById('chatMessages');
+            const emptyState = document.getElementById('emptyState');
+            if (emptyState) emptyState.style.display = 'none';
+
+            const row = document.createElement('div');
+            row.className = 'msg-row';
+
+            const av = document.createElement('div');
+            av.className = 'msg-avatar msg-avatar-ai';
+            av.innerHTML = AI_AVATAR_SVG;
+            row.appendChild(av);
+
+            const bubble = document.createElement('div');
+            bubble.className = 'msg-bubble msg-images';
+
+            if (caption) {
+                const cap = document.createElement('div');
+                cap.style.cssText = 'font-size:0.85rem;margin-bottom:10px;color:var(--text-muted);';
+                cap.textContent = caption;
+                bubble.appendChild(cap);
+            }
+
+            const grid = document.createElement('div');
+            grid.className = 'msg-images-grid';
+
+            const shown = imagePaths.slice(0, 12);
+            shown.forEach(path => {
+                const img = document.createElement('img');
+                img.src = `/api/image?path=${encodeURIComponent(path)}`;
+                img.alt = '';
+                img.loading = 'lazy';
+                img.title = '点击查看大图';
+                img.onclick = () => openLightbox(`/api/image?path=${encodeURIComponent(path)}`);
+                grid.appendChild(img);
+            });
+
+            if (imagePaths.length > 12) {
+                const more = document.createElement('div');
+                more.className = 'img-grid-more';
+                more.textContent = `+${imagePaths.length - 12}`;
+                grid.appendChild(more);
+            }
+
+            bubble.appendChild(grid);
+            row.appendChild(bubble);
+            container.appendChild(row);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ── 灯箱 ──
+        function openLightbox(src) {
+            document.getElementById('lightboxImg').src = src;
+            document.getElementById('lightbox').classList.add('active');
+        }
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+            document.getElementById('lightboxImg').src = '';
+        }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+        // ── 从 Gallery API 收集图片路径 ──
+        async function collectTaskImages(results) {
+            const paths = [];
+            const successResults = (results || []).filter(r => r.status === 'success' && r.output);
+            // 最多取前 5 个产品的结果避免过多请求
+            for (const r of successResults.slice(0, 5)) {
+                try {
+                    const res = await fetch(`/api/gallery?path=${encodeURIComponent(r.output)}`);
+                    const gallery = await res.json();
+                    for (const item of gallery.items || []) {
+                        if (item.type === 'image') {
+                            paths.push(item.path);
+                        } else if (item.type === 'folder') {
+                            // 子文件夹（主图/SKU/详情图）各取前几张
+                            const subRes = await fetch(`/api/gallery?path=${encodeURIComponent(item.path)}`);
+                            const sub = await subRes.json();
+                            (sub.items || []).filter(i => i.type === 'image').slice(0, 4).forEach(i => paths.push(i.path));
+                        }
+                    }
+                } catch (e) { console.error('获取图片预览失败:', e); }
+            }
+            return paths;
+        }
+
+        // ── 执行生图任务 ──
         async function executeTask() {
             const prompt = document.getElementById('promptInput').value.trim();
             const agentId = document.getElementById('agentSelect').value;
             const ids = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
 
-            let payload = { prompt, agentId };
-            let apiPath = '/api/generate';
+            _lastTaskPrompt = prompt;
+            _lastTaskMode = currentMode;
+            _lastTaskAgentId = agentId;
 
             if (currentMode === 'standard') {
                 if (ids.length === 0) return alert('请选择产品');
-                payload.productIds = ids;
-                appendMessage('user', `[标准] 批量生成 ${ids.length} 个产品图\n模型: ${agentId}\n提示词: ${prompt || '自动'}`);
-
+                appendMessage('user', `批量生成 ${ids.length} 个产品图\n模型: ${agentId}${prompt ? '\n提示词: ' + prompt : ''}`);
                 try {
-                    const resp = await fetch(apiPath, {
+                    const resp = await fetch('/api/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({ prompt, agentId, productIds: ids })
                     });
                     const data = await resp.json();
                     if (data.error) throw new Error(data.error);
@@ -449,45 +686,53 @@
                 } catch (e) {
                     document.getElementById('generateBtn').disabled = false;
                     appendMessage('ai', '启动失败：' + e.message);
+                    addHistoryRecord('standard', prompt, agentId, false);
                 }
+
             } else if (currentMode === 'custom') {
-                apiPath = '/api/custom_generate';
-
                 const formData = new FormData();
-                if (droppedFiles.length > 0) {
-                    droppedFiles.forEach(f => formData.append('images', f));
-                }
-
-                formData.append('prompt', prompt || '基于参考图生成');
+                if (refImage) formData.append('images', refImage);
+                whiteBgImages.forEach(f => formData.append('images', f));
+                formData.append('prompt', prompt || '');
                 formData.append('agentId', agentId);
                 formData.append('count', 1);
 
-                appendMessage('user', `[自定义] 已上传 ${droppedFiles.length} 张图片\n模型: ${agentId}\n提示词: ${prompt}`);
+                let desc = '纯文生图';
+                if (refImage && whiteBgImages.length > 0) desc = `参考图 + ${whiteBgImages.length} 张白底图`;
+                else if (refImage) desc = '仅参考图';
+                else if (whiteBgImages.length > 0) desc = `${whiteBgImages.length} 张白底图`;
+
+                appendMessage('user', `${desc}\n模型: ${agentId}${prompt ? '\n提示词: ' + prompt : ''}`);
 
                 try {
-                    const resp = await fetch(apiPath, {
-                        method: 'POST',
-                        body: formData
-                    });
+                    const resp = await fetch('/api/custom_generate', { method: 'POST', body: formData });
                     const data = await resp.json();
                     if (data.error) throw new Error(data.error);
-
                     if (data.results) {
-                        appendMessage('ai', `✅ 生成完成！结果已保存至: ${data.output_dir}`);
-                        clearFiles();
+                        const imagePaths = (data.results).filter(r => typeof r === 'string' && !r.startsWith('失败'));
+                        if (imagePaths.length > 0) {
+                            appendImageGrid(imagePaths, `✅ 生成完成，共 ${imagePaths.length} 张`);
+                        } else {
+                            appendMessage('ai', '✅ 生成完成！结果已保存至: ' + data.output_dir);
+                        }
+                        addHistoryRecord('custom', prompt, agentId, true);
+                        clearAllImages();
                     }
                 } catch (e) {
                     document.getElementById('generateBtn').disabled = false;
                     appendMessage('ai', '生成失败：' + e.message);
+                    addHistoryRecord('custom', prompt, agentId, false);
                 }
-            } else if (currentMode === 'video') {
-                apiPath = '/api/video/generate';
-                payload.style = document.getElementById('videoStyle').value;
-                payload.motion = document.getElementById('videoMotion').value;
-                appendMessage('user', `[视频] 风格:${payload.style} 强度:${payload.motion}\n模型: ${agentId}\n提示词: ${prompt}`);
 
+            } else if (currentMode === 'video') {
+                const payload = {
+                    prompt, agentId,
+                    style: document.getElementById('videoStyle').value,
+                    motion: document.getElementById('videoMotion').value
+                };
+                appendMessage('user', `视频生成\n模型: ${agentId}${prompt ? '\n提示词: ' + prompt : ''}`);
                 try {
-                    const resp = await fetch(apiPath, {
+                    const resp = await fetch('/api/video/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
@@ -498,6 +743,7 @@
                 } catch (e) {
                     document.getElementById('generateBtn').disabled = false;
                     appendMessage('ai', '启动失败：' + e.message);
+                    addHistoryRecord('video', prompt, agentId, false);
                 }
             }
 
@@ -513,144 +759,105 @@
                 try {
                     const res = await fetch(`/api/task/${taskId}`);
                     const data = await res.json();
-                    document.getElementById('progressBar').style.width = Math.round(((data.progress || 0) / (data.total || 1)) * 100) + '%';
-                    document.getElementById('progressCount').textContent = `${data.progress || 0}/${data.total || 1}`;
+                    document.getElementById('progressBar').style.width =
+                        Math.round(((data.progress || 0) / (data.total || 1)) * 100) + '%';
+                    document.getElementById('progressCount').textContent =
+                        `${data.progress || 0}/${data.total || 1}`;
+
                     if (data.status !== 'running' && data.status !== 'pending') {
                         clearInterval(pollTimer);
                         document.getElementById('generateBtn').disabled = false;
-                        appendMessage('ai', `✅ 任务完成！`);
                         document.getElementById('progressBox').style.display = 'none';
                         document.getElementById('progressIdle').style.display = 'block';
+
+                        const success = data.status !== 'failed';
+                        addHistoryRecord(_lastTaskMode, _lastTaskPrompt, _lastTaskAgentId, success);
+
+                        if (success) {
+                            // 收集并展示生成图片
+                            const imagePaths = await collectTaskImages(data.results || []);
+                            if (imagePaths.length > 0) {
+                                const total = (data.results || []).filter(r => r.status === 'success').length;
+                                appendImageGrid(imagePaths, `✅ 任务完成，共 ${total} 个产品，预览 ${imagePaths.length} 张`);
+                            } else {
+                                appendMessage('ai', '✅ 任务完成！');
+                            }
+                        } else {
+                            appendMessage('ai', '❌ 任务失败');
+                        }
                     }
-                } catch (e) {
-                    // polling error
-                }
+                } catch (e) { /* polling error */ }
             }, 2000);
-        }
-
-        function appendMessage(role, text) {
-            const container = document.getElementById('chatMessages');
-            const emptyState = document.getElementById('emptyState');
-            if (emptyState) emptyState.style.display = 'none';
-
-            const msg = document.createElement('div');
-            msg.className = `msg-bubble ${role === 'user' ? 'msg-user' : ''}`;
-            msg.innerText = text;
-            container.appendChild(msg);
-            container.scrollTop = container.scrollHeight;
         }
 
         function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); executeTask(); } }
 
-        // ── 拖拽上传逻辑 ──
-        const wrapper = document.querySelector('.input-area-wrapper');
-        const overlay = document.getElementById('dropOverlay');
+        // ── 历史记录 ──
+        function addHistoryRecord(mode, prompt, agentId, success) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            const dateStr = now.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+            historyRecords.unshift({
+                time: `${dateStr} ${timeStr}`,
+                mode: mode === 'custom' ? '自定义' : (mode === 'video' ? '视频' : '标准'),
+                rawMode: mode, prompt: prompt || '(默认提示词)', agentId, success
+            });
+            if (historyRecords.length > 50) historyRecords.pop();
+            if (currentMode !== 'standard') renderHistory();
+        }
 
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            if (!list) return;
+            if (historyRecords.length === 0) {
+                list.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-dim);font-size:0.82rem;line-height:2;">暂无历史记录<br>完成一次生成任务<br>记录将显示在这里</div>';
+                return;
+            }
+            list.innerHTML = historyRecords.map((r, i) => `
+                <div class="history-item" onclick="loadHistoryRecord(${i})">
+                    <div class="history-item-time">${r.time} · ${r.mode}</div>
+                    <div class="history-item-prompt">${escapeHtml(r.prompt)}</div>
+                    <div class="history-item-status ${r.success ? 'ok' : 'err'}">${r.success ? '✓ 完成' : '✗ 失败'}</div>
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function loadHistoryRecord(index) {
+            const r = historyRecords[index];
+            if (r.rawMode && r.rawMode !== currentMode) setMode(r.rawMode);
+            document.getElementById('promptInput').value = r.prompt === '(默认提示词)' ? '' : r.prompt;
+            document.getElementById('promptInput').focus();
+        }
+
+        function clearHistory() { historyRecords = []; renderHistory(); }
+
+        // ── 全局拖拽 ──
+        const dropOverlay = document.getElementById('dropOverlay');
         window.addEventListener('dragenter', (e) => {
             e.preventDefault();
-            if (e.dataTransfer.types.includes('Files')) {
-                overlay.classList.add('active');
-            }
+            if (e.dataTransfer.types.includes('Files')) dropOverlay.classList.add('active');
         });
-
-        overlay.addEventListener('dragover', (e) => {
-            e.preventDefault();
+        dropOverlay.addEventListener('dragover', e => e.preventDefault());
+        dropOverlay.addEventListener('dragleave', (e) => {
+            if (!e.relatedTarget || !dropOverlay.contains(e.relatedTarget)) dropOverlay.classList.remove('active');
         });
-
-        overlay.addEventListener('dragleave', (e) => {
-            if (!e.relatedTarget || !overlay.contains(e.relatedTarget)) {
-                overlay.classList.remove('active');
-            }
-        });
-
         window.addEventListener('drop', (e) => {
             e.preventDefault();
-            overlay.classList.remove('active');
-
-            const files = Array.from(e.dataTransfer.files);
-            const imageFiles = files.filter(f => f.type.startsWith('image/'));
-
-            if (imageFiles.length > 0) {
-                handleImageDrop(imageFiles);
-            }
+            dropOverlay.classList.remove('active');
+            const imageFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+            if (imageFiles.length === 0) return;
+            setMode('custom');
+            if (!refImage) { setRefImage(imageFiles[0]); imageFiles.slice(1).forEach(addWhiteBg); }
+            else { imageFiles.forEach(addWhiteBg); }
+            document.getElementById('promptInput').focus();
         });
 
-        function handleImageDrop(files) {
-            setMode('custom');
-
-            files.forEach(file => {
-                if (droppedFiles.length >= 10) {
-                    return;
-                }
-                droppedFiles.push(file);
-
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    addPreviewItem(e.target.result, file.name);
-                };
-                reader.readAsDataURL(file);
-            });
-
-            if (droppedFiles.length > 0) {
-                document.getElementById('imagePreviewContainer').style.display = 'flex';
-                appendMessage('ai', `已接收 ${droppedFiles.length} 张图片，正在为您准备自由创作模式...`);
-                const input = document.getElementById('promptInput');
-                if (!input.value) input.value = "结合这些图片生成...";
-                input.focus();
-            }
-        }
-
-        function addPreviewItem(src, name) {
-            const container = document.getElementById('imagePreviewContainer');
-            const index = droppedFiles.length - 1;
-            const label = `图 ${index + 1}`;
-
-            const item = document.createElement('div');
-            item.className = 'preview-item';
-            item.innerHTML = `
-            <img src="${src}" alt="${name}">
-            <div class="preview-badge">${label}</div>
-            <div class="preview-remove" onclick="removeFile(${index})">×</div>
-        `;
-            container.appendChild(item);
-        }
-
-        function removeFile(index) {
-            droppedFiles.splice(index, 1);
-            renderPreviews();
-            if (droppedFiles.length === 0) {
-                document.getElementById('imagePreviewContainer').style.display = 'none';
-            }
-        }
-
-        function renderPreviews() {
-            const container = document.getElementById('imagePreviewContainer');
-            container.innerHTML = '';
-            droppedFiles.forEach((file, i) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const label = `图 ${i + 1}`;
-                    const item = document.createElement('div');
-                    item.className = 'preview-item';
-                    item.innerHTML = `
-                    <img src="${e.target.result}" alt="${file.name}">
-                    <div class="preview-badge">${label}</div>
-                    <div class="preview-remove" onclick="removeFile(${i})">×</div>
-                `;
-                    container.appendChild(item);
-                };
-                reader.readAsDataURL(file);
-            });
-        }
-
-        function clearFiles() {
-            droppedFiles = [];
-            document.getElementById('imagePreviewContainer').innerHTML = '';
-            document.getElementById('imagePreviewContainer').style.display = 'none';
-            document.getElementById('generateBtn').disabled = false;
-        }
+        loadAgents();
     </script>
-    <!-- ── 企业标签 ── -->
     <div class="footer-company-label">
         <span class="label-icon">©</span>
         东莞市果行创新电商有限公司
