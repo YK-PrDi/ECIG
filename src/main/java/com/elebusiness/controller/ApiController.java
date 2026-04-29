@@ -19,6 +19,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -172,20 +176,29 @@ public class ApiController {
 
                 log.info("开始生成: {} -> {} [agent={}]", productName, outputFolder, agentId);
 
+                int generatedCount = 0;
+
                 if (!info.getSku().isEmpty()) {
+                    int before = countImages(new File(outputFolder));
                     imageGenerationService.generateSkuImages(
                             whiteBgUrl, refPath.getAbsolutePath(), outputFolder, info.getSku(), agentId, userPrompt);
+                    generatedCount += countImages(new File(outputFolder)) - before;
                 }
 
                 List<String> mainImgPaths = imageGenerationService.generateMainImages(
                         whiteBgUrl, refPath.getAbsolutePath(), outputFolder, info.getMain(), agentId, userPrompt);
+                generatedCount += mainImgPaths.size();
 
                 for (String mainImgPath : mainImgPaths) {
                     imageGenerationService.generateDetailImages(
                             mainImgPath, outputFolder, whiteBgUrl, refPath.getAbsolutePath(), agentId, userPrompt);
                 }
 
-                task.addResult(result(productName, "success", null, outputFolder));
+                if (generatedCount == 0) {
+                    task.addResult(result(productName, "error", "所有图片生成失败，请检查 API Key 或网络", outputFolder));
+                } else {
+                    task.addResult(result(productName, "success", null, outputFolder));
+                }
                 task.incrementProgress();
             }
         });
@@ -394,6 +407,60 @@ public class ApiController {
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
             log.error("deleteGalleryItem error: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    // ── GPT-Image API ──
+
+    @PostMapping("/api/gpt-image/generate")
+    public ResponseEntity<Map<String, Object>> gptImageGenerate(@RequestBody Map<String, Object> body) {
+        try {
+            String apiKey  = appProperties.getGptImage().getApiKey();
+            String baseUrl = appProperties.getGptImage().getBaseUrl();
+            if (apiKey == null || apiKey.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "GPT-Image API Key 未配置"));
+            }
+
+            // 构造请求体，透传前端参数
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("model", "gpt-image-2");
+            payload.put("prompt", body.getOrDefault("prompt", ""));
+            payload.put("size",    body.getOrDefault("size",    "1024x1024"));
+            payload.put("quality", body.getOrDefault("quality", "auto"));
+            payload.put("background",   body.getOrDefault("background",   "auto"));
+            payload.put("output_format", body.getOrDefault("output_format", "png"));
+
+            String jsonBody = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload);
+
+            URL url = new URL(baseUrl + "/v1/images/generations");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(30000);
+            conn.setReadTimeout(120000);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int status = conn.getResponseCode();
+            String respBody = new String(
+                (status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream()).readAllBytes(),
+                StandardCharsets.UTF_8
+            );
+            conn.disconnect();
+
+            if (status >= 200 && status < 300) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> resp = new com.fasterxml.jackson.databind.ObjectMapper().readValue(respBody, Map.class);
+                return ResponseEntity.ok(Map.of("success", true, "data", resp));
+            } else {
+                return ResponseEntity.status(status).body(Map.of("success", false, "error", respBody));
+            }
+        } catch (Exception e) {
+            log.error("gptImageGenerate error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage()));
         }
     }

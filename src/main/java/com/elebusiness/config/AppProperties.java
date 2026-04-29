@@ -10,6 +10,7 @@ public class AppProperties {
     private Gemini gemini = new Gemini();
     private Veo veo = new Veo();
     private DingTalk dingtalk = new DingTalk();
+    private GptImage gptImage = new GptImage();
     private Paths paths = new Paths();
     private Api api = new Api();
     private Proxy proxy = new Proxy();
@@ -20,6 +21,8 @@ public class AppProperties {
     public void setVeo(Veo veo) { this.veo = veo; }
     public DingTalk getDingtalk() { return dingtalk; }
     public void setDingtalk(DingTalk dingtalk) { this.dingtalk = dingtalk; }
+    public GptImage getGptImage() { return gptImage; }
+    public void setGptImage(GptImage gptImage) { this.gptImage = gptImage; }
     public Paths getPaths() { return paths; }
     public void setPaths(Paths paths) { this.paths = paths; }
     public Api getApi() { return api; }
@@ -109,5 +112,15 @@ public class AppProperties {
         public void setPort(int port) { this.port = port; }
 
         public boolean isEnabled() { return host != null && !host.isBlank(); }
+    }
+
+    public static class GptImage {
+        private String apiKey = "";
+        private String baseUrl = "https://api.linapi.net";
+
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
     }
 }
