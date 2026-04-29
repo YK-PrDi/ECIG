@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 public class AppProperties {
 
     private Gemini gemini = new Gemini();
+    private Veo veo = new Veo();
     private DingTalk dingtalk = new DingTalk();
     private Paths paths = new Paths();
     private Api api = new Api();
@@ -15,6 +16,8 @@ public class AppProperties {
 
     public Gemini getGemini() { return gemini; }
     public void setGemini(Gemini gemini) { this.gemini = gemini; }
+    public Veo getVeo() { return veo; }
+    public void setVeo(Veo veo) { this.veo = veo; }
     public DingTalk getDingtalk() { return dingtalk; }
     public void setDingtalk(DingTalk dingtalk) { this.dingtalk = dingtalk; }
     public Paths getPaths() { return paths; }
@@ -32,6 +35,22 @@ public class AppProperties {
         public void setApiKey(String apiKey) { this.apiKey = apiKey; }
         public String getModel() { return model; }
         public void setModel(String model) { this.model = model; }
+    }
+
+    public static class Veo {
+        private String model = "veo-3.1-generate-preview";
+        private int durationSeconds = 8;
+        private String resolution = "720p";
+        private boolean generateAudio = true;
+
+        public String getModel() { return model; }
+        public void setModel(String model) { this.model = model; }
+        public int getDurationSeconds() { return durationSeconds; }
+        public void setDurationSeconds(int durationSeconds) { this.durationSeconds = durationSeconds; }
+        public String getResolution() { return resolution; }
+        public void setResolution(String resolution) { this.resolution = resolution; }
+        public boolean isGenerateAudio() { return generateAudio; }
+        public void setGenerateAudio(boolean generateAudio) { this.generateAudio = generateAudio; }
     }
 
     public static class DingTalk {

@@ -57,16 +57,17 @@ public class ApiController {
 
     @GetMapping("/api/config")
     public Map<String, String> getConfig() {
-        return configService.loadConfig();
+        return configService.getDingTalkConfig();
     }
 
     @PostMapping("/api/config")
     public Map<String, Object> updateConfig(@RequestBody Map<String, String> body) {
-        String sheetId = body.get("sheet_id");
-        if (sheetId == null || sheetId.isBlank()) {
-            return Map.of("success", false, "error", "缺少 sheet_id");
+        if (body == null || body.isEmpty()) {
+            return Map.of("success", false, "error", "请求体为空");
         }
-        configService.updateSheetId(sheetId);
+        configService.saveDingTalkConfig(body);
+        // 凭证变更后失效 token / unionId 缓存
+        dingTalkService.invalidateCache();
         return Map.of("success", true);
     }
 

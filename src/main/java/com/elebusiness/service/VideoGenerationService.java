@@ -19,7 +19,6 @@ public class VideoGenerationService {
 
     private static final Logger log = LoggerFactory.getLogger(VideoGenerationService.class);
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-    private static final String MODEL = "veo-3.1-generate-preview";
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
 
     private final AppProperties appProperties;
@@ -36,10 +35,10 @@ public class VideoGenerationService {
      * @param aspectRatio 宽高比，如 "16:9" 或 "9:16"
      * @param outputPath  输出 .mp4 文件路径
      */
-    public String generateVideo(String prompt, String aspectRatio, String outputPath) throws Exception {
+    public String generateVideo(String prompt, String aspectRatio, int durationSeconds, String outputPath) throws Exception {
         OkHttpClient client = buildClient();
 
-        String operationName = submitTask(client, prompt, aspectRatio);
+        String operationName = submitTask(client, prompt, aspectRatio, durationSeconds);
         log.info("Veo 任务已提交，operation={}", operationName);
 
         String videoBase64 = pollOperation(client, operationName);
@@ -63,21 +62,22 @@ public class VideoGenerationService {
         return builder.build();
     }
 
-    private String submitTask(OkHttpClient client, String prompt, String aspectRatio) throws IOException {
+    private String submitTask(OkHttpClient client, String prompt, String aspectRatio, int durationSeconds) throws IOException {
         String apiKey = appProperties.getGemini().getApiKey();
+        AppProperties.Veo veo = appProperties.getVeo();
 
         ObjectNode instance = objectMapper.createObjectNode().put("prompt", prompt);
         ObjectNode parameters = objectMapper.createObjectNode()
                 .put("aspectRatio", aspectRatio)
-                .put("durationSeconds", 8)
-                .put("resolution", "720p")
-                .put("generateAudio", true);
+                .put("durationSeconds", durationSeconds > 0 ? durationSeconds : veo.getDurationSeconds())
+                .put("resolution", veo.getResolution())
+                .put("generateAudio", veo.isGenerateAudio());
 
         ObjectNode body = objectMapper.createObjectNode();
         body.set("instances", objectMapper.createArrayNode().add(instance));
         body.set("parameters", parameters);
 
-        String url = BASE_URL + "/models/" + MODEL + ":predictLongRunning?key=" + apiKey;
+        String url = BASE_URL + "/models/" + veo.getModel() + ":predictLongRunning?key=" + apiKey;
         Request request = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON_TYPE))

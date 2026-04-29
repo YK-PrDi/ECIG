@@ -27,9 +27,6 @@ public class DingTalkService {
     private volatile String cachedToken;
     private volatile long tokenExpireAt;
 
-    // unionId 不会变，永久缓存
-    private volatile String cachedUnionId;
-
     // getAllRecords 缓存（TTL 10 分钟）
     private static final long RECORDS_TTL_MS = 10 * 60 * 1000L;
     private volatile List<DingTalkRecord> cachedRecords;
@@ -55,15 +52,21 @@ public class DingTalkService {
         this.configService = configService;
     }
 
+    /** 配置变更后由 ApiController 主动调用，使 token 缓存失效 */
+    public void invalidateCache() {
+        cachedToken = null;
+        tokenExpireAt = 0;
+    }
+
     public String getAccessToken() throws Exception {
         long now = System.currentTimeMillis();
         if (cachedToken != null && now < tokenExpireAt) {
             return cachedToken;
         }
-        AppProperties.DingTalk dt = appProperties.getDingtalk();
+        Map<String, String> dt = configService.getDingTalkConfig();
         String url = DINGTALK_OLD_BASE + "/gettoken"
-                + "?appkey=" + dt.getAppKey()
-                + "&appsecret=" + dt.getAppSecret();
+                + "?appkey=" + dt.get("app_key")
+                + "&appsecret=" + dt.get("app_secret");
 
         Request request = new Request.Builder().url(url).get().build();
         try (Response response = httpClient.newCall(request).execute()) {
@@ -79,31 +82,14 @@ public class DingTalkService {
         }
     }
 
-    public String getUnionId(String accessToken) throws Exception {
-        if (cachedUnionId != null) {
-            return cachedUnionId;
-        }
-        String url = DINGTALK_OLD_BASE + "/topapi/v2/user/get?access_token=" + accessToken;
-        String jsonBody = objectMapper.writeValueAsString(
-                Map.of("userid", appProperties.getDingtalk().getUserId())
-        );
-        RequestBody body = RequestBody.create(jsonBody, JSON_TYPE);
-        Request request = new Request.Builder().url(url).post(body).build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            String responseBody = response.body().string();
-            JsonNode node = objectMapper.readTree(responseBody);
-            int errcode = node.path("errcode").asInt(-1);
-            if (errcode != 0) {
-                throw new RuntimeException("获取用户 unionId 失败: " + node.path("errmsg").asText());
-            }
-            cachedUnionId = node.path("result").path("unionid").asText();
-            return cachedUnionId;
-        }
+    /** 直接从配置读取 union_id，不再需要额外接口换取 */
+    public String getUnionId() {
+        return configService.getDingTalkConfig().get("union_id");
     }
 
     public List<DingTalkRecord> getAllRecords() throws Exception {
-        String sheetId = configService.getCurrentSheetId();
+        Map<String, String> dtCfg = configService.getDingTalkConfig();
+        String sheetId = dtCfg.get("sheet_id");
         long now = System.currentTimeMillis();
         if (cachedRecords != null && now < recordsExpireAt && sheetId.equals(cachedSheetId)) {
             log.info("命中缓存，返回 {} 条产品记录", cachedRecords.size());
@@ -113,10 +99,10 @@ public class DingTalkService {
         String accessToken = getAccessToken();
         log.info("获取 AccessToken 成功");
 
-        String unionId = getUnionId(accessToken);
-        log.info("获取 unionId 成功: {}", unionId);
+        String unionId = getUnionId();
+        log.info("使用 unionId: {}", unionId);
 
-        String appUuid = appProperties.getDingtalk().getAppUuid();
+        String appUuid = configService.getDingTalkConfig().get("app_uuid");
         List<DingTalkRecord> allRecords = new ArrayList<>();
         String nextToken = null;
         int pageCount = 0;
@@ -191,9 +177,10 @@ public class DingTalkService {
 
     public DingTalkRecord getRecordById(String recordId) throws Exception {
         String accessToken = getAccessToken();
-        String unionId = getUnionId(accessToken);
-        String appUuid = appProperties.getDingtalk().getAppUuid();
-        String sheetId = configService.getCurrentSheetId();
+        String unionId = getUnionId();
+        Map<String, String> dtCfg = configService.getDingTalkConfig();
+        String appUuid = dtCfg.get("app_uuid");
+        String sheetId = dtCfg.get("sheet_id");
 
         String url = DINGTALK_NEW_BASE
                 + "/notable/bases/" + appUuid

@@ -36,15 +36,19 @@
 
     <!-- ── 导航 ── -->
     <nav class="topnav">
-        <a href="#" class="brand" style="flex:1;">
-            <div class="brand-icon rainbow-logo">✧</div> AI Studio
+        <a href="#" class="brand">
+            <div class="brand-icon rainbow-logo">✧</div>
+            <span class="brand-name">AI Studio</span>
         </a>
         <div class="mode-selector">
-            <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">标准生图</button>
-            <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义</button>
-            <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频生成</button>
+            <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')"><span class="mode-icon">⚡</span>标准生图</button>
+            <button class="mode-btn" id="btn-custom" onclick="setMode('custom')"><span class="mode-icon">✏️</span>自定义</button>
+            <button class="mode-btn" id="btn-video" onclick="setMode('video')"><span class="mode-icon">🎬</span>视频生成</button>
         </div>
-        <div style="flex:1; display:flex; gap:16px; align-items:center; justify-content:flex-end;">
+        <div class="nav-actions">
+            <button class="nav-icon-btn" onclick="switchTheme()" title="切换主题">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            </button>
             <div class="user-menu-container">
                 <div class="avatar-btn" onclick="toggleUserMenu(event)">A</div>
                 <div class="user-dropdown" id="userMenu" onclick="event.stopPropagation()">
@@ -81,6 +85,32 @@
                     <span id="listCount" style="color:var(--primary);">0</span>
                 </div>
                 <div class="product-list" id="productList" style="flex:1; overflow-y:auto; padding:10px;"></div>
+                <!-- 钉钉配置面板 -->
+                <div class="dt-config-section">
+                    <button class="dt-config-toggle" onclick="toggleDtConfig()" id="dtConfigToggle">
+                        <span class="dt-toggle-icon">⚙</span>
+                        <span style="flex:1; text-align:left;">钉钉配置</span>
+                        <svg id="dtConfigArrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform 0.2s; flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="dt-config-body" id="dtConfigBody" style="display:none;">
+                        <label class="dt-field-label">App Key</label>
+                        <input class="dt-field-input" id="dtAppKey" type="text" placeholder="dingxxxxxxx">
+                        <label class="dt-field-label">App Secret</label>
+                        <input class="dt-field-input" id="dtAppSecret" type="password" placeholder="••••••••">
+                        <label class="dt-field-label">Union ID（操作人）<a class="dt-help-link" href="https://open.dingtalk.com/document/orgapp/obtain-user-unionid" target="_blank">如何获取?</a></label>
+                        <input class="dt-field-input" id="dtUnionId" type="text" placeholder="s9Bxxxxxxxx...">
+                        <label class="dt-field-label" style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>多维表 URL <span style="font-weight:400; opacity:0.7;">（粘贴后自动解析）</span></span>
+                        </label>
+                        <input class="dt-field-input" id="dtTableUrl" type="text" placeholder="https://alidocs.dingtalk.com/i/nodes/..." oninput="parseDtUrl(this.value)">
+                        <label class="dt-field-label">App UUID</label>
+                        <input class="dt-field-input" id="dtAppUuid" type="text" placeholder="ndMj49yW...">
+                        <label class="dt-field-label">Sheet ID</label>
+                        <input class="dt-field-input" id="dtSheetId" type="text" placeholder="Z8iTZcH">
+                        <button class="btn-primary dt-save-btn" onclick="saveDtConfig()" id="dtSaveBtn" style="width:100%; height:36px; margin-top:10px;">保存配置</button>
+                        <div id="dtSaveMsg" style="font-size:0.75rem; text-align:center; margin-top:6px; min-height:16px;"></div>
+                    </div>
+                </div>
             </div>
             <!-- 生图历史（自定义 / 视频模式） -->
             <div id="historyPanel" class="history-panel" style="display:none;">
@@ -182,35 +212,34 @@
                             </div>
                         </div>
 
-                        <!-- 视频生成配置 -->
+                        <!-- 视频生成配置（Veo） -->
                         <div id="videoConfig" class="panel-view">
                             <div class="config-group">
-                                <label>视频风格</label>
+                                <label>画面比例</label>
                                 <div class="gf-select drop-up" tabindex="0">
-                                    <input type="hidden" id="videoStyle" value="free">
+                                    <input type="hidden" id="videoAspectRatio" value="16:9">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                        <span class="gf-select-text">不限制</span>
+                                        <span class="gf-select-text">16:9 横屏</span>
                                         <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option selected" data-value="free" onclick="selectOption(this, event)">不限制</div>
-                                        <div class="gf-option" data-value="cinematic" onclick="selectOption(this, event)">电影感</div>
-                                        <div class="gf-option" data-value="commercial" onclick="selectOption(this, event)">商业广告</div>
+                                        <div class="gf-option selected" data-value="16:9" onclick="selectOption(this, event)">16:9 横屏</div>
+                                        <div class="gf-option" data-value="9:16" onclick="selectOption(this, event)">9:16 竖屏</div>
+                                        <div class="gf-option" data-value="1:1" onclick="selectOption(this, event)">1:1 方形</div>
                                     </div>
                                 </div>
                             </div>
                             <div class="config-group">
-                                <label>动态强度</label>
+                                <label>时长</label>
                                 <div class="gf-select drop-up" tabindex="0">
-                                    <input type="hidden" id="videoMotion" value="free">
+                                    <input type="hidden" id="videoDuration" value="8">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                        <span class="gf-select-text">不限制</span>
+                                        <span class="gf-select-text">8 秒</span>
                                         <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option selected" data-value="free" onclick="selectOption(this, event)">不限制</div>
-                                        <div class="gf-option" data-value="5" onclick="selectOption(this, event)">标准 (5)</div>
-                                        <div class="gf-option" data-value="10" onclick="selectOption(this, event)">高强度 (10)</div>
+                                        <div class="gf-option" data-value="5" onclick="selectOption(this, event)">5 秒</div>
+                                        <div class="gf-option selected" data-value="8" onclick="selectOption(this, event)">8 秒</div>
                                     </div>
                                 </div>
                             </div>
@@ -231,6 +260,7 @@
                         <div style="display:flex; align-items:center; justify-content:flex-end; margin-bottom:16px;">
                             <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                                 <span style="font-size:0.7rem; color:var(--text-dim); font-weight:600; text-transform:uppercase; white-space:nowrap; flex-shrink:0;">AI 模型</span>
+                                <!-- 图片模型选择器（标准 / 自定义模式） -->
                                 <div class="gf-select sm drop-up" id="agentSelectWrapper">
                                     <input type="hidden" id="agentSelect" value="">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
@@ -238,6 +268,13 @@
                                         <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options" id="agentSelectOptions"></div>
+                                </div>
+                                <!-- Veo 固定标签（视频模式） -->
+                                <div id="veoModelBadge" style="display:none;">
+                                    <span class="veo-badge">
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                                        Gemini Veo
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -355,6 +392,76 @@
 
         async function initApp() {
             renderHistory();
+            loadDtConfig();
+        }
+
+        // ── 钉钉配置 ──
+        async function loadDtConfig() {
+            try {
+                const res = await fetch('/api/config');
+                if (!res.ok) return;
+                const cfg = await res.json();
+                document.getElementById('dtAppKey').value    = cfg.app_key    || '';
+                document.getElementById('dtAppSecret').value = cfg.app_secret || '';
+                document.getElementById('dtUnionId').value   = cfg.union_id   || '';
+                document.getElementById('dtAppUuid').value   = cfg.app_uuid   || '';
+                document.getElementById('dtSheetId').value   = cfg.sheet_id   || '';
+            } catch(e) { console.error('[loadDtConfig]', e); }
+        }
+
+        // 从钉钉多维表 URL 自动解析 app_uuid 和 sheet_id
+        function parseDtUrl(url) {
+            if (!url) return;
+            // nodes/{appUuid} 格式
+            const nodeMatch = url.match(/\/nodes\/([A-Za-z0-9]+)/);
+            if (nodeMatch) document.getElementById('dtAppUuid').value = nodeMatch[1];
+            // sheetId 可能在 query string: ?sheetId=xxx 或 &sheetId=xxx
+            try {
+                const u = new URL(url);
+                const sid = u.searchParams.get('sheetId') || u.searchParams.get('sheet_id') || u.searchParams.get('sheet');
+                if (sid) document.getElementById('dtSheetId').value = sid;
+            } catch(_) {}
+        }
+
+        function toggleDtConfig() {
+            const body  = document.getElementById('dtConfigBody');
+            const arrow = document.getElementById('dtConfigArrow');
+            const open  = body.style.display === 'none';
+            body.style.display  = open ? 'block' : 'none';
+            arrow.style.transform = open ? 'rotate(180deg)' : '';
+        }
+
+        async function saveDtConfig() {
+            const btn = document.getElementById('dtSaveBtn');
+            const msg = document.getElementById('dtSaveMsg');
+            const payload = {
+                app_key:    document.getElementById('dtAppKey').value.trim(),
+                app_secret: document.getElementById('dtAppSecret').value.trim(),
+                union_id:   document.getElementById('dtUnionId').value.trim(),
+                app_uuid:   document.getElementById('dtAppUuid').value.trim(),
+                sheet_id:   document.getElementById('dtSheetId').value.trim(),
+            };
+            btn.disabled = true; btn.textContent = '保存中…';
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    msg.style.color = 'var(--success, #22c55e)';
+                    msg.textContent = '✓ 已保存';
+                } else {
+                    msg.style.color = '#ef4444';
+                    msg.textContent = '保存失败：' + (data.error || '未知错误');
+                }
+            } catch(e) {
+                msg.style.color = '#ef4444';
+                msg.textContent = '网络错误：' + e.message;
+            }
+            btn.disabled = false; btn.textContent = '保存配置';
+            setTimeout(() => { msg.textContent = ''; }, 3000);
         }
 
         // ── 模式切换 ──
@@ -398,10 +505,14 @@
                     input.placeholder = '描述您想生成的图像，留空由模型自行发挥...';
                     sendBtn.className = 'btn-send custom';
                 } else {
-                    input.placeholder = '描述视频动态效果...';
+                    input.placeholder = '用文字描述视频内容、场景、动态效果...';
                     sendBtn.className = 'btn-send video';
                 }
             }
+            // 视频模式固定显示 Veo，其他模式显示模型选择器
+            const isVideo = mode === 'video';
+            document.getElementById('agentSelectWrapper').style.display = isVideo ? 'none' : '';
+            document.getElementById('veoModelBadge').style.display = isVideo ? '' : 'none';
             input.focus();
         }
 
