@@ -46,11 +46,23 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
 /* ── 登录层 ── */
 #loginOverlay { position: fixed; inset: 0; background: var(--bg-panel); z-index: 3000; display: flex; align-items: center; justify-content: center; }
 .login-card { width: 360px; text-align: center; padding: 40px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-xl); box-shadow: var(--shadow-md); }
+@keyframes rainbowBg {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+.rainbow-logo {
+    background: linear-gradient(135deg, #f43f5e, #3b82f6, #22c55e, #f43f5e);
+    background-size: 300% 300%;
+    animation: rainbowBg 12s ease infinite;
+}
 
 /* ── 导航 ── */
 .topnav { height: 64px; display: flex; align-items: center; padding: 0 24px; background: var(--bg-panel); border-bottom: 1px solid var(--border); z-index: 2000; flex-shrink: 0; position: relative; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; color: var(--text-main); font-size: 1rem; }
 .brand-icon { width: 32px; height: 32px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; }
+.brand-icon.rainbow-logo { background: linear-gradient(135deg, #f43f5e, #f97316, #3b82f6, #22c55e, #f43f5e); background-size: 400% 400%; animation: rainbowBg 12s ease infinite; }
+.login-logo { background: linear-gradient(135deg, #f43f5e, #f97316, #3b82f6, #22c55e, #f43f5e); background-size: 400% 400%; animation: rainbowBg 12s ease infinite; }
 
 /* 用户下拉菜单 */
 .user-menu-container { position: relative; }
@@ -97,10 +109,10 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
 
 .glow-icon {
     width: 80px; height: 80px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(45deg, var(--primary), var(--secondary), var(--text-dim));
-    background-size: 300% 300%;
+    background: linear-gradient(135deg, #f43f5e, #f97316, #3b82f6, #22c55e, #f43f5e);
+    background-size: 400% 400%;
     border-radius: 24px;
-    animation: floatAndPulse 4s ease-in-out infinite, gradientShift 6s ease infinite;
+    animation: floatAndPulse 4s ease-in-out infinite, rainbowBg 12s ease infinite;
     cursor: pointer; transition: transform 0.2s;
 }
 .glow-icon:hover { transform: scale(1.05); }
