@@ -81,29 +81,7 @@
                     </excludes>
                 </configuration>
             </plugin>
-            <plugin>
-                <groupId>com.akathist.maven.plugins.launch4j</groupId>
-                <artifactId>launch4j-maven-plugin</artifactId>
-                <version>2.5.1</version>
-                <executions>
-                    <execution>
-                        <id>make-exe</id>
-                        <phase>package</phase>
-                        <goals><goal>launch4j</goal></goals>
-                        <configuration>
-                            <headerType>console</headerType>
-                            <jar>${project.build.directory}/${project.build.finalName}.jar</jar>
-                            <outfile>${project.basedir}/dist/产品图片生成系统.exe</outfile>
-                            <errTitle>启动失败</errTitle>
-                            <chdir>.</chdir>
-                            <jre>
-                                <path>runtime</path>
-                                <minVersion>17</minVersion>
-                            </jre>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+            <!-- launch4j 已由 Electron 打包取代，不再需要 -->
         </plugins>
     </build>
 </project>

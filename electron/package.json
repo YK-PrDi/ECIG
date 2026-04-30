@@ -17,8 +17,7 @@
     "copyright": "ELE Business",
     "win": {
       "target": [
-        { "target": "portable", "arch": ["x64"] },
-        { "target": "dir",      "arch": ["x64"] }
+        { "target": "portable", "arch": ["x64"] }
       ],
       "icon": "build/icon.ico",
       "sign": null
@@ -26,7 +25,8 @@
     "extraResources": [
       { "from": "../dist/app.jar",  "to": "app.jar"  },
       { "from": "../dist/runtime",  "to": "runtime"  },
-      { "from": "../dist/frontend", "to": "frontend" }
+      { "from": "../dist/frontend", "to": "frontend" },
+      { "from": "../大参考",        "to": "大参考"   }
     ],
     "directories": {
       "output": "../dist-electron"

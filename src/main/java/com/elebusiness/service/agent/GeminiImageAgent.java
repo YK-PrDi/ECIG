@@ -38,6 +38,11 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
 
     @Override
     public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
+        if (refImagePath == null || refImagePath.isBlank()) {
+            log.warn("Gemini 为图像编辑模型，需要参考图才能生成，已跳过（提示词: {}）", prompt);
+            return false;
+        }
+
         AppProperties.Api apiConfig = appProperties.getApi();
         int maxRetries = apiConfig.getMaxRetries();
         int delaySeconds = apiConfig.getDelaySeconds();

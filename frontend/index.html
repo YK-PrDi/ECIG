@@ -170,6 +170,17 @@
                         </div>
 
                         <div id="customConfig" class="panel-view">
+                            <!-- 生成模式切换 -->
+                            <div class="config-group" style="flex-direction:column; gap:6px;">
+                                <label>生成模式</label>
+                                <div class="mode-selector" style="background:var(--border); padding:3px; border-radius:10px; width:fit-content;">
+                                    <button class="mode-btn active" id="customModeImg"   style="padding:4px 12px; font-size:0.75rem;" onclick="setCustomTextOnly(false)">参考图生图</button>
+                                    <button class="mode-btn"        id="customModeText"  style="padding:4px 12px; font-size:0.75rem;" onclick="setCustomTextOnly(true)">纯文生图</button>
+                                </div>
+                                <div id="geminiTextOnlyWarn" style="display:none; font-size:0.72rem; color:#f59e0b; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:5px 8px;">
+                                    ⚠ Gemini 为图像编辑模型，纯文生图模式下将跳过生成，请切换其他模型
+                                </div>
+                            </div>
                             <div class="config-group" style="min-width:150px;" id="grp-custom-aspect">
                                 <label>图片比例</label>
                                 <div class="gf-select drop-up" tabindex="0">
@@ -194,30 +205,31 @@
 
                         <div id="videoConfig" class="panel-view">
                             <div class="config-group">
-                                <label>镜头运动</label>
+                                <label>画面比例</label>
                                 <div class="gf-select drop-up" tabindex="0">
-                                    <input type="hidden" id="videoMotion" value="pan-right">
+                                    <input type="hidden" id="videoAspectRatio" value="16:9">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                        <span class="gf-select-text">向右平移</span>
+                                        <span class="gf-select-text">16:9 横屏</span>
                                         <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option" data-value="zoom-in" onclick="selectOption(this, event)">缓慢推近</div>
-                                        <div class="gf-option selected" data-value="pan-right" onclick="selectOption(this, event)">向右平移</div>
+                                        <div class="gf-option selected" data-value="16:9" onclick="selectOption(this, event)">16:9 横屏</div>
+                                        <div class="gf-option" data-value="9:16" onclick="selectOption(this, event)">9:16 竖屏</div>
+                                        <div class="gf-option" data-value="1:1" onclick="selectOption(this, event)">1:1 方形</div>
                                     </div>
                                 </div>
                             </div>
                             <div class="config-group" style="max-width:120px;">
                                 <label>时长</label>
                                 <div class="gf-select drop-up" tabindex="0">
-                                    <input type="hidden" id="videoDuration" value="5s">
+                                    <input type="hidden" id="videoDurationSec" value="8">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                        <span class="gf-select-text">5 秒</span>
+                                        <span class="gf-select-text">8 秒</span>
                                         <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option selected" data-value="5s" onclick="selectOption(this, event)">5 秒</div>
-                                        <div class="gf-option" data-value="10s" onclick="selectOption(this, event)">10 秒</div>
+                                        <div class="gf-option" data-value="5" onclick="selectOption(this, event)">5 秒</div>
+                                        <div class="gf-option selected" data-value="8" onclick="selectOption(this, event)">8 秒</div>
                                     </div>
                                 </div>
                             </div>
@@ -307,6 +319,7 @@
         let currentMode = 'standard';
         let pollTimer = null;
         let droppedFiles = [];
+        let isTextOnly = false;
         let currentThemeIndex = 0;
         const themes = ['theme-light', 'theme-dark'];
 
@@ -361,6 +374,23 @@
             }
         }
 
+        function setCustomTextOnly(enabled) {
+            isTextOnly = enabled;
+            document.getElementById('customModeImg').classList.toggle('active', !enabled);
+            document.getElementById('customModeText').classList.toggle('active', enabled);
+            if (enabled) clearFiles();
+            updateGeminiWarn();
+            const hint = document.getElementById('uploadHintText');
+            if (hint) hint.textContent = enabled ? '纯文生图模式，无需上传图片' : '拖拽图片到此处，或点击上传';
+        }
+
+        function updateGeminiWarn() {
+            const warn = document.getElementById('geminiTextOnlyWarn');
+            if (!warn) return;
+            const agent = document.getElementById('agentSelect').value;
+            warn.style.display = (isTextOnly && agent === 'gemini') ? 'block' : 'none';
+        }
+
         function updateControlStates() {
             const agent = document.getElementById('agentSelect').value.toLowerCase();
 
@@ -385,6 +415,7 @@
                 if(grpGptSize) grpGptSize.style.display = 'none';
                 if(grpGptQuality) grpGptQuality.style.display = 'none';
             }
+            updateGeminiWarn();
         }
 
         document.addEventListener('click', (e) => {
@@ -430,6 +461,7 @@
             let oldPanel = document.querySelector('.panel-view.active');
             let newPanel = document.getElementById(modeToPanel[mode]);
 
+            const prevMode = currentMode;
             currentMode = mode;
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`btn-${mode}`).classList.add('active');
@@ -456,12 +488,40 @@
                 input.placeholder = '描述对参考图的修改...';
                 sendBtn.className = 'btn-send custom';
             } else {
-                input.placeholder = '描述视频动态效果...';
+                input.placeholder = '用文字描述视频内容、场景、动态效果...';
                 sendBtn.className = 'btn-send video';
+            }
+
+            // 视频模式用 Veo 模型列表，其他模式恢复图片模型列表
+            if (mode === 'video') {
+                loadVideoAgents();
+            } else if (prevMode === 'video') {
+                loadAgents();
+            }
+
+            // 离开/进入 custom 模式时重置纯文生图状态
+            if (mode !== 'custom' && isTextOnly) {
+                isTextOnly = false;
+                const imgBtn = document.getElementById('customModeImg');
+                const txtBtn = document.getElementById('customModeText');
+                if (imgBtn) imgBtn.classList.add('active');
+                if (txtBtn) txtBtn.classList.remove('active');
             }
 
             updateControlStates();
             input.focus();
+        }
+
+        function loadVideoAgents() {
+            const agents = [
+                { id: 'veo-3.1-generate-preview', name: 'Veo 3.1' }
+            ];
+            const wrapper = document.getElementById('agentSelectWrapper');
+            wrapper.querySelector('input').value = agents[0].id;
+            wrapper.querySelector('.gf-select-text').textContent = agents[0].name;
+            document.getElementById('agentSelectOptions').innerHTML = agents.map((a, i) =>
+                `<div class="gf-option ${i === 0 ? 'selected' : ''}" data-value="${a.id}" onclick="selectOption(this, event)">${a.name}</div>`
+            ).join('');
         }
 
         async function loadAgents() {
@@ -557,7 +617,7 @@
                 apiPath = '/api/custom_generate';
 
                 const formData = new FormData();
-                if (droppedFiles.length > 0) droppedFiles.forEach(f => formData.append('images', f));
+                if (!isTextOnly && droppedFiles.length > 0) droppedFiles.forEach(f => formData.append('images', f));
 
                 for (const key in payload) {
                     formData.append(key, payload[key]);
@@ -566,7 +626,8 @@
                 formData.append('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
                 formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
 
-                appendMessage('user', `[重绘任务] 模型: ${agentId}\n提示词: ${payload.prompt}`);
+                const taskLabel = (isTextOnly || droppedFiles.length === 0) ? '文生图任务' : '重绘任务';
+                appendMessage('user', `[${taskLabel}] 模型: ${agentId}\n提示词: ${payload.prompt}`);
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
@@ -583,21 +644,21 @@
                 }
 
             } else if (currentMode === 'video') {
-                apiPath = '/api/video/generate';
-                payload.motion = document.getElementById('videoMotion') ? document.getElementById('videoMotion').value : 'pan-right';
-                payload.duration = document.getElementById('videoDuration') ? document.getElementById('videoDuration').value : '5s';
+                const aspectRatio   = document.getElementById('videoAspectRatio')?.value  || '16:9';
+                const durationSeconds = parseInt(document.getElementById('videoDurationSec')?.value || '8');
 
-                appendMessage('user', `[视频生成] 模型: ${agentId}\n运镜: ${payload.motion}\n提示词: ${payload.prompt}`);
+                const videoPayload = { prompt, aspectRatio, durationSeconds };
+                appendMessage('user', `[视频生成] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s${prompt ? '\n提示词: ' + prompt : ''}`);
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
-                    const resp = await fetch(apiPath, {
+                    const resp = await fetch('/api/video/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify(videoPayload)
                     });
                     const data = await resp.json();
-                    if (data.error) throw new Error(data.error);
+                    if (data.error || !data.taskId) throw new Error(data.message || data.error || '提交失败');
                     startPolling(data.taskId);
                 } catch (e) {
                     document.getElementById('generateBtn').disabled = false;
@@ -628,10 +689,16 @@
                         const successList = results.filter(r => r.status === 'success');
                         const errorList   = results.filter(r => r.status === 'error');
 
+                        // 视频结果
+                        const videoResult = successList.find(r => r.type === 'video' && r.filename);
+
                         if (data.status === 'stopped') {
                             appendMessage('ai', `⏹ 任务已停止（已完成 ${data.progress}/${data.total}）`);
                         } else if (data.status === 'error') {
-                            appendMessage('ai', `❌ 任务异常终止`);
+                            const errMsg = errorList[0]?.message || '';
+                            appendMessage('ai', `❌ 任务异常终止${errMsg ? '：' + errMsg : ''}`);
+                        } else if (videoResult) {
+                            appendVideoPlayer(videoResult.filename);
                         } else if (errorList.length > 0 && successList.length === 0) {
                             const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
                             appendMessage('ai', `❌ 全部生成失败\n${detail}`);
@@ -683,6 +750,19 @@
             }
         }
 
+        function appendVideoPlayer(filename) {
+            const enc = encodeURIComponent(filename);
+            appendMessage('ai', `
+                <div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:10px;">✅ 视频生成完成</div>
+                <video controls playsinline style="width:100%;max-width:520px;border-radius:10px;outline:none;display:block;">
+                    <source src="/api/video/file?filename=${enc}" type="video/mp4">
+                </video>
+                <div style="margin-top:8px;">
+                    <a href="/api/video/file?filename=${enc}" download="${filename}"
+                       style="font-size:0.75rem;color:var(--primary);text-decoration:none;">⬇ 下载视频</a>
+                </div>`, true);
+        }
+
         function appendMessage(role, text, isHtml = false) {
             const container = document.getElementById('chatMessages');
             const emptyState = document.getElementById('emptyState');
@@ -727,6 +807,8 @@
         window.addEventListener('drop', (e) => {
             e.preventDefault();
             overlay.classList.remove('active');
+
+            if (isTextOnly) return; // 纯文生图模式忽略拖入
 
             const files = Array.from(e.dataTransfer.files);
             const imageFiles = files.filter(f => f.type.startsWith('image/'));

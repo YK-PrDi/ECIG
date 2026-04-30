@@ -8,7 +8,11 @@ dist-electron/
 dist-electron.zip
 dist/app.jar
 dist/runtime/
-ele-business-java/
+dist/frontend/
+
+# Runtime output - user data, not source
+生成结果/
+dist/大参考/
 
 # Node / Electron
 electron/node_modules/
