@@ -51,6 +51,12 @@
                     <button class="btn-primary"
                         style="width:100%; margin-top: 16px; margin-bottom: 16px; background: linear-gradient(135deg, #10B981, #059669); height: 44px; font-size: 1rem; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
                         onclick="alert('即将跳转充值页面...')">立即充值</button>
+                    <!-- 历史记录 / 返回主界面 切换按钮 -->
+                    <div class="user-menu-item" id="menu-history-btn" onclick="toggleHistoryView()">
+                        <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <span>历史记录</span>
+                    </div>
+
                     <div class="user-menu-item" onclick="openConfigModal()">
                         <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                         同步配置
@@ -101,7 +107,7 @@
 
             <div class="input-area-wrapper">
                 <div style="width:100%; max-width:960px; margin:0 auto; position:relative;">
-                    <!-- 配置抽屉 (在输入框之下，受 z-index 控制滑动层级) -->
+                    <!-- 配置抽屉 -->
                     <div class="config-drawer" id="configDrawer">
                         <div id="standardConfig" class="panel-view active">
                             <div class="config-group" style="min-width:150px;" id="grp-aspect">
@@ -138,7 +144,7 @@
                                 </div>
                             </div>
 
-                            <div class="config-group disabled" style="min-width:160px;" id="grp-gpt-size">
+                            <div class="config-group disabled" style="display:none; min-width:160px;" id="grp-gpt-size">
                                 <label>尺寸 (GPT专属)</label>
                                 <div class="gf-select drop-up" tabindex="0">
                                     <input type="hidden" id="gptSize" value="1024x1024">
@@ -153,7 +159,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="config-group disabled" style="max-width:110px;" id="grp-gpt-quality">
+                            <div class="config-group disabled" style="display:none; max-width:110px;" id="grp-gpt-quality">
                                 <label>质量 (GPT)</label>
                                 <div class="gf-select drop-up" tabindex="0">
                                     <input type="hidden" id="gptQuality" value="standard">
@@ -170,7 +176,6 @@
                         </div>
 
                         <div id="customConfig" class="panel-view">
-                            <!-- 生成模式切换 -->
                             <div class="config-group" style="flex-direction:column; gap:6px;">
                                 <label>生成模式</label>
                                 <div class="mode-selector" style="background:var(--border); padding:3px; border-radius:10px; width:fit-content;">
@@ -244,7 +249,7 @@
                             <polyline points="17 8 12 3 7 8" />
                             <line x1="12" y1="3" x2="12" y2="15" />
                         </svg>
-                        <span>松开鼠标上传图片并开始创作</span>
+                        <span id="uploadHintText">松开鼠标上传图片并开始创作</span>
                     </div>
 
                     <!-- 输入主体 (拥有最高 z-index) -->
@@ -392,7 +397,9 @@
         }
 
         function updateControlStates() {
-            const agent = document.getElementById('agentSelect').value.toLowerCase();
+            const agentSelect = document.getElementById('agentSelect');
+            if (!agentSelect) return;
+            const agent = agentSelect.value.toLowerCase();
 
             const grpAspect = document.getElementById('grp-aspect');
             const grpNegPrompt = document.getElementById('grp-negative-prompt');
@@ -446,6 +453,189 @@
             loadProducts();
         }
 
+        let isShowingHistory = false;
+
+        function toggleHistoryView() {
+            const historyView = document.getElementById('historyView');
+            const menuBtn = document.getElementById('menu-history-btn');
+
+            isShowingHistory = !isShowingHistory;
+
+            if (isShowingHistory) {
+                historyView.classList.add('active');
+                menuBtn.innerHTML = `
+                    <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    <span>返回工作台</span>
+                `;
+                loadHistoryData();
+            } else {
+                historyView.classList.remove('active');
+                menuBtn.innerHTML = `
+                    <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span>历史记录</span>
+                `;
+            }
+
+            document.getElementById('userMenu').classList.remove('show');
+        }
+
+        // 全局真实数据存储
+        let realHistoryData = [];
+
+        function filterHistory(type, btnEl) {
+            const buttons = btnEl.parentElement.querySelectorAll('.mode-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            btnEl.classList.add('active');
+
+            const sliderBg = document.getElementById('historySliderBg');
+            if (sliderBg) {
+                sliderBg.style.width = btnEl.offsetWidth + 'px';
+                sliderBg.style.left = btnEl.offsetLeft + 'px';
+            }
+
+            const grid = document.getElementById('historyGrid');
+            grid.style.opacity = '0';
+            grid.style.transform = 'translateY(15px)';
+
+            setTimeout(() => {
+                renderFilteredHistory(type);
+                grid.style.opacity = '1';
+                grid.style.transform = 'translateY(0)';
+            }, 300);
+        }
+
+        function renderFilteredHistory(filterType) {
+            const grid = document.getElementById('historyGrid');
+            const filteredData = realHistoryData.filter(item => filterType === 'all' || item.type === filterType);
+
+            document.getElementById('historyTotalCount').innerText = filteredData.length;
+
+            if (filteredData.length === 0) {
+                grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 80px; color: var(--text-dim); font-size: 0.95rem;">该分类下暂无历史记录</div>`;
+                return;
+            }
+
+            grid.innerHTML = filteredData.map(item => `
+                <div class="history-card" onclick="handleMediaClick('image', '/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}', '${item.name}.png', event)">
+                    <div class="history-img-wrapper">
+                        <img src="/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}" alt="${item.name}" loading="lazy">
+                    </div>
+                    <div class="history-badge">${item.agent}</div>
+                    <div class="history-overlay">
+                        <div class="history-prompt">${item.name}</div>
+                        <div class="history-meta">
+                            <span>🖼️ ${item.count} 张</span>
+                            <span>🕒 ${item.date}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadHistoryData() {
+            const grid = document.getElementById('historyGrid');
+            grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 80px; color: var(--text-dim);">加载中...</div>`;
+
+            try {
+                const res = await fetch('/api/gallery');
+                const data = await res.json();
+
+                const folders = (data.items || []).filter(item => item.type === 'folder' && item.count > 0);
+
+                realHistoryData = folders.map(folder => ({
+                    id: folder.path,
+                    type: 'image',
+                    name: folder.name,
+                    agent: folder.name.includes('自定义') ? '自定义' : 'AI 生图',
+                    date: formatRelativeTime(folder.modified),
+                    count: folder.count,
+                    filePath: folder.path,
+                    thumbnail: folder.thumbnail
+                }));
+
+                setTimeout(() => {
+                    const activeBtn = document.querySelector('#historyFilter .mode-btn.active');
+                    if (activeBtn) filterHistory('all', activeBtn);
+                }, 20);
+
+            } catch (error) {
+                console.error('历史记录加载失败', error);
+                grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 80px; color: #ef4444;">网络异常，无法获取历史记录</div>`;
+            }
+        }
+
+        function formatRelativeTime(ms) {
+            if (!ms) return '未知时间';
+            const diff = Date.now() - ms;
+            const min = Math.floor(diff / 60000);
+            if (min < 1) return '刚刚';
+            if (min < 60) return `${min} 分钟前`;
+            const hr = Math.floor(min / 60);
+            if (hr < 24) return `${hr} 小时前`;
+            return `${Math.floor(hr / 24)} 天前`;
+        }
+
+        function openPreview(type, url, event) {
+            if (event) event.stopPropagation();
+            const mask = document.createElement('div');
+            mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+            mask.onclick = () => mask.remove();
+
+            const img = document.createElement('img');
+            img.src = url;
+            img.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+            mask.appendChild(img);
+            document.body.appendChild(mask);
+        }
+
+        // 🌟 1. 全局点击计时器与计数器
+        let mediaClickCount = 0;
+        let mediaClickTimer = null;
+
+        // 🌟 2. 智能点击分发：单点预览，三连点下载
+        function handleMediaClick(type, url, filename, event) {
+            if (event) event.stopPropagation();
+
+            mediaClickCount++;
+
+            if (mediaClickCount === 1) {
+                mediaClickTimer = setTimeout(() => {
+                    if (mediaClickCount < 3) {
+                        openPreview(type, url, null);
+                    }
+                    mediaClickCount = 0;
+                }, 350);
+            } else if (mediaClickCount === 3) {
+                clearTimeout(mediaClickTimer);
+                mediaClickCount = 0;
+                downloadMedia(url, filename);
+            }
+        }
+
+        // 🌟 3. 原生静默下载
+        function downloadMedia(url, filename) {
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:var(--primary);color:white;padding:10px 24px;border-radius:30px;z-index:9999;font-size:0.85rem;box-shadow:0 10px 25px rgba(0,0,0,0.15);';
+            toast.innerText = `⬇️ 正在为您极速下载...`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+
+            fetch(url)
+                .then(res => res.blob())
+                .then(blob => {
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = blobUrl;
+                    a.download = filename || `AI_Studio_Export_${Date.now()}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(blobUrl);
+                    a.remove();
+                })
+                .catch(() => alert('下载失败，请检查网络状态'));
+        }
+
         function setMode(mode) {
             const drawer = document.getElementById('configDrawer');
             const sidebar = document.getElementById('mainSidebar');
@@ -492,14 +682,12 @@
                 sendBtn.className = 'btn-send video';
             }
 
-            // 视频模式用 Veo 模型列表，其他模式恢复图片模型列表
             if (mode === 'video') {
                 loadVideoAgents();
             } else if (prevMode === 'video') {
                 loadAgents();
             }
 
-            // 离开/进入 custom 模式时重置纯文生图状态
             if (mode !== 'custom' && isTextOnly) {
                 isTextOnly = false;
                 const imgBtn = document.getElementById('customModeImg');
@@ -577,7 +765,9 @@
         }
 
         async function executeTask() {
-            const prompt = document.getElementById('promptInput').value.trim();
+            const promptInput = document.getElementById('promptInput');
+            const prompt = promptInput.value.trim();
+
             const agentId = document.getElementById('agentSelect').value;
             const ids = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
 
@@ -600,6 +790,8 @@
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
+                    promptInput.value = '';
+
                     const resp = await fetch(apiPath, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -631,11 +823,23 @@
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
+                    promptInput.value = '';
+
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
                     const data = await resp.json();
                     if (data.error) throw new Error(data.error);
                     if (data.results) {
-                        appendMessage('ai', `✅ 生成完成！结果已保存至: ${data.output_dir}`);
+                        const failed  = data.results.filter(r => typeof r === 'string' && r.startsWith('失败'));
+                        const success = data.results.filter(r => typeof r === 'string' && !r.startsWith('失败'));
+                        if (success.length === 0) {
+                            const detail = failed.map(r => `• ${r}`).join('\n');
+                            appendMessage('ai', `❌ 生成失败\n${detail}`);
+                        } else {
+                            if (failed.length > 0) {
+                                appendMessage('ai', `⚠️ 部分失败（${failed.length} 张）：${failed.join('；')}`);
+                            }
+                            renderGeneratedImages([{ name: '自定义生成', status: 'success', output: data.output_dir }]);
+                        }
                         clearFiles();
                     }
                 } catch (e) {
@@ -644,14 +848,16 @@
                 }
 
             } else if (currentMode === 'video') {
-                const aspectRatio   = document.getElementById('videoAspectRatio')?.value  || '16:9';
+                const aspectRatio     = document.getElementById('videoAspectRatio')?.value || '16:9';
                 const durationSeconds = parseInt(document.getElementById('videoDurationSec')?.value || '8');
 
-                const videoPayload = { prompt, aspectRatio, durationSeconds };
-                appendMessage('user', `[视频生成] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s${prompt ? '\n提示词: ' + prompt : ''}`);
+                const videoPayload = { prompt: payload.prompt, aspectRatio, durationSeconds };
+                appendMessage('user', `[视频生成] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s${payload.prompt ? '\n提示词: ' + payload.prompt : ''}`);
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
+                    promptInput.value = '';
+
                     const resp = await fetch('/api/video/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -665,8 +871,6 @@
                     appendMessage('ai', '启动失败：' + e.message);
                 }
             }
-
-            document.getElementById('promptInput').value = '';
         }
 
         function startPolling(taskId) {
@@ -689,7 +893,6 @@
                         const successList = results.filter(r => r.status === 'success');
                         const errorList   = results.filter(r => r.status === 'error');
 
-                        // 视频结果
                         const videoResult = successList.find(r => r.type === 'video' && r.filename);
 
                         if (data.status === 'stopped') {
@@ -735,7 +938,7 @@
 
                         for (const img of imageItems) {
                             const imgUrl = `/api/image?path=${encodeURIComponent(img.path)}`;
-                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${result.name}" draggable="true" title="按住拖拽到桌面即可保存">`;
+                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${result.name}" draggable="true" title="单点预览，三连点直接下载" onclick="handleMediaClick('image', '${imgUrl}', '${result.name}.png', event)">`;
                         }
                         htmlContent += `</div></div>`;
                     }
@@ -808,7 +1011,7 @@
             e.preventDefault();
             overlay.classList.remove('active');
 
-            if (isTextOnly) return; // 纯文生图模式忽略拖入
+            if (isTextOnly) return;
 
             const files = Array.from(e.dataTransfer.files);
             const imageFiles = files.filter(f => f.type.startsWith('image/'));
@@ -979,6 +1182,29 @@
             if (e.target === this) closeConfigModal();
         };
     </script>
+
+    <!-- 历史记录全屏界面 (默认隐藏) -->
+    <div id="historyView" class="history-view">
+        <div class="history-header">
+            <h2>创作足迹 <span style="font-size:0.8rem; background:var(--primary); color:white; padding:4px 10px; border-radius:12px; vertical-align:middle; margin-left:8px;">PRO</span></h2>
+            <p>在这里找回您的每一次灵感闪现与生成结果</p>
+        </div>
+
+        <div class="history-toolbar">
+            <div class="mode-selector" id="historyFilter" style="background:var(--bg-card); border:1px solid var(--border); position: relative;">
+                <!-- 🌟 独立的弹性果冻滑块层 -->
+                <div id="historySliderBg" style="position: absolute; top: 4px; bottom: 4px; background: #FFFFFF; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 1;"></div>
+
+                <!-- 按钮透明化，浮在滑块上方 -->
+                <button class="mode-btn active" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('all', this)">全部</button>
+                <button class="mode-btn" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('image', this)">图片</button>
+                <button class="mode-btn" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('video', this)">视频</button>
+            </div>
+            <div style="font-size:0.85rem; color:var(--text-dim);">共 <b id="historyTotalCount" style="color:var(--text-main);">0</b> 条记录</div>
+        </div>
+
+        <div class="history-grid" id="historyGrid"></div>
+    </div>
 
     <!-- ── 配置弹窗 ── -->
     <div id="configModal" class="modal-overlay">
