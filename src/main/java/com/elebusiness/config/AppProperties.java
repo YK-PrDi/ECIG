@@ -79,6 +79,7 @@ public class AppProperties {
         private String referenceDir = "./大参考";
         private String outputDir = "./生成结果";
         private String configFile = "./config.json";
+        private String promptsDir = "./prompts";
 
         public String getReferenceDir() { return referenceDir; }
         public void setReferenceDir(String referenceDir) { this.referenceDir = referenceDir; }
@@ -86,6 +87,8 @@ public class AppProperties {
         public void setOutputDir(String outputDir) { this.outputDir = outputDir; }
         public String getConfigFile() { return configFile; }
         public void setConfigFile(String configFile) { this.configFile = configFile; }
+        public String getPromptsDir() { return promptsDir; }
+        public void setPromptsDir(String promptsDir) { this.promptsDir = promptsDir; }
     }
 
     public static class Api {

@@ -8,6 +8,7 @@ import com.elebusiness.model.ProductInfo;
 import com.elebusiness.service.ConfigService;
 import com.elebusiness.service.DingTalkService;
 import com.elebusiness.service.ImageGenerationService;
+import com.elebusiness.service.PromptService;
 import com.elebusiness.service.TaskService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,15 +38,23 @@ public class ApiController {
     private final ImageGenerationService imageGenerationService;
     private final AppProperties appProperties;
     private final TaskService taskService;
+    private final PromptService promptService;
 
     public ApiController(ConfigService configService, DingTalkService dingTalkService,
                          ImageGenerationService imageGenerationService,
-                         AppProperties appProperties, TaskService taskService) {
+                         AppProperties appProperties, TaskService taskService,
+                         PromptService promptService) {
         this.configService = configService;
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
         this.appProperties = appProperties;
         this.taskService = taskService;
+        this.promptService = promptService;
+    }
+
+    @GetMapping("/api/prompts")
+    public List<Map<String, Object>> getPrompts() {
+        return promptService.getTree();
     }
 
     @GetMapping("/api/agents")

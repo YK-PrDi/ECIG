@@ -176,14 +176,30 @@
                         </div>
 
                         <div id="customConfig" class="panel-view">
-                            <div class="config-group" style="flex-direction:column; gap:6px;">
-                                <label>生成模式</label>
-                                <div class="mode-selector" style="background:var(--border); padding:3px; border-radius:10px; width:fit-content;">
-                                    <button class="mode-btn active" id="customModeImg"   style="padding:4px 12px; font-size:0.75rem;" onclick="setCustomTextOnly(false)">参考图生图</button>
-                                    <button class="mode-btn"        id="customModeText"  style="padding:4px 12px; font-size:0.75rem;" onclick="setCustomTextOnly(true)">纯文生图</button>
-                                </div>
-                                <div id="geminiTextOnlyWarn" style="display:none; font-size:0.72rem; color:#f59e0b; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:5px 8px;">
-                                    ⚠ Gemini 为图像编辑模型，纯文生图模式下将跳过生成，请切换其他模型
+                            <div class="config-group" style="flex-direction:column; gap:4px;" id="grp-category">
+                                <label>产品类目</label>
+                                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                                    <div class="gf-select sm drop-up" tabindex="0" id="catSelect1">
+                                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                            <span class="gf-select-text" id="catText1">全部类目</span>
+                                            <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="gf-select-options" id="catOptions1"></div>
+                                    </div>
+                                    <div class="gf-select sm drop-up" tabindex="0" id="catSelect2" style="display:none">
+                                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                            <span class="gf-select-text" id="catText2">选择子类</span>
+                                            <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="gf-select-options" id="catOptions2"></div>
+                                    </div>
+                                    <div class="gf-select sm drop-up" tabindex="0" id="catSelect3" style="display:none">
+                                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                            <span class="gf-select-text" id="catText3">选择品类</span>
+                                            <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="gf-select-options" id="catOptions3"></div>
+                                    </div>
                                 </div>
                             </div>
                             <div class="config-group" style="min-width:150px;" id="grp-custom-aspect">
@@ -281,6 +297,27 @@
                         <!-- 图片预览区 -->
                         <div id="imagePreviewContainer" class="image-preview-container" style="display:none;"></div>
 
+                        <!-- 隐藏文件输入：图片选择 / 文件夹选择 -->
+                        <input type="file" id="uploadFileInput" accept="image/*" multiple style="display:none"
+                            onchange="handleFileInputChange(this)">
+                        <input type="file" id="uploadFolderInput" accept="image/*" multiple webkitdirectory style="display:none"
+                            onchange="handleFileInputChange(this)">
+
+                        <!-- 上传操作栏 -->
+                        <div style="display:flex; gap:6px; margin-bottom:6px;">
+                            <button type="button" title="选择图片" onclick="document.getElementById('uploadFileInput').click()"
+                                style="display:flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-dim);font-size:0.78rem;cursor:pointer;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                图片
+                            </button>
+                            <button type="button" title="选择文件夹，自动提取全部图片" onclick="document.getElementById('uploadFolderInput').click()"
+                                style="display:flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-dim);font-size:0.78rem;cursor:pointer;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                文件夹拆图
+                            </button>
+                            <span style="font-size:0.72rem;color:var(--text-dim);line-height:1;align-self:center;margin-left:2px;">或拖拽 / Ctrl+V 粘贴</span>
+                        </div>
+
                         <div style="display:flex; align-items:flex-end; gap:12px;">
                             <textarea id="promptInput" rows="1" placeholder="输入风格提示词，或留空使用默认描述..."
                                 onkeydown="handleKey(event)"></textarea>
@@ -325,6 +362,9 @@
         let pollTimer = null;
         let droppedFiles = [];
         let isTextOnly = false;
+        let promptTree = [];
+        let catNodes = [[], [], []];
+        let selectedPrompt = { prompt: '', negativePrompt: '' };
         let currentThemeIndex = 0;
         const themes = ['theme-light', 'theme-dark'];
 
@@ -379,21 +419,55 @@
             }
         }
 
-        function setCustomTextOnly(enabled) {
-            isTextOnly = enabled;
-            document.getElementById('customModeImg').classList.toggle('active', !enabled);
-            document.getElementById('customModeText').classList.toggle('active', enabled);
-            if (enabled) clearFiles();
-            updateGeminiWarn();
-            const hint = document.getElementById('uploadHintText');
-            if (hint) hint.textContent = enabled ? '纯文生图模式，无需上传图片' : '拖拽图片到此处，或点击上传';
+        // ── 产品类目多级选择器 ──
+        async function loadCategories() {
+            try {
+                const data = await fetch('/api/prompts').then(r => r.json());
+                promptTree = Array.isArray(data) ? data : [];
+                renderCatLevel(0, promptTree);
+            } catch (_) {}
         }
 
-        function updateGeminiWarn() {
-            const warn = document.getElementById('geminiTextOnlyWarn');
-            if (!warn) return;
-            const agent = document.getElementById('agentSelect').value;
-            warn.style.display = (isTextOnly && agent === 'gemini') ? 'block' : 'none';
+        function renderCatLevel(level, nodes) {
+            const optEl = document.getElementById(`catOptions${level + 1}`);
+            const selEl = document.getElementById(`catSelect${level + 1}`);
+            if (!optEl || !selEl) return;
+            catNodes[level] = nodes;
+            optEl.innerHTML = nodes.map((n, i) =>
+                `<div class="gf-option" data-idx="${i}" onclick="selectCat(${level},${i},event)">${n.label}</div>`
+            ).join('');
+            selEl.style.display = nodes.length ? '' : 'none';
+            // 重置更深层级
+            for (let l = level + 1; l < 3; l++) {
+                const el = document.getElementById(`catSelect${l + 1}`);
+                if (el) el.style.display = 'none';
+                catNodes[l] = [];
+            }
+            selectedPrompt = { prompt: '', negativePrompt: '' };
+        }
+
+        function selectCat(level, idx, e) {
+            if (e) e.stopPropagation();
+            const node = catNodes[level][idx];
+            if (!node) return;
+            // 更新显示文字 + 高亮
+            document.getElementById(`catText${level + 1}`).textContent = node.label;
+            const optEl = document.getElementById(`catOptions${level + 1}`);
+            optEl.querySelectorAll('.gf-option').forEach(o => o.classList.remove('selected'));
+            optEl.querySelector(`[data-idx="${idx}"]`)?.classList.add('selected');
+            document.getElementById(`catSelect${level + 1}`).classList.remove('open');
+            // 重置更深层级
+            for (let l = level + 1; l < 3; l++) {
+                const el = document.getElementById(`catSelect${l + 1}`);
+                if (el) el.style.display = 'none';
+                catNodes[l] = [];
+            }
+            selectedPrompt = { prompt: '', negativePrompt: '' };
+            if (node.children && node.children.length) {
+                renderCatLevel(level + 1, node.children);
+            } else {
+                selectedPrompt = { prompt: node.prompt || '', negativePrompt: node.negativePrompt || '' };
+            }
         }
 
         function updateControlStates() {
@@ -422,7 +496,6 @@
                 if(grpGptSize) grpGptSize.style.display = 'none';
                 if(grpGptQuality) grpGptQuality.style.display = 'none';
             }
-            updateGeminiWarn();
         }
 
         document.addEventListener('click', (e) => {
@@ -451,6 +524,7 @@
         async function initApp() {
             await loadAgents();
             loadProducts();
+            loadCategories();
         }
 
         let isShowingHistory = false;
@@ -688,13 +762,7 @@
                 loadAgents();
             }
 
-            if (mode !== 'custom' && isTextOnly) {
-                isTextOnly = false;
-                const imgBtn = document.getElementById('customModeImg');
-                const txtBtn = document.getElementById('customModeText');
-                if (imgBtn) imgBtn.classList.add('active');
-                if (txtBtn) txtBtn.classList.remove('active');
-            }
+            if (mode !== 'custom') isTextOnly = false;
 
             updateControlStates();
             input.focus();
@@ -808,8 +876,14 @@
             } else if (currentMode === 'custom') {
                 apiPath = '/api/custom_generate';
 
+                // 合并类目提示词与用户输入
+                const finalPrompt = [payload.prompt !== '自动生成' ? payload.prompt : '', selectedPrompt.prompt]
+                    .filter(Boolean).join('\n') || '自动生成';
+                payload.prompt = finalPrompt;
+                if (selectedPrompt.negativePrompt) payload.negativePrompt = selectedPrompt.negativePrompt;
+
                 const formData = new FormData();
-                if (!isTextOnly && droppedFiles.length > 0) droppedFiles.forEach(f => formData.append('images', f));
+                if (droppedFiles.length > 0) droppedFiles.forEach(f => formData.append('images', f));
 
                 for (const key in payload) {
                     formData.append(key, payload[key]);
@@ -818,8 +892,8 @@
                 formData.append('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
                 formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
 
-                const taskLabel = (isTextOnly || droppedFiles.length === 0) ? '文生图任务' : '重绘任务';
-                appendMessage('user', `[${taskLabel}] 模型: ${agentId}\n提示词: ${payload.prompt}`);
+                const taskLabel = droppedFiles.length === 0 ? '文生图任务' : '重绘任务';
+                appendMessage('user', `[${taskLabel}] 模型: ${agentId}\n提示词: ${finalPrompt}`);
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
@@ -985,6 +1059,25 @@
         }
 
         function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); executeTask(); } }
+
+        // ── 文件选择框（图片 / 文件夹）──
+        function handleFileInputChange(input) {
+            if (isTextOnly) return;
+            const files = Array.from(input.files).filter(f => f.type.startsWith('image/'));
+            if (files.length) handleImageDrop(files);
+            input.value = '';
+        }
+
+        // ── 粘贴上传（Ctrl+V）──
+        document.addEventListener('paste', (e) => {
+            if (isTextOnly || currentMode !== 'custom') return;
+            const items = Array.from(e.clipboardData?.items || []);
+            const imageFiles = items
+                .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+                .map(item => item.getAsFile())
+                .filter(Boolean);
+            if (imageFiles.length) handleImageDrop(imageFiles);
+        });
 
         // ── 拖拽上传逻辑 ──
         const wrapper = document.querySelector('.input-area-wrapper');

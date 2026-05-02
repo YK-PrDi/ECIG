@@ -13,6 +13,7 @@ dist/frontend/
 # Runtime output - user data, not source
 生成结果/
 dist/大参考/
+.ai-studio-pref.json
 
 # Node / Electron
 electron/node_modules/

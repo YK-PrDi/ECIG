@@ -19,15 +19,57 @@ function res(...parts) {
     return path.join(base, ...parts);
 }
 
-// ── 确保 config.json 在可写的 userData 目录，并传给 JVM ──
-function prepareConfigDir() {
-    const userData = app.getPath('userData');
-    const configDst = path.join(userData, 'config.json');
-    const configSrc = res('config.json');
+// ── 用户数据目录偏好文件（存放在 exe 同级目录，随 exe 携带） ──
+function prefFile() {
+    const dir = app.isPackaged
+        ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath))
+        : path.join(__dirname, '..');
+    return path.join(dir, '.ai-studio-pref.json');
+}
 
-    // 首次运行时，若 userData 里还没有 config.json，复制初始模板
+function loadDataDir() {
+    try {
+        const raw = fs.readFileSync(prefFile(), 'utf8');
+        const { dataDir } = JSON.parse(raw);
+        if (dataDir) return dataDir;
+    } catch (_) {}
+    return null;
+}
+
+function saveDataDir(dataDir) {
+    try { fs.writeFileSync(prefFile(), JSON.stringify({ dataDir }), 'utf8'); } catch (_) {}
+}
+
+// ── 首次运行：弹窗让用户选择存储目录 ──
+async function pickDataDir() {
+    const result = await dialog.showOpenDialog(splashWin, {
+        title: '选择 AI Studio 数据存储位置',
+        message: '配置文件和生成图片将存储在此文件夹',
+        properties: ['openDirectory', 'createDirectory'],
+        buttonLabel: '确认使用此文件夹',
+    });
+    if (result.canceled || !result.filePaths.length) {
+        app.quit();
+        return null;
+    }
+    const dataDir = result.filePaths[0];
+    saveDataDir(dataDir);
+    return dataDir;
+}
+
+// ── 初始化数据目录（首次运行选目录，后续沿用） ──
+async function prepareDataDir() {
+    let dataDir = loadDataDir();
+    if (!dataDir) {
+        dataDir = await pickDataDir();
+        if (!dataDir) return null;
+    }
+
+    // 首次使用该目录时，若 config.json 不存在则创建
+    const configDst = path.join(dataDir, 'config.json');
     if (!fs.existsSync(configDst)) {
         try {
+            const configSrc = res('config.json');
             if (fs.existsSync(configSrc)) {
                 fs.copyFileSync(configSrc, configDst);
             } else {
@@ -36,16 +78,25 @@ function prepareConfigDir() {
         } catch (_) {}
     }
 
-    // 首次运行时，把内置的 大参考/ 复制到 userData（仅当目标不存在时）
+    // 首次使用该目录时，把内置的 大参考/ 复制过去
     const refSrc = app.isPackaged
         ? res('大参考')
         : path.join(__dirname, '..', '大参考');
-    const refDst = path.join(userData, '大参考');
+    const refDst = path.join(dataDir, '大参考');
     if (fs.existsSync(refSrc) && !fs.existsSync(refDst)) {
         try { copyDirSync(refSrc, refDst); } catch (_) {}
     }
 
-    return userData;
+    // 首次使用该目录时，把内置的 prompts/ 复制过去
+    const promptsSrc = app.isPackaged
+        ? res('prompts')
+        : path.join(__dirname, '..', 'prompts');
+    const promptsDst = path.join(dataDir, 'prompts');
+    if (fs.existsSync(promptsSrc) && !fs.existsSync(promptsDst)) {
+        try { copyDirSync(promptsSrc, promptsDst); } catch (_) {}
+    }
+
+    return dataDir;
 }
 
 // 递归复制目录
@@ -60,23 +111,23 @@ function copyDirSync(src, dst) {
 }
 
 // ── 启动 Spring Boot ──
-function startJava() {
-    const javaExe  = res('runtime', 'bin', 'java.exe');
-    const jarPath  = res('app.jar');
-    const userData = prepareConfigDir();
+async function startJava() {
+    const javaExe = res('runtime', 'bin', 'java.exe');
+    const jarPath = res('app.jar');
+    const dataDir = await prepareDataDir();
+    if (!dataDir) return;
 
-    // Spring Boot 搜索静态资源（frontend/）用 resourcesPath，
-    // 但 config.json / 生成结果/ 等可写文件放在 userData
     const jvmArgs = [
         `-Dspring.web.resources.static-locations=file:${res('frontend').replace(/\\/g, '/')}/`,
-        `-Dapp.paths.config-file=${path.join(userData, 'config.json').replace(/\\/g, '/')}`,
-        `-Dapp.paths.output-dir=${path.join(userData, '生成结果').replace(/\\/g, '/')}`,
-        `-Dapp.paths.reference-dir=${path.join(userData, '大参考').replace(/\\/g, '/')}`,
+        `-Dapp.paths.config-file=${path.join(dataDir, 'config.json').replace(/\\/g, '/')}`,
+        `-Dapp.paths.output-dir=${path.join(dataDir, '生成结果').replace(/\\/g, '/')}`,
+        `-Dapp.paths.reference-dir=${path.join(dataDir, '大参考').replace(/\\/g, '/')}`,
+        `-Dapp.paths.prompts-dir=${path.join(dataDir, 'prompts').replace(/\\/g, '/')}`,
         '-jar', jarPath
     ];
 
     javaProcess = spawn(javaExe, jvmArgs, {
-        cwd:         userData,
+        cwd:         dataDir,
         stdio:       'ignore',
         windowsHide: true,
         detached:    false,
@@ -139,7 +190,6 @@ function createMain() {
 
     mainWindow.loadURL(APP_URL);
 
-    // 页面加载完成后关闭启动画面，显示主窗口
     mainWindow.once('ready-to-show', () => {
         if (splashWin && !splashWin.isDestroyed()) {
             splashWin.close();
@@ -149,7 +199,6 @@ function createMain() {
         mainWindow.focus();
     });
 
-    // 页内打开的新标签/外链 → 用系统浏览器打开
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (!url.startsWith(APP_URL)) shell.openExternal(url);
         return { action: 'deny' };
@@ -182,7 +231,7 @@ function createMain() {
 // ── 应用启动 ──
 app.whenReady().then(async () => {
     createSplash();
-    startJava();
+    await startJava();
 
     try {
         await waitForServer();
