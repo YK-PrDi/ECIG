@@ -70,7 +70,9 @@ public class ApiController {
 
     @GetMapping("/api/config")
     public Map<String, String> getConfig() {
-        return configService.getDingTalkConfig();
+        Map<String, String> result = new java.util.HashMap<>(configService.getDingTalkConfig());
+        result.putAll(configService.getProxyConfig());
+        return result;
     }
 
     @PostMapping("/api/config")
@@ -79,7 +81,12 @@ public class ApiController {
             return Map.of("success", false, "error", "请求体为空");
         }
         configService.saveDingTalkConfig(body);
-        // 凭证变更后失效 token / unionId 缓存
+        // 代理配置（可选字段）
+        if (body.containsKey("proxy_host")) {
+            int port = 7890;
+            try { port = Integer.parseInt(body.getOrDefault("proxy_port", "7890")); } catch (NumberFormatException ignored) {}
+            configService.saveProxyConfig(body.get("proxy_host"), port);
+        }
         dingTalkService.invalidateCache();
         return Map.of("success", true);
     }

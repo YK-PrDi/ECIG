@@ -2,6 +2,7 @@ package com.elebusiness.service;
 
 import com.elebusiness.config.AppProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,20 @@ public class ConfigService {
 
     public ConfigService(AppProperties appProperties) {
         this.appProperties = appProperties;
+    }
+
+    /** 启动时将 config.json 中保存的代理设置应用到运行时 */
+    @PostConstruct
+    public void applyProxyFromConfig() {
+        Map<String, String> cfg = loadConfig();
+        String host = cfg.getOrDefault("proxy_host", "");
+        appProperties.getProxy().setHost(host);
+        try {
+            appProperties.getProxy().setPort(Integer.parseInt(cfg.getOrDefault("proxy_port", "8086")));
+        } catch (NumberFormatException ignored) {}
+        if (!host.isBlank()) {
+            log.info("已从配置文件加载代理: {}:{}", host, appProperties.getProxy().getPort());
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -78,6 +93,26 @@ public class ConfigService {
         Set<String> allowed = Set.of("app_key", "app_secret", "union_id", "app_uuid", "sheet_id");
         updates.forEach((k, v) -> { if (allowed.contains(k) && v != null) cfg.put(k, v); });
         saveConfig(cfg);
+    }
+
+    /** 返回代理配置（config.json 优先，fallback 到 appProperties） */
+    public Map<String, String> getProxyConfig() {
+        Map<String, String> cfg = loadConfig();
+        Map<String, String> result = new HashMap<>();
+        result.put("proxy_host", cfg.getOrDefault("proxy_host", nvl(appProperties.getProxy().getHost())));
+        result.put("proxy_port", cfg.getOrDefault("proxy_port", "8086"));
+        return result;
+    }
+
+    /** 保存代理配置并立即热更新运行时 */
+    public void saveProxyConfig(String host, int port) {
+        Map<String, String> cfg = loadConfig();
+        cfg.put("proxy_host", host != null ? host.trim() : "");
+        cfg.put("proxy_port", String.valueOf(port));
+        saveConfig(cfg);
+        appProperties.getProxy().setHost(host != null ? host.trim() : "");
+        appProperties.getProxy().setPort(port);
+        log.info("代理配置已更新: {}:{}", host, port);
     }
 
     private static String nvl(String s) { return s != null ? s : ""; }

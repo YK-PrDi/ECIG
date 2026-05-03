@@ -106,8 +106,8 @@ public class AppProperties {
 
     public static class Proxy {
         /** 代理主机，留空则不使用代理 */
-        private String host = "";
-        private int port = 7890;
+        private String host = "127.0.0.1";
+        private int port = 8086;
 
         public String getHost() { return host; }
         public void setHost(String host) { this.host = host; }

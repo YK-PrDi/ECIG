@@ -297,6 +297,13 @@
                         <!-- 图片预览区 -->
                         <div id="imagePreviewContainer" class="image-preview-container" style="display:none;"></div>
 
+                        <!-- 重绘基底预览（上次生成结果自动设置） -->
+                        <div id="sessionBaseWrap" style="display:none; align-items:center; gap:8px; padding:5px 10px; margin-bottom:6px; background:var(--surface); border:1px solid var(--border); border-radius:8px;">
+                            <img id="sessionBaseThumb" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;">
+                            <span style="font-size:0.75rem;color:var(--text-dim);flex:1;">重绘基底 · 继续对话修改这张图</span>
+                            <button type="button" onclick="clearSession()" style="border:none;background:none;color:var(--text-dim);font-size:1rem;cursor:pointer;padding:0 4px;line-height:1;" title="清除，重新开始">×</button>
+                        </div>
+
                         <!-- 隐藏文件输入：图片选择 / 文件夹选择 -->
                         <input type="file" id="uploadFileInput" accept="image/*" multiple style="display:none"
                             onchange="handleFileInputChange(this)">
@@ -365,6 +372,7 @@
         let promptTree = [];
         let catNodes = [[], [], []];
         let selectedPrompt = { prompt: '', negativePrompt: '' };
+        let sessionImagePath = null; // 上次生成结果，用于连续重绘
         let currentThemeIndex = 0;
         const themes = ['theme-light', 'theme-dark'];
 
@@ -877,13 +885,20 @@
                 apiPath = '/api/custom_generate';
 
                 // 合并类目提示词与用户输入
-                const finalPrompt = [payload.prompt !== '自动生成' ? payload.prompt : '', selectedPrompt.prompt]
-                    .filter(Boolean).join('\n') || '自动生成';
+                const finalPrompt = [prompt, selectedPrompt.prompt].filter(Boolean).join('\n') || '自动生成';
                 payload.prompt = finalPrompt;
                 if (selectedPrompt.negativePrompt) payload.negativePrompt = selectedPrompt.negativePrompt;
 
                 const formData = new FormData();
-                if (droppedFiles.length > 0) droppedFiles.forEach(f => formData.append('images', f));
+                if (droppedFiles.length > 0) {
+                    droppedFiles.forEach(f => formData.append('images', f));
+                } else if (sessionImagePath) {
+                    // 无新图时用上次生成结果作为重绘基底
+                    try {
+                        const blob = await fetch(`/api/image?path=${encodeURIComponent(sessionImagePath)}`).then(r => r.blob());
+                        formData.append('images', new File([blob], 'session_base.jpg', { type: blob.type || 'image/jpeg' }));
+                    } catch (_) {}
+                }
 
                 for (const key in payload) {
                     formData.append(key, payload[key]);
@@ -892,7 +907,8 @@
                 formData.append('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
                 formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
 
-                const taskLabel = droppedFiles.length === 0 ? '文生图任务' : '重绘任务';
+                const hasBase = droppedFiles.length > 0 || sessionImagePath;
+                const taskLabel = hasBase ? '重绘任务' : '文生图任务';
                 appendMessage('user', `[${taskLabel}] 模型: ${agentId}\n提示词: ${finalPrompt}`);
 
                 try {
@@ -913,6 +929,8 @@
                                 appendMessage('ai', `⚠️ 部分失败（${failed.length} 张）：${failed.join('；')}`);
                             }
                             renderGeneratedImages([{ name: '自定义生成', status: 'success', output: data.output_dir }]);
+                            // 把第一张成功结果设为下一轮重绘基底
+                            setSessionImage(success[0]);
                         }
                         clearFiles();
                     }
@@ -1058,6 +1076,21 @@
             container.scrollTop = container.scrollHeight;
         }
 
+        function setSessionImage(serverPath) {
+            sessionImagePath = serverPath;
+            const wrap = document.getElementById('sessionBaseWrap');
+            const thumb = document.getElementById('sessionBaseThumb');
+            if (!wrap || !thumb) return;
+            thumb.src = `/api/image?path=${encodeURIComponent(serverPath)}`;
+            wrap.style.display = 'flex';
+        }
+
+        function clearSession() {
+            sessionImagePath = null;
+            const wrap = document.getElementById('sessionBaseWrap');
+            if (wrap) wrap.style.display = 'none';
+        }
+
         function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); executeTask(); } }
 
         // ── 文件选择框（图片 / 文件夹）──
@@ -1115,7 +1148,7 @@
         });
 
         function handleImageDrop(files) {
-            setMode('custom');
+            clearSession(); // 手动上传新图，清除上次生成的重绘基底
 
             files.forEach(file => {
                 if (droppedFiles.length >= 10) {
@@ -1206,6 +1239,8 @@
                 if (cfg.app_key && cfg.app_secret && cfg.union_id && cfg.app_uuid && cfg.sheet_id) {
                     isConfigured = true;
                 }
+                document.getElementById('proxy_host').value = cfg.proxy_host || '';
+                document.getElementById('proxy_port').value = cfg.proxy_port || '7890';
             }).catch(() => {});
         }
 
@@ -1246,7 +1281,9 @@
                     app_secret: document.getElementById('dt_app_secret').value.trim(),
                     union_id:   document.getElementById('dt_union_id').value.trim(),
                     app_uuid:   document.getElementById('dt_app_uuid').value.trim(),
-                    sheet_id:   document.getElementById('dt_sheet_id').value.trim()
+                    sheet_id:   document.getElementById('dt_sheet_id').value.trim(),
+                    proxy_host: document.getElementById('proxy_host').value.trim(),
+                    proxy_port: document.getElementById('proxy_port').value.trim() || '7890'
                 })
             }).then(r => {
                 if (!r.ok) throw new Error('保存失败');
@@ -1353,6 +1390,21 @@
                 <div id="todeskForm" class="platform-form">
                     <p class="placeholder-text">ToDesk参数配置项待开放...</p>
                 </div>
+            </div>
+            <!-- 代理设置（Gemini 等国内无法直连的模型需要） -->
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+                <div style="font-size:0.8rem; font-weight:600; color:var(--text-dim); margin-bottom:10px;">HTTP 代理（Gemini 模型必填）</div>
+                <div style="display:flex; gap:10px; align-items:flex-end;">
+                    <div class="form-item" style="flex:3; margin:0;">
+                        <label>代理主机</label>
+                        <input type="text" id="proxy_host" class="input-field" placeholder="127.0.0.1">
+                    </div>
+                    <div class="form-item" style="flex:1; margin:0;">
+                        <label>端口</label>
+                        <input type="number" id="proxy_port" class="input-field" placeholder="8086" value="8086">
+                    </div>
+                </div>
+                <p style="font-size:0.72rem; color:var(--text-dim); margin-top:6px;">留空则不使用代理；保存后立即生效，无需重启</p>
             </div>
             <div class="modal-footer" style="margin-top: 16px;">
                 <button class="btn-outline" style="flex:1" onclick="closeConfigModal()">取消</button>
