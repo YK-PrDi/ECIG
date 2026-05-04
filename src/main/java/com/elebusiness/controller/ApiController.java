@@ -27,6 +27,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 public class ApiController {
@@ -283,38 +285,39 @@ public class ApiController {
             }
         }
 
-        List<Object> results = new ArrayList<>();
-        int delaySeconds = appProperties.getApi().getDelaySeconds();
+        // 构建所有任务后并发执行
+        ExecutorService executor = imageGenerationService.getExecutor();
+        List<CompletableFuture<String>> futures = new ArrayList<>();
+        int[] idx = {1};
 
         if (!hasImages) {
-            // 纯文生图：无参考图、无白底图
             for (int i = 0; i < count; i++) {
-                try {
-                    Thread.sleep(delaySeconds * 1000L);
-                    String outputPath = new File(outputDir, (results.size() + 1) + ".jpg").getAbsolutePath();
+                final String outputPath = new File(outputDir, idx[0]++ + ".jpg").getAbsolutePath();
+                futures.add(CompletableFuture.supplyAsync(() -> {
                     boolean ok = imageGenerationService.generateImage(prompt, null, null, outputPath, agentId);
-                    results.add(ok ? outputPath : "失败: 生成未返回图片");
-                } catch (Exception e) {
-                    results.add("失败: " + e.getMessage());
-                }
+                    return ok ? outputPath : "失败: 生成未返回图片";
+                }, executor));
             }
         } else {
-            // 有图片：白底图为空时用参考图自身作为背景底图
             List<File> bgFiles = whiteTempFiles.isEmpty() ? List.of(refTempFile) : whiteTempFiles;
-            String refPath = refTempFile.getAbsolutePath();
+            final String refPath = refTempFile.getAbsolutePath();
             for (File bgFile : bgFiles) {
                 for (int i = 0; i < count; i++) {
-                    try {
-                        Thread.sleep(delaySeconds * 1000L);
-                        String outputPath = new File(outputDir, (results.size() + 1) + ".jpg").getAbsolutePath();
+                    final File bg = bgFile;
+                    final String outputPath = new File(outputDir, idx[0]++ + ".jpg").getAbsolutePath();
+                    futures.add(CompletableFuture.supplyAsync(() -> {
                         boolean ok = imageGenerationService.generateImage(
-                                prompt, refPath, bgFile.getAbsolutePath(), outputPath, agentId);
-                        results.add(ok ? outputPath : "失败: 生成未返回图片");
-                    } catch (Exception e) {
-                        results.add("失败: " + e.getMessage());
-                    }
+                                prompt, refPath, bg.getAbsolutePath(), outputPath, agentId);
+                        return ok ? outputPath : "失败: 生成未返回图片";
+                    }, executor));
                 }
             }
+        }
+
+        List<Object> results = new ArrayList<>();
+        for (CompletableFuture<String> f : futures) {
+            try { results.add(f.get()); }
+            catch (Exception e) { results.add("失败: " + e.getMessage()); }
         }
 
         if (refTempFile != null) refTempFile.delete();

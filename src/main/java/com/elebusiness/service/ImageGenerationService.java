@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,13 +21,17 @@ public class ImageGenerationService {
     private final AppProperties appProperties;
     private final Map<String, ImageGeneratorAgent> agentMap;
     private final Random random = new Random();
+    private final ExecutorService executor;
 
     public ImageGenerationService(AppProperties appProperties, List<ImageGeneratorAgent> agents) {
         this.appProperties = appProperties;
         this.agentMap = new LinkedHashMap<>();
         agents.forEach(a -> agentMap.put(a.getId(), a));
-        log.info("已注册智能体: {}", agentMap.keySet());
+        this.executor = Executors.newFixedThreadPool(appProperties.getApi().getMaxConcurrent());
+        log.info("已注册智能体: {}，并发数: {}", agentMap.keySet(), appProperties.getApi().getMaxConcurrent());
     }
+
+    public ExecutorService getExecutor() { return executor; }
 
     /** 返回所有已注册智能体的描述列表，供前端展示 */
     public List<Map<String, String>> listAgents() {
@@ -54,41 +59,57 @@ public class ImageGenerationService {
 
         File skuOutputDir = new File(outputFolder, "SKU");
         skuOutputDir.mkdirs();
-        File randomRef = skuRefs.get(random.nextInt(skuRefs.size()));
 
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (int i = 0; i < skuList.size(); i++) {
-            String prompt = (userPrompt != null && !userPrompt.isBlank())
+            final int idx = i;
+            final File ref = skuRefs.get(random.nextInt(skuRefs.size()));
+            final String prompt = (userPrompt != null && !userPrompt.isBlank())
                     ? userPrompt
                     : "保留参考图的背景，移除参考图中的物品主体，将白底图中的产品替换到背景中。" + skuList.get(i);
-            String outputPath = new File(skuOutputDir, (i + 1) + ".jpg").getAbsolutePath();
-            boolean ok = generateImage(prompt, randomRef.getAbsolutePath(), whiteBgUrl, outputPath, agentId);
-            log.info("SKU 图 {}: {}", i + 1, ok ? "成功" : "失败");
+            final String outputPath = new File(skuOutputDir, (idx + 1) + ".jpg").getAbsolutePath();
+            futures.add(CompletableFuture.runAsync(() -> {
+                boolean ok = generateImage(prompt, ref.getAbsolutePath(), whiteBgUrl, outputPath, agentId);
+                log.info("SKU 图 {}: {}", idx + 1, ok ? "成功" : "失败");
+            }, executor));
         }
+        futures.forEach(f -> { try { f.join(); } catch (Exception e) { log.warn("SKU 图生成异常: {}", e.getMessage()); } });
     }
 
     public List<String> generateMainImages(String whiteBgUrl, String refPath,
                                            String outputFolder, List<String> mainList, String agentId, String userPrompt) {
-        List<String> outputPaths = new ArrayList<>();
-        if (mainList == null || mainList.isEmpty()) return outputPaths;
+        if (mainList == null || mainList.isEmpty()) return List.of();
 
         File mainRefDir = new File(refPath, "主图");
-        if (!mainRefDir.exists()) { log.warn("主图参考图目录不存在: {}", mainRefDir.getAbsolutePath()); return outputPaths; }
+        if (!mainRefDir.exists()) { log.warn("主图参考图目录不存在: {}", mainRefDir.getAbsolutePath()); return List.of(); }
         List<File> mainRefs = listImages(mainRefDir);
-        if (mainRefs.isEmpty()) { log.warn("主图参考图目录为空"); return outputPaths; }
+        if (mainRefs.isEmpty()) { log.warn("主图参考图目录为空"); return List.of(); }
 
         File mainOutputDir = new File(outputFolder, "主图");
         mainOutputDir.mkdirs();
 
+        List<CompletableFuture<String>> futures = new ArrayList<>();
         for (int i = 0; i < mainList.size(); i++) {
-            File randomRef = mainRefs.get(random.nextInt(mainRefs.size()));
-            String prompt = (userPrompt != null && !userPrompt.isBlank())
+            final int idx = i;
+            final File ref = mainRefs.get(random.nextInt(mainRefs.size()));
+            final String prompt = (userPrompt != null && !userPrompt.isBlank())
                     ? userPrompt
                     : "保留参考图的背景，移除参考图中的物品主体，将白底图中的产品替换到背景中。" + mainList.get(i);
-            String outputPath = new File(mainOutputDir, (i + 1) + ".jpg").getAbsolutePath();
-            boolean ok = generateImage(prompt, randomRef.getAbsolutePath(), whiteBgUrl, outputPath, agentId);
-            if (ok) outputPaths.add(outputPath);
-            log.info("主图 {}: {}", i + 1, ok ? "成功" : "失败");
+            final String outputPath = new File(mainOutputDir, (idx + 1) + ".jpg").getAbsolutePath();
+            futures.add(CompletableFuture.supplyAsync(() -> {
+                boolean ok = generateImage(prompt, ref.getAbsolutePath(), whiteBgUrl, outputPath, agentId);
+                log.info("主图 {}: {}", idx + 1, ok ? "成功" : "失败");
+                return ok ? outputPath : null;
+            }, executor));
         }
+
+        List<String> outputPaths = new ArrayList<>();
+        futures.forEach(f -> {
+            try {
+                String p = f.join();
+                if (p != null) outputPaths.add(p);
+            } catch (Exception e) { log.warn("主图生成异常: {}", e.getMessage()); }
+        });
         return outputPaths;
     }
 

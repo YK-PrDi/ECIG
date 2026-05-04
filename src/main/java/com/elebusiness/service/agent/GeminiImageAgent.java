@@ -25,9 +25,19 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
 
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private volatile OkHttpClient sharedClient;
 
     public GeminiImageAgent(AppProperties appProperties) {
         this.appProperties = appProperties;
+    }
+
+    private OkHttpClient getClient(int timeoutSeconds) {
+        if (sharedClient == null) {
+            synchronized (this) {
+                if (sharedClient == null) sharedClient = buildClient(timeoutSeconds);
+            }
+        }
+        return sharedClient;
     }
 
     @Override
@@ -49,7 +59,7 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
 
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                Thread.sleep(delaySeconds * 1000L);
+                if (attempt > 0) Thread.sleep(delaySeconds * 1000L);
 
                 byte[] refImgBytes = Files.readAllBytes(new File(refImagePath).toPath());
                 String refImgBase64 = Base64.getEncoder().encodeToString(refImgBytes);
@@ -74,7 +84,7 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
                 String model = appProperties.getGemini().getModel();
                 String url = BASE_URL + model + ":generateContent?key=" + apiKey;
 
-                OkHttpClient client = buildClient(apiConfig.getTimeoutSeconds());
+                OkHttpClient client = getClient(apiConfig.getTimeoutSeconds());
 
                 Request request = new Request.Builder()
                         .url(url)

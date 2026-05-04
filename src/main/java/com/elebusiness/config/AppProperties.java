@@ -92,9 +92,10 @@ public class AppProperties {
     }
 
     public static class Api {
-        private int delaySeconds = 10;
+        private int delaySeconds = 2;
         private int timeoutSeconds = 90;
         private int maxRetries = 3;
+        private int maxConcurrent = 6;
 
         public int getDelaySeconds() { return delaySeconds; }
         public void setDelaySeconds(int delaySeconds) { this.delaySeconds = delaySeconds; }
@@ -102,6 +103,8 @@ public class AppProperties {
         public void setTimeoutSeconds(int timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }
         public int getMaxRetries() { return maxRetries; }
         public void setMaxRetries(int maxRetries) { this.maxRetries = maxRetries; }
+        public int getMaxConcurrent() { return maxConcurrent; }
+        public void setMaxConcurrent(int maxConcurrent) { this.maxConcurrent = maxConcurrent; }
     }
 
     public static class Proxy {
