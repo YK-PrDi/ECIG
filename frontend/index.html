@@ -255,6 +255,10 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div id="ecommerceConfig" class="panel-view">
+                            <div id="ecFieldsContainer" style="display:flex; flex-wrap:wrap; gap:8px 16px; align-items:flex-start; width:100%;"></div>
+                        </div>
                     </div>
 
                     <!-- 拖拽上传指示器 -->
@@ -275,6 +279,7 @@
                             <div class="mode-selector">
                                 <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">标准生图</button>
                                 <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义</button>
+                                <button class="mode-btn" id="btn-ecommerce" onclick="setMode('ecommerce')">电商模式</button>
                                 <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频生成</button>
                             </div>
                             <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
@@ -727,6 +732,7 @@
             const modeToPanel = {
                 'standard': 'standardConfig',
                 'custom': 'customConfig',
+                'ecommerce': 'ecommerceConfig',
                 'video': 'videoConfig'
             };
 
@@ -759,6 +765,10 @@
             } else if (mode === 'custom') {
                 input.placeholder = '描述对参考图的修改...';
                 sendBtn.className = 'btn-send custom';
+            } else if (mode === 'ecommerce') {
+                input.placeholder = '客户附加要求（可留空）...';
+                sendBtn.className = 'btn-send custom';
+                initEcommercePanel();
             } else {
                 input.placeholder = '用文字描述视频内容、场景、动态效果...';
                 sendBtn.className = 'btn-send video';
@@ -770,7 +780,7 @@
                 loadAgents();
             }
 
-            if (mode !== 'custom') isTextOnly = false;
+            if (mode !== 'custom' && mode !== 'ecommerce') isTextOnly = false;
 
             updateControlStates();
             input.focus();
@@ -939,6 +949,50 @@
                     appendMessage('ai', '生成失败：' + e.message);
                 }
 
+            } else if (currentMode === 'ecommerce') {
+                apiPath = '/api/custom_generate';
+
+                const ecPrompt = buildEcommercePrompt(prompt);
+                if (!ecPrompt) { alert('请至少选择一个参数（如品类或风格）'); return; }
+
+                payload.prompt = ecPrompt;
+                const formData = new FormData();
+                if (droppedFiles.length > 0) {
+                    droppedFiles.forEach(f => formData.append('images', f));
+                } else if (sessionImagePath) {
+                    try {
+                        const blob = await fetch(`/api/image?path=${encodeURIComponent(sessionImagePath)}`).then(r => r.blob());
+                        formData.append('images', new File([blob], 'session_base.jpg', { type: blob.type || 'image/jpeg' }));
+                    } catch (_) {}
+                }
+                for (const key in payload) formData.append(key, payload[key]);
+
+                appendMessage('user', `[电商模式] 模型: ${agentId}\n${ecPrompt.substring(0, 120)}...`);
+
+                try {
+                    document.getElementById('generateBtn').disabled = true;
+                    promptInput.value = '';
+
+                    const resp = await fetch(apiPath, { method: 'POST', body: formData });
+                    const data = await resp.json();
+                    if (data.error) throw new Error(data.error);
+                    if (data.results) {
+                        const failed  = data.results.filter(r => typeof r === 'string' && r.startsWith('失败'));
+                        const success = data.results.filter(r => typeof r === 'string' && !r.startsWith('失败'));
+                        if (success.length === 0) {
+                            appendMessage('ai', `❌ 生成失败\n${failed.map(r => '• ' + r).join('\n')}`);
+                        } else {
+                            if (failed.length > 0) appendMessage('ai', `⚠️ 部分失败（${failed.length} 张）`);
+                            renderGeneratedImages([{ name: '电商模式生成', status: 'success', output: data.output_dir }]);
+                            setSessionImage(success[0]);
+                        }
+                        clearFiles();
+                    }
+                } catch (e) {
+                    document.getElementById('generateBtn').disabled = false;
+                    appendMessage('ai', '生成失败：' + e.message);
+                }
+
             } else if (currentMode === 'video') {
                 const aspectRatio     = document.getElementById('videoAspectRatio')?.value || '16:9';
                 const durationSeconds = parseInt(document.getElementById('videoDurationSec')?.value || '8');
@@ -1092,6 +1146,237 @@
         }
 
         function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); executeTask(); } }
+
+        // ── 电商模式 ──
+        const EC_SCENE_SUB = {
+            '浴室': [
+                { display: '淋浴房玻璃门', value: '水淋浴房玻璃门：挂浴花、起泡网、刮水板（背景有水雾感）。' },
+                { display: '洗漱台侧墙', value: '洗漱台侧墙/镜柜旁：挂吹风机线圈、擦手巾、发箍。' },
+                { display: '门后空间', value: '门后空间：挂浴袍、换洗衣物。' }
+            ],
+            '厨房': [
+                { display: '灶台墙面', value: '灶台墙面：挂锅铲、汤勺、抹布（背景有轻微的烟火气或整洁的调料区）' }
+            ]
+        };
+
+        const EC_FIELDS = [
+            { key: 'category', label: '品类', type: 'text', promptKey: '主体' },
+            { key: 'install',  label: '安装方式', promptKey: '安装方式',
+              options: [
+                { display: '免打孔', value: '免打孔' }, { display: '真空吸盘', value: '真空吸盘' },
+                { display: '磁吸', value: '磁吸' }, { display: '门后背式', value: '门后背式' },
+                { display: '卡扣', value: '卡扣' }
+              ]
+            },
+            { key: 'shape', label: '形态结构', promptKey: '形态',
+              options: [
+                { display: '单钩', value: '单钩' },
+                { display: '连排钩', value: '连排钩（排挂）' }
+              ]
+            },
+            { key: 'style', label: '风格', promptKey: '风格',
+              options: [
+                { display: '极简主义', value: '极简主义（无主灯设计、隐藏式收纳、大面积留白）' },
+                { display: '轻奢风', value: '轻奢风（金属点缀、岩板/大理石纹理、玻璃材质、悬浮设计）' },
+                { display: '侘寂风', value: '侘寂风（微水泥质感、原木色调、哑光表面、自然粗犷）' },
+                { display: '现代前卫', value: '现代前卫（科技感、黑白灰主色调、几何线条）' },
+                { display: '原木北欧', value: '原木北欧（温暖自然、木质元素、清新明亮）' },
+                { display: '新中式', value: '新中式（对称美学、胡桃木色、中式格栅、水墨纹理）' }
+              ]
+            },
+            { key: 'material', label: '材质/工艺', promptKey: '材质/工艺',
+              options: [
+                { display: 'S亚克力透明', value: 'S亚克力透明' },
+                { display: 'ABS/PP塑料', value: 'ABS/PP塑料挂钩' },
+                { display: '实木挂钩', value: '实木挂钩' },
+                { display: '黄铜挂钩', value: '黄铜挂钩' }
+              ]
+            },
+            { key: 'selling', label: '卖点', promptKey: '卖点',
+              options: [
+                { display: '强承重', value: '强承重（例.挂载重物（如铸铁锅、装满水的沐浴露、厚重湿浴巾），表现不掉落。）' },
+                { display: '防水防潮', value: '防水防潮（例.挂钩上有水珠，或处于淋浴水流附近，表现吸附力依然强劲。）' },
+                { display: '免打孔/无痕', value: '免打孔/无痕（例.特写背面透明胶贴或吸盘，背景为完好无损的昂贵瓷砖）' },
+                { display: '灵活用空间', value: '灵活用空间（例.倒挂在橱柜下方（收纳厨具），或夹在夹角处）' },
+                { display: '防刮防掉', value: '防刮防掉（例.挂钩端部的圆润处理、加长防滑设计特写）' }
+              ]
+            },
+            { key: 'scene', label: '场景', promptKey: '场景', hasSubOptions: true,
+              options: [
+                { display: '浴室', value: '浴室' },
+                { display: '厨房', value: '厨房' }
+              ]
+            },
+            { key: 'composition', label: '构图', promptKey: '构图',
+              options: [
+                { display: '特写', value: '特写' }, { display: '全景', value: '全景' },
+                { display: '对比', value: '对比' }, { display: '动感', value: '动感' }
+              ]
+            },
+            { key: 'lighting', label: '光影', promptKey: '光影',
+              options: [
+                { display: '自然光', value: '自然光' },
+                { display: '灯光', value: '灯光' }
+              ]
+            }
+        ];
+
+        let ecSel = {};
+        let ecPanelInit = false;
+
+        function ecEscAttr(str) {
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function initEcommercePanel() {
+            if (ecPanelInit) return;
+            ecPanelInit = true;
+            const arrow = `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+            const container = document.getElementById('ecFieldsContainer');
+            let html = '';
+            for (const f of EC_FIELDS) {
+                if (f.type === 'text') {
+                    html += `<div class="config-group" style="min-width:120px;flex:1 1 120px;">
+                        <label>${f.label}</label>
+                        <input type="text" class="input-field" id="ec-${f.key}"
+                            placeholder="输入${f.label}..."
+                            style="height:32px;padding:4px 10px;font-size:0.78rem;"
+                            oninput="ecSel['${f.key}']=this.value">
+                    </div>`;
+                } else {
+                    const optsHtml = f.options.map((o, i) =>
+                        `<div class="gf-option" data-key="${f.key}" data-value="${ecEscAttr(o.value)}" data-display="${ecEscAttr(o.display)}" onclick="ecPickOptionEl(this)">${ecEscAttr(o.display)}</div>`
+                    ).join('') +
+                    `<div class="gf-option" data-key="${f.key}" data-value="__custom__" data-display="自定义" onclick="ecPickOptionEl(this)">自定义...</div>`;
+
+                    const subWrap = f.hasSubOptions ? `
+                        <div class="gf-select sm drop-up" id="ec-scene-sub-wrap" style="display:none;min-width:120px;" tabindex="0">
+                            <input type="hidden" id="ec-sceneDetail" value="">
+                            <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                <span class="gf-select-text" id="ec-sceneDetail-text">场景细节</span>
+                                ${arrow}
+                            </div>
+                            <div class="gf-select-options" id="ec-sceneDetail-options"></div>
+                        </div>` : '';
+
+                    html += `<div class="config-group" style="min-width:100px;flex:1 1 100px;">
+                        <label>${f.label}</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                            <div class="gf-select sm drop-up" tabindex="0" style="min-width:100px;">
+                                <input type="hidden" id="ec-${f.key}" value="">
+                                <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                    <span class="gf-select-text" id="ec-${f.key}-text">—</span>
+                                    ${arrow}
+                                </div>
+                                <div class="gf-select-options">
+                                    <div class="gf-option selected" data-key="${f.key}" data-value="" data-display="—" onclick="ecPickOptionEl(this)">— 空</div>
+                                    ${optsHtml}
+                                </div>
+                            </div>
+                            ${subWrap}
+                        </div>
+                        <input type="text" class="input-field" id="ec-custom-${f.key}"
+                            placeholder="自定义${f.label}..."
+                            style="display:none;height:28px;padding:2px 8px;font-size:0.75rem;margin-top:4px;"
+                            oninput="ecSel['${f.key}']=this.value">
+                    </div>`;
+                }
+            }
+            container.innerHTML = html;
+        }
+
+        function ecPickOptionEl(el) {
+            const key = el.dataset.key;
+            const value = el.dataset.value;
+            const display = el.dataset.display;
+            const wrapper = el.closest('.gf-select');
+            wrapper.classList.remove('open');
+            wrapper.querySelectorAll('.gf-option').forEach(o => o.classList.remove('selected'));
+            el.classList.add('selected');
+            wrapper.querySelector('input[type=hidden]').value = value;
+            wrapper.querySelector('.gf-select-text').textContent = display;
+
+            const customInput = document.getElementById(`ec-custom-${key}`);
+            if (value === '__custom__') {
+                ecSel[key] = '';
+                if (customInput) { customInput.style.display = 'block'; customInput.value = ''; customInput.focus(); }
+            } else {
+                ecSel[key] = value;
+                if (customInput) customInput.style.display = 'none';
+            }
+            if (key === 'scene') ecUpdateSceneSub(value === '__custom__' ? '' : value);
+        }
+
+        function ecUpdateSceneSub(scene) {
+            const wrap = document.getElementById('ec-scene-sub-wrap');
+            if (!wrap) return;
+            ecSel['sceneDetail'] = '';
+            const hiddenInput = document.getElementById('ec-sceneDetail');
+            const textEl = document.getElementById('ec-sceneDetail-text');
+            const optContainer = document.getElementById('ec-sceneDetail-options');
+            if (hiddenInput) hiddenInput.value = '';
+            if (textEl) textEl.textContent = '场景细节';
+            const subs = EC_SCENE_SUB[scene] || [];
+            if (subs.length === 0) { wrap.style.display = 'none'; return; }
+            wrap.style.display = '';
+            const arrow = `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+            optContainer.innerHTML =
+                `<div class="gf-option selected" data-value="" data-display="—" onclick="ecPickSubEl(this)">— 空</div>` +
+                subs.map(s => `<div class="gf-option" data-value="${ecEscAttr(s.value)}" data-display="${ecEscAttr(s.display)}" onclick="ecPickSubEl(this)">${ecEscAttr(s.display)}</div>`).join('');
+        }
+
+        function ecPickSubEl(el) {
+            const wrapper = el.closest('.gf-select');
+            wrapper.classList.remove('open');
+            wrapper.querySelectorAll('.gf-option').forEach(o => o.classList.remove('selected'));
+            el.classList.add('selected');
+            wrapper.querySelector('input[type=hidden]').value = el.dataset.value;
+            wrapper.querySelector('.gf-select-text').textContent = el.dataset.display;
+            ecSel['sceneDetail'] = el.dataset.value;
+        }
+
+        function buildEcommercePrompt(userReq) {
+            const params = [];
+            const cat = (ecSel.category || (document.getElementById('ec-category')?.value) || '').trim();
+            if (cat) params.push(`主体[${cat}]`);
+
+            const styleVal = ecSel.style || '';
+            if (styleVal && styleVal !== '__custom__') params.push(`风格[${styleVal}]`);
+            else if (styleVal === '__custom__') {
+                const cv = (document.getElementById('ec-custom-style')?.value || '').trim();
+                if (cv) params.push(`风格[${cv}]`);
+            }
+
+            const scene = ecSel.scene || '';
+            if (scene && scene !== '__custom__') {
+                const detail = ecSel.sceneDetail || '';
+                params.push(`场景[${detail ? scene + '，' + detail : scene}]`);
+            } else if (scene === '__custom__') {
+                const cv = (document.getElementById('ec-custom-scene')?.value || '').trim();
+                if (cv) params.push(`场景[${cv}]`);
+            }
+
+            const addIfSet = (key, label) => {
+                const v = ecSel[key] || '';
+                if (!v || v === '__custom__') {
+                    const cv = (document.getElementById(`ec-custom-${key}`)?.value || '').trim();
+                    if (cv) params.push(`${label}[${cv}]`);
+                } else {
+                    params.push(`${label}[${v}]`);
+                }
+            };
+            addIfSet('material', '材质/工艺');
+            addIfSet('install', '安装方式');
+            addIfSet('shape', '形态');
+            addIfSet('selling', '卖点');
+            addIfSet('composition', '构图');
+            addIfSet('lighting', '光影');
+
+            if (userReq) params.push(`客户附加要求[${userReq}]`);
+            if (params.length === 0) return '';
+
+            return `你是一个中国电商资深视觉设计师，请根据以下用户选择的参数，写一段用于Stable Diffusion的英文生图提示词。\n公式要求：[画质词] + [主体描述] + [环境背景] + [光影/材质] + [镜头构图]。\n用户参数：${params.join('；')}。\n请输出英文逗号分隔的提示词，要求生成高质量电商主图，突出产品质感和使用场景。`;
+        }
 
         // ── 文件选择框（图片 / 文件夹）──
         function handleFileInputChange(input) {
