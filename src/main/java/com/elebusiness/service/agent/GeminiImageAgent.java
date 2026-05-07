@@ -26,15 +26,25 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private volatile OkHttpClient sharedClient;
+    private volatile String sharedClientProxyKey = null;
 
     public GeminiImageAgent(AppProperties appProperties) {
         this.appProperties = appProperties;
     }
 
+    private String currentProxyKey() {
+        AppProperties.Proxy p = appProperties.getProxy();
+        return p.isEnabled() ? p.getHost() + ":" + p.getPort() : "";
+    }
+
     private OkHttpClient getClient(int timeoutSeconds) {
-        if (sharedClient == null) {
+        String proxyKey = currentProxyKey();
+        if (sharedClient == null || !proxyKey.equals(sharedClientProxyKey)) {
             synchronized (this) {
-                if (sharedClient == null) sharedClient = buildClient(timeoutSeconds);
+                if (sharedClient == null || !proxyKey.equals(sharedClientProxyKey)) {
+                    sharedClient = buildClient(timeoutSeconds);
+                    sharedClientProxyKey = proxyKey;
+                }
             }
         }
         return sharedClient;

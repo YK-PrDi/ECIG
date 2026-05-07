@@ -34,7 +34,9 @@ public class ConfigService {
             appProperties.getProxy().setPort(Integer.parseInt(cfg.getOrDefault("proxy_port", "8086")));
         } catch (NumberFormatException ignored) {}
         if (!host.isBlank()) {
-            log.info("已从配置文件加载代理: {}:{}", host, appProperties.getProxy().getPort());
+            log.info("代理模式：显式代理 {}:{}", host, appProperties.getProxy().getPort());
+        } else {
+            log.info("代理模式：跟随系统代理（java.net.useSystemProxies=true）");
         }
     }
 

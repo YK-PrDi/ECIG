@@ -17,6 +17,9 @@ import java.net.URI;
 public class EleBusinessApplication {
 
     public static void main(String[] args) {
+        // 让 Java 网络层读取 Windows / macOS 系统代理设置
+        // 当 app 未配置显式代理时，OkHttpClient 会自动跟随系统加速器
+        System.setProperty("java.net.useSystemProxies", "true");
         SpringApplication.run(EleBusinessApplication.class, args);
         System.out.println("========================================");
         System.out.println("  产品图片生成系统已启动");

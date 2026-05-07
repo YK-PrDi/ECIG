@@ -33,7 +33,15 @@
         <a href="#" class="brand">
             <div class="brand-icon rainbow-logo">✧</div> AI Studio
         </a>
-        <div style="margin-left:auto; display:flex; gap:16px; align-items:center;">
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+            <button id="themeToggleBtn" onclick="switchTheme()" title="切换明暗模式"
+                style="width:36px;height:36px;border-radius:50%;border:none;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;flex-shrink:0;"
+                onmouseenter="this.style.background='var(--primary)';this.style.color='white'"
+                onmouseleave="this.style.background='var(--primary-light)';this.style.color='var(--primary)'">
+                <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+            </button>
             <div class="user-menu-container">
                 <div class="avatar-btn" onclick="toggleUserMenu(event)">A</div>
                 <div class="user-dropdown" id="userMenu" onclick="event.stopPropagation()">
@@ -60,6 +68,10 @@
                     <div class="user-menu-item" onclick="openConfigModal()">
                         <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                         同步配置
+                    </div>
+                    <div class="user-menu-item" onclick="openProxyModal()">
+                        <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+                        代理设置
                     </div>
                     <div style="height: 1px; background: var(--border); margin: 8px -20px 0;"></div>
                     <div class="user-menu-item" style="color: #EF4444;" onclick="document.getElementById('loginOverlay').style.display='flex'">退出登录</div>
@@ -381,9 +393,19 @@
         let currentThemeIndex = 0;
         const themes = ['theme-light', 'theme-dark'];
 
+        const ICON_SUN  = `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`;
+        const ICON_MOON = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`;
+
+        function updateThemeIcon(isDark) {
+            const el = document.getElementById('themeIcon');
+            if (el) el.innerHTML = isDark ? ICON_SUN : ICON_MOON;
+        }
+
         function switchTheme() {
-            const icon = document.querySelector('.glow-icon');
-            const rect = icon.getBoundingClientRect();
+            const glowIcon = document.querySelector('.glow-icon');
+            const toggleBtn = document.getElementById('themeToggleBtn');
+            const originEl  = glowIcon || toggleBtn;
+            const rect = originEl ? originEl.getBoundingClientRect() : { left: window.innerWidth / 2, top: 32, width: 0, height: 0 };
 
             const nextIndex = (currentThemeIndex + 1) % themes.length;
             const nextTheme = themes[nextIndex];
@@ -394,6 +416,7 @@
                 if (nextTheme !== 'theme-light') {
                     document.body.classList.add(nextTheme);
                 }
+                updateThemeIcon(nextTheme === 'theme-dark');
             };
 
             if (document.startViewTransition) {
@@ -536,6 +559,13 @@
 
         async function initApp() {
             await loadAgents();
+            // 静默检查是否已配置，避免每次启动强制弹窗
+            try {
+                const cfg = await fetch('/api/config').then(r => r.json());
+                if (cfg.app_key && cfg.app_secret && cfg.union_id && cfg.app_uuid && cfg.sheet_id) {
+                    isConfigured = true;
+                }
+            } catch (_) {}
             loadProducts();
             loadCategories();
         }
@@ -820,8 +850,7 @@
 
         async function loadProducts() {
             if (!isConfigured) {
-                appendMessage('ai', '⚠️ 系统提示：尚未配置同步平台参数，无法拉取产品目录。请先完成配置。');
-                openConfigModal();
+                appendMessage('ai', '⚠️ 系统提示：尚未配置同步平台参数，无法拉取产品目录。请点击右上角头像 → 同步配置 完成设置。');
                 return;
             }
             try {
@@ -1524,8 +1553,6 @@
                 if (cfg.app_key && cfg.app_secret && cfg.union_id && cfg.app_uuid && cfg.sheet_id) {
                     isConfigured = true;
                 }
-                document.getElementById('proxy_host').value = cfg.proxy_host || '';
-                document.getElementById('proxy_port').value = cfg.proxy_port || '7890';
             }).catch(() => {});
         }
 
@@ -1533,6 +1560,56 @@
             const modal = document.getElementById('configModal');
             modal.classList.remove('show');
             setTimeout(() => modal.style.display = 'none', 300);
+        }
+
+        function openProxyModal() {
+            const modal = document.getElementById('proxyModal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('show'), 10);
+            document.getElementById('userMenu').classList.remove('show');
+            fetch('/api/config').then(r => r.json()).then(cfg => {
+                document.getElementById('pxy_host').value = cfg.proxy_host || '';
+                document.getElementById('pxy_port').value = cfg.proxy_port || '8086';
+            }).catch(() => {});
+        }
+
+        function closeProxyModal() {
+            const modal = document.getElementById('proxyModal');
+            modal.classList.remove('show');
+            setTimeout(() => modal.style.display = 'none', 300);
+        }
+
+        function saveProxyConfig() {
+            const btn = document.getElementById('saveProxyBtn');
+            const originalText = btn.textContent;
+            btn.textContent = '保存中...';
+            btn.disabled = true;
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    proxy_host: document.getElementById('pxy_host').value.trim(),
+                    proxy_port: document.getElementById('pxy_port').value.trim() || '8086'
+                })
+            }).then(r => {
+                if (!r.ok) throw new Error('保存失败');
+                btn.textContent = '保存成功！';
+                btn.style.background = '#10B981';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                    btn.disabled = false;
+                    closeProxyModal();
+                }, 800);
+            }).catch(() => {
+                btn.textContent = '保存失败，请重试';
+                btn.style.background = '#EF4444';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                    btn.disabled = false;
+                }, 1500);
+            });
         }
 
         function selectPlatform(el, platformId) {
@@ -1566,9 +1643,7 @@
                     app_secret: document.getElementById('dt_app_secret').value.trim(),
                     union_id:   document.getElementById('dt_union_id').value.trim(),
                     app_uuid:   document.getElementById('dt_app_uuid').value.trim(),
-                    sheet_id:   document.getElementById('dt_sheet_id').value.trim(),
-                    proxy_host: document.getElementById('proxy_host').value.trim(),
-                    proxy_port: document.getElementById('proxy_port').value.trim() || '7890'
+                    sheet_id:   document.getElementById('dt_sheet_id').value.trim()
                 })
             }).then(r => {
                 if (!r.ok) throw new Error('保存失败');
@@ -1595,6 +1670,9 @@
 
         document.getElementById('configModal').onclick = function(e) {
             if (e.target === this) closeConfigModal();
+        };
+        document.getElementById('proxyModal').onclick = function(e) {
+            if (e.target === this) closeProxyModal();
         };
     </script>
 
@@ -1676,24 +1754,35 @@
                     <p class="placeholder-text">ToDesk参数配置项待开放...</p>
                 </div>
             </div>
-            <!-- 代理设置（Gemini 等国内无法直连的模型需要） -->
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
-                <div style="font-size:0.8rem; font-weight:600; color:var(--text-dim); margin-bottom:10px;">HTTP 代理（Gemini 模型必填）</div>
-                <div style="display:flex; gap:10px; align-items:flex-end;">
-                    <div class="form-item" style="flex:3; margin:0;">
-                        <label>代理主机</label>
-                        <input type="text" id="proxy_host" class="input-field" placeholder="127.0.0.1">
-                    </div>
-                    <div class="form-item" style="flex:1; margin:0;">
-                        <label>端口</label>
-                        <input type="number" id="proxy_port" class="input-field" placeholder="8086" value="8086">
-                    </div>
-                </div>
-                <p style="font-size:0.72rem; color:var(--text-dim); margin-top:6px;">留空则不使用代理；保存后立即生效，无需重启</p>
-            </div>
             <div class="modal-footer" style="margin-top: 16px;">
                 <button class="btn-outline" style="flex:1" onclick="closeConfigModal()">取消</button>
                 <button class="btn-primary" style="flex:2" id="saveConfigBtn" onclick="savePlatformConfig()">保存并验证</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── 代理设置弹窗 ── -->
+    <div id="proxyModal" class="modal-overlay">
+        <div class="modal-card" style="max-width:420px;">
+            <div class="modal-header">
+                <h3>代理设置</h3>
+                <button class="close-btn" onclick="closeProxyModal()">×</button>
+            </div>
+            <p class="modal-desc">Gemini 等模型需要代理才能访问。留空主机则自动跟随系统加速器（推荐）</p>
+            <div class="forms-container" style="margin-top:12px;">
+                <div class="form-item" style="flex:3;">
+                    <label>代理主机 <span style="font-weight:400;color:var(--text-dim);">（留空 = 系统代理）</span></label>
+                    <input type="text" id="pxy_host" class="input-field" placeholder="留空则自动使用系统加速器">
+                </div>
+                <div class="form-item" style="flex:1;">
+                    <label>端口</label>
+                    <input type="number" id="pxy_port" class="input-field" placeholder="8086" value="8086">
+                </div>
+            </div>
+            <p style="font-size:0.72rem; color:var(--text-dim); margin-top:8px;">保存后立即生效，无需重启。填写后优先使用指定代理，覆盖系统代理。</p>
+            <div class="modal-footer" style="margin-top:16px;">
+                <button class="btn-outline" style="flex:1" onclick="closeProxyModal()">取消</button>
+                <button class="btn-primary" style="flex:2" id="saveProxyBtn" onclick="saveProxyConfig()">保存</button>
             </div>
         </div>
     </div>

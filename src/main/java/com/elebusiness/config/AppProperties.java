@@ -108,8 +108,8 @@ public class AppProperties {
     }
 
     public static class Proxy {
-        /** 代理主机，留空则不使用代理 */
-        private String host = "127.0.0.1";
+        /** 代理主机，留空则跟随系统代理；填写则强制使用指定代理 */
+        private String host = "";
         private int port = 8086;
 
         public String getHost() { return host; }
