@@ -6,7 +6,7 @@ echo ====================================
 cd /d "%~dp0"
 
 echo [1/4] 构建 Maven 项目...
-call mvn package -DskipTests -q
+call "E:\IDEA\IntelliJ IDEA Community Edition 2025.2.4\plugins\maven\lib\maven3\bin\mvn.cmd" package -DskipTests -q
 if errorlevel 1 (
     echo 构建失败！请检查 IDEA 错误信息。
     pause

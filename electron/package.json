@@ -36,7 +36,6 @@
       { "from": "../dist/app.jar",  "to": "app.jar"  },
       { "from": "../dist/runtime",  "to": "runtime"  },
       { "from": "../dist/frontend", "to": "frontend" },
-      { "from": "../大参考",        "to": "大参考"   },
       { "from": "../prompts",       "to": "prompts"  }
     ],
     "directories": {

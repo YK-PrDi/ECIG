@@ -10,6 +10,7 @@ import com.elebusiness.service.DingTalkService;
 import com.elebusiness.service.ImageGenerationService;
 import com.elebusiness.service.PromptService;
 import com.elebusiness.service.TaskService;
+import com.elebusiness.service.agent.GptImageAgent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
@@ -41,17 +42,19 @@ public class ApiController {
     private final AppProperties appProperties;
     private final TaskService taskService;
     private final PromptService promptService;
+    private final GptImageAgent gptImageAgent;
 
     public ApiController(ConfigService configService, DingTalkService dingTalkService,
                          ImageGenerationService imageGenerationService,
                          AppProperties appProperties, TaskService taskService,
-                         PromptService promptService) {
+                         PromptService promptService, GptImageAgent gptImageAgent) {
         this.configService = configService;
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
         this.appProperties = appProperties;
         this.taskService = taskService;
         this.promptService = promptService;
+        this.gptImageAgent = gptImageAgent;
     }
 
     @GetMapping("/api/prompts")
@@ -354,6 +357,50 @@ public class ApiController {
         });
 
         return ResponseEntity.ok(Map.of("taskId", task.getId(), "output_dir", outputDir));
+    }
+
+    @PostMapping("/api/inpaint")
+    public ResponseEntity<Map<String, Object>> inpaint(
+            @RequestParam("image")  MultipartFile image,
+            @RequestParam("mask")   MultipartFile mask,
+            @RequestParam("prompt") String prompt) {
+
+        if (image == null || image.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "缺少原图"));
+        }
+        if (mask == null || mask.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "缺少蒙版"));
+        }
+        if (prompt == null || prompt.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "缺少提示词"));
+        }
+
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String outputDir = new File(appProperties.getPaths().getOutputDir(),
+                "局部编辑/" + timestamp).getAbsolutePath();
+        new File(outputDir).mkdirs();
+        String outputPath = new File(outputDir, "1.png").getAbsolutePath();
+
+        File imageTmp = null;
+        File maskTmp  = null;
+        try {
+            // 调试：保存到输出目录方便检查实际收到的 image 和 mask
+            imageTmp = new File(outputDir, "debug_image.png");
+            maskTmp  = new File(outputDir, "debug_mask.png");
+            image.transferTo(imageTmp);
+            mask.transferTo(maskTmp);
+            log.info("inpaint debug: image= mask={}", imageTmp.getAbsolutePath(), maskTmp.getAbsolutePath());
+
+            boolean ok = gptImageAgent.generateWithMask(prompt, imageTmp, maskTmp, outputPath);
+            if (!ok) {
+                return ResponseEntity.internalServerError()
+                        .body(Map.of("error", "GPT-Image 局部重绘失败，请检查 API Key 或网络"));
+            }
+            return ResponseEntity.ok(Map.of("results", List.of(outputPath), "output_dir", outputDir));
+        } catch (Exception e) {
+            log.error("inpaint error: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/api/image")

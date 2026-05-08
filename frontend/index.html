@@ -82,17 +82,93 @@
 
     <div class="app-content">
         <aside class="sidebar" id="mainSidebar">
-            <div style="padding:20px; border-bottom:1px solid var(--border);">
-                <button class="btn-primary" style="width:100%; height:40px;" onclick="loadProducts()">同步产品</button>
+            <div class="sidebar-header">
+                <span class="sidebar-title">局部编辑</span>
+                <button class="sidebar-toggle-btn" id="sidebarToggleBtn" onclick="toggleSidebar()" title="折叠/展开">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
             </div>
-            <div class="section-label" style="display:flex; justify-content:space-between; padding:0 20px;">
-                <span>产品目录</span>
-                <span id="listCount" style="color:var(--primary);">0</span>
+
+            <!-- 局部编辑控制面板 -->
+            <div id="inpaintSidePanel" style="display:flex; flex-direction:column; flex:1; overflow-y:auto;">
+                <!-- 无选中时：简洁提示 + 添加按钮 -->
+                <div class="inpaint-side-section" id="sideUploadSection">
+                    <button class="add-to-canvas-btn" id="inpaintUploadCard" title="添加图片到画布">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        <span>添加图片</span>
+                    </button>
+                    <input type="file" id="inpaintFileInput" accept="image/*" multiple style="display:none;">
+                    <div style="font-size:11px; color:var(--text-dim); margin-top:8px; line-height:1.6;">拖图片到画布<br>或点击上方按钮</div>
+                </div>
+
+                <!-- 选中图片时：图片信息 -->
+                <div class="inpaint-side-section" id="sideInfoSection" style="display:none;">
+                    <div class="section-title">已选中</div>
+                    <div id="sideImgInfo" style="font-size:12px; color:var(--text-dim); line-height:1.8;"></div>
+                    <div style="font-size:11px; color:var(--text-dim); margin-top:8px; line-height:1.6;">双击 → 编辑蒙版<br>Delete → 删除<br>拖出 → 引用到对话</div>
+                </div>
+
+                <!-- 编辑模式时：绘制工具 -->
+                <div class="inpaint-side-section" id="sideEditSection" style="display:none;">
+                    <div class="section-title">绘制蒙版</div>
+                    <div class="inpaint-tools-grid">
+                        <button class="tool-btn active" id="brushBtn" onclick="setInpaintTool('brush')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19c-2.3 0-6.4-.2-8-2 3.5.5 5.5-.5 6-2 .5-1.5-.5-3-2-3-2.5 0-4 2-4 4 0 3 3.5 5 8 5s8-2 8-5c0-2-1.5-4-4-4-1.5 0-2.5 1.5-2 3 .5 1.5 2.5 2.5 6 2-1.6 1.8-5.7 2-8 2z"/><path d="M12 3v10"/></svg>
+                            <span>画笔</span>
+                        </button>
+                        <button class="tool-btn" id="eraserBtn" onclick="setInpaintTool('eraser')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+                            <span>橡皮擦</span>
+                        </button>
+                        <button class="tool-btn" id="lassoBtn" onclick="setInpaintTool('lasso')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3C7 3 3 6.5 3 11c0 2.5 1.5 4.5 3.5 5.5L8 21h8l1.5-4.5C19.5 15.5 21 13.5 21 11c0-4.5-4-8-9-8z"/><path d="M9 11c0-1.7 1.3-3 3-3s3 1.3 3 3-1.3 3-3 3-3-1.3-3-3z"/></svg>
+                            <span>套索</span>
+                        </button>
+                    </div>
+                    <div class="slider-group">
+                        <label>笔画大小 <span id="brushSizeDisplay">30</span>px</label>
+                        <input type="range" id="brushSizeSlider" min="5" max="80" value="30"
+                            oninput="document.getElementById('brushSizeDisplay').textContent=this.value">
+                    </div>
+                    <button class="clear-mask-btn" onclick="_boardProxy.clearMask()">清空蒙版</button>
+                    <button class="send-to-chat-btn" style="margin-top:8px;" onclick="_boardProxy.sendSelectedToChat()">→ 引用到对话</button>
+                </div>
             </div>
-            <div class="product-list" id="productList" style="flex:1; overflow-y:auto; padding:10px;"></div>
         </aside>
 
-        <main class="workspace">
+        <div class="resizer" id="resizerLeft"></div>
+
+        <!-- ── 无限画布区 ── -->
+        <div class="canvas-panel" id="canvasPanel">
+            <!-- 主渲染 canvas -->
+            <canvas id="boardCanvas"></canvas>
+            <!-- 编辑模式蒙版覆盖层（双击图片后显示） -->
+            <div id="editOverlay" style="display:none; position:absolute; inset:0; pointer-events:none;">
+                <canvas id="editMaskCanvas" style="position:absolute; pointer-events:all;"></canvas>
+                <div id="editHint" style="position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+                    background:rgba(0,0,0,0.6); color:#fff; padding:6px 14px; border-radius:20px;
+                    font-size:12px; pointer-events:none; white-space:nowrap;">
+                    画笔涂抹蒙版区域 · ESC 退出编辑
+                </div>
+            </div>
+            <!-- 空状态提示 -->
+            <div id="boardEmptyState" style="position:absolute; inset:0; display:flex; flex-direction:column;
+                align-items:center; justify-content:center; gap:12px; pointer-events:none;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.18)"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <p style="color:rgba(0,0,0,0.3); font-size:13px; margin:0;">
+                    从左侧上传图片，或将右侧生成结果拖入
+                </p>
+            </div>
+        </div>
+
+        <div class="resizer" id="resizerRight"></div>
+
+        <main class="workspace chat-panel" id="chatPanel">
             <div class="chat-messages" id="chatMessages">
                 <div class="empty-state" id="emptyState">
                     <div class="glow-icon" onclick="switchTheme()">
@@ -118,7 +194,7 @@
             </div>
 
             <div class="input-area-wrapper">
-                <div style="width:100%; max-width:960px; margin:0 auto; position:relative;">
+                <div style="width:100%; max-width:100%; margin:0 auto; position:relative;">
                     <!-- 配置抽屉 -->
                     <div class="config-drawer" id="configDrawer">
                         <div id="standardConfig" class="panel-view active">
@@ -174,16 +250,25 @@
                             <div class="config-group disabled" style="display:none; max-width:110px;" id="grp-gpt-quality">
                                 <label>质量 (GPT)</label>
                                 <div class="gf-select drop-up" tabindex="0">
-                                    <input type="hidden" id="gptQuality" value="standard">
+                                    <input type="hidden" id="gptQuality" value="auto">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                        <span class="gf-select-text">标准</span>
+                                        <span class="gf-select-text">自动</span>
                                         <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option selected" data-value="standard" onclick="selectOption(this, event)">标准</div>
-                                        <div class="gf-option" data-value="hd" onclick="selectOption(this, event)">高清</div>
+                                        <div class="gf-option selected" data-value="auto" onclick="selectOption(this, event)">自动</div>
+                                        <div class="gf-option" data-value="low" onclick="selectOption(this, event)">低</div>
+                                        <div class="gf-option" data-value="medium" onclick="selectOption(this, event)">中</div>
+                                        <div class="gf-option" data-value="high" onclick="selectOption(this, event)">高</div>
                                     </div>
                                 </div>
+                            </div>
+                            <div class="config-group disabled" style="display:none; max-width:100px; align-items:center; gap:6px;" id="grp-gpt-inpaint">
+                                <label style="white-space:nowrap;">局部重绘</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="gptInpaintToggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
                         </div>
 
@@ -362,36 +447,23 @@
             </div>
         </main>
 
-        <aside class="info-panel">
-            <div class="section-label" style="margin-top:0;">任务队列</div>
-            <div id="progressBox"
-                style="display:none; padding:16px; border:1px solid var(--border); border-radius:12px;">
-                <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:8px;">
-                    <span id="statusLabel">处理中</span>
-                    <b id="progressCount">0/0</b>
-                </div>
-                <div style="background:#F3F4F6; height:4px; border-radius:2px; overflow:hidden;">
-                    <div id="progressBar"
-                        style="background:var(--primary); width:0%; height:100%; transition:width 0.3s;"></div>
-                </div>
-                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted); margin-top:10px;">
-                    <span>⏱ 已用 <b id="progressElapsed">0:00</b></span>
-                    <span>剩余约 <b id="progressEta">估算中…</b></span>
-                </div>
-                <div id="progressCurrent"
-                    style="font-size:0.7rem; color:var(--text-dim); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
-            </div>
-            <div id="progressIdle" style="text-align:center; padding:40px; color:var(--text-dim); font-size:0.85rem;">
-                队列空闲</div>
-        </aside>
+
+
     </div>
 
     <script>
+        function escHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
         let products = [];
         let currentMode = 'standard';
         let pollTimer = null;
         let droppedFiles = [];
         let isTextOnly = false;
+        window.pendingMask = null;
         let promptTree = [];
         let catNodes = [[], [], []];
         let selectedPrompt = { prompt: '', negativePrompt: '' };
@@ -522,6 +594,7 @@
             const grpBatch = document.getElementById('grp-batch-count');
             const grpGptSize = document.getElementById('grp-gpt-size');
             const grpGptQuality = document.getElementById('grp-gpt-quality');
+            const grpGptInpaint = document.getElementById('grp-gpt-inpaint');
 
             if(agent.includes('dall') || agent.includes('gpt')) {
                 if(grpAspect) grpAspect.style.display = 'none';
@@ -530,6 +603,7 @@
 
                 if(grpGptSize) grpGptSize.style.display = 'flex';
                 if(grpGptQuality) grpGptQuality.style.display = 'flex';
+                if(grpGptInpaint) grpGptInpaint.style.display = 'flex';
             } else {
                 if(grpAspect) grpAspect.style.display = 'flex';
                 if(grpNegPrompt) grpNegPrompt.style.display = 'flex';
@@ -537,6 +611,9 @@
 
                 if(grpGptSize) grpGptSize.style.display = 'none';
                 if(grpGptQuality) grpGptQuality.style.display = 'none';
+                if(grpGptInpaint) grpGptInpaint.style.display = 'none';
+                const tog = document.getElementById('gptInpaintToggle');
+                if(tog) tog.checked = false;
             }
         }
 
@@ -639,16 +716,16 @@
             }
 
             grid.innerHTML = filteredData.map(item => `
-                <div class="history-card" onclick="handleMediaClick('image', '/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}', '${item.name}.png', event)">
+                <div class="history-card" onclick="handleMediaClick('image', '/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}', '${escHtml(item.name)}.png', event)">
                     <div class="history-img-wrapper">
-                        <img src="/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}" alt="${item.name}" loading="lazy">
+                        <img src="/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}" alt="${escHtml(item.name)}" loading="lazy">
                     </div>
-                    <div class="history-badge">${item.agent}</div>
+                    <div class="history-badge">${escHtml(item.agent)}</div>
                     <div class="history-overlay">
-                        <div class="history-prompt">${item.name}</div>
+                        <div class="history-prompt">${escHtml(item.name)}</div>
                         <div class="history-meta">
-                            <span>🖼️ ${item.count} 张</span>
-                            <span>🕒 ${item.date}</span>
+                            <span>🖼️ ${escHtml(String(item.count))} 张</span>
+                            <span>🕒 ${escHtml(item.date)}</span>
                         </div>
                     </div>
                 </div>
@@ -858,34 +935,25 @@
         }
 
         async function loadProducts() {
-            if (!isConfigured) {
-                appendMessage('ai', '⚠️ 系统提示：尚未配置同步平台参数，无法拉取产品目录。请点击右上角头像 → 同步配置 完成设置。');
-                return;
-            }
+
+
             try {
                 const response = await fetch('/api/products');
                 const data = await response.json();
                 products = data.products || [];
-                displayProducts();
-                appendMessage('ai', '✅ 产品目录同步成功！');
+                appendMessage('ai', `✅ 产品目录同步成功，共 ${products.length} 个产品。`);
             } catch (e) {
-                document.getElementById('productList').innerHTML = '<div style="padding:20px;text-align:center; color:var(--text-dim);">暂无数据</div>';
+                appendMessage('ai', '❌ 产品目录同步失败');
             }
         }
 
         function displayProducts() {
-            const list = document.getElementById('productList');
-            document.getElementById('listCount').textContent = products.length;
-            list.innerHTML = products.map(p => `
-            <div style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; cursor:pointer;" onclick="this.querySelector('input').click()">
-                <input type="checkbox" value="${p.id}" onclick="event.stopPropagation(); updateCount()">
-                <span style="font-size:0.85rem;">${p.name}</span>
-            </div>
-        `).join('');
+            // 产品目录面板已移除，数据保留在 products 数组中
         }
 
         function updateCount() {
-            document.getElementById('selectedCount').textContent = document.querySelectorAll('input[type="checkbox"]:checked').length;
+            const el = document.getElementById('selectedCount');
+            if (el) el.textContent = document.querySelectorAll('input[type="checkbox"]:checked').length;
         }
 
         async function executeTask() {
@@ -894,6 +962,41 @@
 
             const agentId = document.getElementById('agentSelect').value;
             const ids = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+
+            // 局部重绘模式：有 pendingMask 就走 inpaint（强制用 gpt-image）
+            const inpaintMode = !!window.pendingMask;
+            if (inpaintMode) {
+                if (droppedFiles.length === 0) return alert('请先在左侧画布圈画区域后点"→ 引用到对话"');
+                if (!prompt) return alert('请输入编辑指令，例如：把背景换成雪山');
+                const imgFile = droppedFiles[0];
+                const maskBlob = window.pendingMask;
+                try {
+                    document.getElementById('generateBtn').disabled = true;
+                    const imgDataUrl = await new Promise(res => {
+                        const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(imgFile);
+                    });
+                    appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>${prompt}</span>`, true);
+                    promptInput.value = '';
+                    const fd = new FormData();
+                    fd.append('image',  imgFile,  'image.png');
+                    fd.append('mask',   maskBlob, 'mask.png');
+                    fd.append('prompt', prompt);
+                    const res = await fetch('/api/inpaint', { method: 'POST', body: fd });
+                    const result = await res.json();
+                    if (!res.ok) throw new Error(result.error || '请求失败');
+                    if (result.results?.[0]) {
+                        const imgUrl = `/api/image?path=${encodeURIComponent(result.results[0])}`;
+                        appendMessage('ai', `<div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:8px;">✅ 局部重绘完成</div><img src="${imgUrl}" class="result-image" style="max-width:400px;border-radius:10px;display:block;" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image','${imgUrl}','inpaint.png',event)">`, true);
+                    } else throw new Error('未返回图片结果');
+                } catch (err) {
+                    appendMessage('ai', '局部重绘失败：' + err.message);
+                } finally {
+                    document.getElementById('generateBtn').disabled = false;
+                    clearFiles();
+                    window.pendingMask = null;
+                }
+                return;
+            }
 
             let payload = {
                 prompt: prompt || '自动生成',
@@ -923,6 +1026,7 @@
                     });
                     const data = await resp.json();
                     if (data.error) throw new Error(data.error);
+                    insertProgressCard(data.taskId);
                     startPolling(data.taskId);
                 } catch (e) {
                     document.getElementById('generateBtn').disabled = false;
@@ -957,7 +1061,16 @@
 
                 const hasBase = droppedFiles.length > 0 || sessionImagePath;
                 const taskLabel = hasBase ? '重绘任务' : '文生图任务';
-                appendMessage('user', `[${taskLabel}] 模型: ${agentId}\n提示词: ${finalPrompt}`);
+
+                // 用户消息：若有图片则显示图片缩略图
+                if (droppedFiles.length > 0) {
+                    const imgDataUrl = await new Promise(res => {
+                        const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(droppedFiles[0]);
+                    });
+                    appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>[${taskLabel}] 模型: ${agentId}<br>${finalPrompt}</span>`, true);
+                } else {
+                    appendMessage('user', `[${taskLabel}] 模型: ${agentId}\n提示词: ${finalPrompt}`);
+                }
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
@@ -1043,93 +1156,77 @@
 
         let elapsedTimer = null;
         function startPolling(taskId) {
-            document.getElementById('progressBox').style.display = 'block';
-            document.getElementById('progressIdle').style.display = 'none';
-            document.getElementById('progressElapsed').textContent = '0:00';
-            document.getElementById('progressEta').textContent = '估算中…';
-            document.getElementById('progressCurrent').textContent = '';
-            const startTs = Date.now();
 
-            clearInterval(elapsedTimer);
-            elapsedTimer = setInterval(() => {
-                document.getElementById('progressElapsed').textContent = fmtSec((Date.now() - startTs) / 1000);
-            }, 1000);
 
             clearInterval(pollTimer);
+            const startTime = Date.now();
             pollTimer = setInterval(async () => {
                 try {
                     const res = await fetch(`/api/task/${taskId}`);
                     const data = await res.json();
-                    const progress = data.progress || 0;
-                    const total = data.total || 1;
-                    document.getElementById('progressBar').style.width = Math.round((progress / total) * 100) + '%';
-                    document.getElementById('progressCount').textContent = `${progress}/${total}`;
-
-                    // 预计剩余 = 已用 / 已完成 × 剩余张数
-                    const elapsedSec = (Date.now() - startTs) / 1000;
-                    if (progress > 0 && progress < total) {
-                        const eta = (elapsedSec / progress) * (total - progress);
-                        document.getElementById('progressEta').textContent = fmtSec(eta);
-                    } else if (progress >= total) {
-                        document.getElementById('progressEta').textContent = '收尾中…';
-                    }
-
-                    // 当前在做什么
-                    const cur = data.currentProduct || '';
-                    document.getElementById('progressCurrent').textContent =
-                        cur ? `正在处理: ${cur}` : (progress < total ? `正在生成第 ${progress + 1} 张…` : '');
-
+                    const pct = Math.round(((data.progress || 0) / (data.total || 1)) * 100);
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    updateProgressCard(taskId, pct, `${data.progress || 0}/${data.total || 1}`, elapsed);
                     if (data.status !== 'running' && data.status !== 'pending') {
                         clearInterval(pollTimer);
                         clearInterval(elapsedTimer);
                         document.getElementById('generateBtn').disabled = false;
-                        document.getElementById('progressBox').style.display = 'none';
-                        document.getElementById('progressIdle').style.display = 'block';
-
-                        const results = data.results || [];
-                        const successList = results.filter(r => r.status === 'success');
-                        const errorList   = results.filter(r => r.status === 'error');
-
-                        const videoResult = successList.find(r => r.type === 'video' && r.filename);
-                        // custom/ecommerce 模式后端会塞一条 __OUTPUT_DIR__ 标记
-                        const outputDirEntry = results.find(r => r.name === '__OUTPUT_DIR__' && r.output);
-                        const customSuccess  = successList.filter(r => r.name !== '__OUTPUT_DIR__');
-
-                        if (data.status === 'stopped') {
-                            appendMessage('ai', `⏹ 任务已停止（已完成 ${data.progress}/${data.total}）`);
-                        } else if (data.status === 'error') {
-                            const errMsg = errorList[0]?.message || '';
-                            appendMessage('ai', `❌ 任务异常终止${errMsg ? '：' + errMsg : ''}`);
-                        } else if (videoResult) {
-                            appendVideoPlayer(videoResult.filename);
-                        } else if (outputDirEntry) {
-                            // 自定义/电商模式：按目录批量渲染，把首张成功图作为下一轮重绘基底
-                            if (customSuccess.length === 0) {
-                                const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
-                                appendMessage('ai', `❌ 全部生成失败\n${detail}`);
-                            } else {
-                                if (errorList.length > 0) {
-                                    const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
-                                    appendMessage('ai', `⚠️ 部分失败（${errorList.length} 张）\n${detail}`);
-                                }
-                                renderGeneratedImages([{ name: '生成结果', status: 'success', output: outputDirEntry.output }]);
-                                if (customSuccess[0]?.output) setSessionImage(customSuccess[0].output);
-                            }
-                        } else if (errorList.length > 0 && successList.length === 0) {
-                            const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
-                            appendMessage('ai', `❌ 全部生成失败\n${detail}`);
-                        } else if (errorList.length > 0) {
-                            const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
-                            appendMessage('ai', `⚠️ 部分完成（${successList.length} 成功 / ${errorList.length} 失败）\n${detail}`);
-                        } else {
-                            appendMessage('ai', `✅ 生成完成！共 ${successList.length} 个产品处理成功。正在为您加载渲染结果...`);
-                            renderGeneratedImages(successList);
-                        }
+                        finalizeProgressCard(taskId, data);
                     }
-                } catch (e) {
-                    // polling error
-                }
+                } catch (e) { /* polling error */ }
             }, 2000);
+        }
+
+        function insertProgressCard(taskId) {
+            const msgs = document.getElementById('chatMessages');
+            if (!msgs) return;
+            msgs.insertAdjacentHTML('beforeend', `
+                <div class="progress-card" data-task-id="${taskId}">
+                    <div class="progress-card-header">
+                        <span class="progress-card-title">⏳ 生成任务进行中</span>
+                        <span class="progress-card-count" data-role="count">0/0</span>
+                    </div>
+                    <div class="progress-card-bar-wrap">
+                        <div class="progress-card-bar-fill" data-role="bar" style="width:0%"></div>
+                    </div>
+                    <div class="progress-card-meta">已用时 <span data-role="elapsed">0</span>s</div>
+                </div>`);
+            const inputH = (document.querySelector('.input-area-wrapper') || {}).offsetHeight || 0;
+            msgs.scrollTop = msgs.scrollHeight + inputH + 40;
+        }
+
+        function updateProgressCard(taskId, pct, countText, elapsed) {
+            const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
+            if (!card) return;
+            card.querySelector('[data-role="bar"]').style.width = pct + '%';
+            card.querySelector('[data-role="count"]').textContent = countText;
+            card.querySelector('[data-role="elapsed"]').textContent = elapsed;
+        }
+
+        function finalizeProgressCard(taskId, data) {
+            const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
+            if (card) card.remove();
+            const results = data.results || [];
+            const successList = results.filter(r => r.status === 'success');
+            const errorList   = results.filter(r => r.status === 'error');
+            const videoResult = successList.find(r => r.type === 'video' && r.filename);
+            if (data.status === 'stopped') {
+                appendMessage('ai', `⏹ 任务已停止（已完成 ${data.progress}/${data.total}）`);
+            } else if (data.status === 'error') {
+                const errMsg = errorList[0]?.message || '';
+                appendMessage('ai', `❌ 任务异常终止${errMsg ? '：' + errMsg : ''}`);
+            } else if (videoResult) {
+                appendVideoPlayer(videoResult.filename);
+            } else if (errorList.length > 0 && successList.length === 0) {
+                const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
+                appendMessage('ai', `❌ 全部生成失败\n${detail}`);
+            } else if (errorList.length > 0) {
+                const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
+                appendMessage('ai', `⚠️ 部分完成（${successList.length} 成功 / ${errorList.length} 失败）\n${detail}`);
+            } else {
+                appendMessage('ai', `✅ 生成完成！共 ${successList.length} 个产品处理成功。正在为您加载渲染结果...`);
+                renderGeneratedImages(successList);
+            }
         }
 
         async function renderGeneratedImages(successList) {
@@ -1146,12 +1243,13 @@
 
                     if (imageItems.length > 0) {
                         htmlContent += `<div class="result-group" style="margin-bottom: 16px;">`;
-                        htmlContent += `<div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">📦 ${result.name}</div>`;
+                        htmlContent += `<div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">📦 ${escHtml(result.name)}</div>`;
                         htmlContent += `<div class="msg-images-grid">`;
 
                         for (const img of imageItems) {
                             const imgUrl = `/api/image?path=${encodeURIComponent(img.path)}`;
-                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${result.name}" draggable="true" title="单点预览，三连点直接下载" onclick="handleMediaClick('image', '${imgUrl}', '${result.name}.png', event)">`;
+                            const safeName = escHtml(result.name);
+                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="单点预览，三连点直接下载，拖到左侧可编辑" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image', '${imgUrl}', '${safeName}.png', event)">`;
                         }
                         htmlContent += `</div></div>`;
                     }
@@ -1210,7 +1308,8 @@
             }
 
             container.appendChild(msg);
-            scrollToBottom();
+            const inputH2 = (document.querySelector('.input-area-wrapper') || {}).offsetHeight || 0;
+            container.scrollTop = container.scrollHeight + inputH2 + 40;
         }
 
         function setSessionImage(serverPath) {
@@ -1486,6 +1585,8 @@
 
         window.addEventListener('dragenter', (e) => {
             e.preventDefault();
+            // 画布内部 mouse drag 不触发 overlay
+            if (typeof board !== 'undefined' && board && board.dragNode) return;
             if (e.dataTransfer.types.includes('Files')) {
                 overlay.classList.add('active');
             }
@@ -1501,15 +1602,34 @@
             }
         });
 
+        window.addEventListener('dragleave', (e) => {
+            if (!e.relatedTarget) overlay.classList.remove('active');
+        });
+
         window.addEventListener('drop', (e) => {
             e.preventDefault();
             overlay.classList.remove('active');
 
             if (isTextOnly) return;
 
+            // URL drop from canvas board → append as reference (no clearSession)
+            const url = e.dataTransfer.getData('text/plain');
+            if (url && e.dataTransfer.files.length === 0) {
+                if (url.startsWith('blob:') || url.startsWith('/api/image') || url.startsWith('http')) {
+                    // 优先用 board.sendSelectedToChat 导出正方形 pad 图片 + mask，保证尺寸一致
+                    if (typeof board !== 'undefined' && board && (board.editId || board.selectedId)) {
+                        board.sendSelectedToChat();
+                    } else {
+                        fetch(url)
+                            .then(r => r.blob())
+                            .then(blob => handleImageDropAppend([new File([blob], 'canvas-ref.png', { type: blob.type || 'image/png' })]));
+                    }
+                    return;
+                }
+            }
+
             const files = Array.from(e.dataTransfer.files);
             const imageFiles = files.filter(f => f.type.startsWith('image/'));
-
             if (imageFiles.length > 0) {
                 handleImageDrop(imageFiles);
             }
@@ -1540,6 +1660,19 @@
             }
         }
 
+        // 追加引用（不清除 session，用于画布图片拖入输入区）
+        function handleImageDropAppend(files) {
+            files.forEach(file => {
+                if (droppedFiles.length >= 10) return;
+                droppedFiles.push(file);
+                const reader = new FileReader();
+                reader.onload = e => addPreviewItem(e.target.result, file.name);
+                reader.readAsDataURL(file);
+            });
+            if (droppedFiles.length > 0)
+                document.getElementById('imagePreviewContainer').style.display = 'flex';
+        }
+
         function addPreviewItem(src, name) {
             const container = document.getElementById('imagePreviewContainer');
             const index = droppedFiles.length - 1;
@@ -1548,10 +1681,16 @@
             const item = document.createElement('div');
             item.className = 'preview-item';
             item.innerHTML = `
-            <img src="${src}" alt="${name}">
+            <img src="${src}" alt="${name}" draggable="true">
             <div class="preview-badge">${label}</div>
             <div class="preview-remove" onclick="removeFile(${index})">×</div>
         `;
+            // 拖出引用图时携带索引，画布 drop 收到后移除该引用
+            const imgEl = item.querySelector('img');
+            imgEl.addEventListener('dragstart', e => {
+                e.dataTransfer.setData('text/plain', src);
+                e.dataTransfer.setData('application/x-ref-index', String(index));
+            });
             container.appendChild(item);
         }
 
@@ -1585,6 +1724,7 @@
 
         function clearFiles() {
             droppedFiles = [];
+            window.pendingMask = null;
             document.getElementById('imagePreviewContainer').innerHTML = '';
             document.getElementById('imagePreviewContainer').style.display = 'none';
             document.getElementById('generateBtn').disabled = false;
@@ -1722,12 +1862,720 @@
             });
         }
 
-        document.getElementById('configModal').onclick = function(e) {
-            if (e.target === this) closeConfigModal();
-        };
-        document.getElementById('proxyModal').onclick = function(e) {
-            if (e.target === this) closeProxyModal();
-        };
+        // ── 无限画布（CanvasBoard）──
+        class CanvasBoard {
+            constructor() {
+                this.nodes = [];
+                this.cam = { x: 0, y: 0 };
+                this.scale = 1;
+                this.selectedId = null;
+                this.editId = null;
+                this.tool = 'brush'; // 'brush' | 'eraser' | 'lasso'
+                this.drawing = false;
+                this.lassoPoints = [];
+                this._lassoBaseSnapshot = null;
+                this.undoStack = [];
+                this.dragNode = null;
+                this.dragOffset = { x: 0, y: 0 };
+                this.panStart = null;
+                this.lastClick = { id: null, t: 0 };
+
+                this.canvas = document.getElementById('boardCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.maskCanvas = document.getElementById('editMaskCanvas');
+                this.maskCtx = this.maskCanvas.getContext('2d');
+
+                this._resize();
+                this._bindEvents();
+                this._raf();
+            }
+
+            // ── 坐标转换（含缩放）──
+            screenToWorld(sx, sy) {
+                return { x: (sx - this.cam.x) / this.scale, y: (sy - this.cam.y) / this.scale };
+            }
+            worldToScreen(wx, wy) {
+                return { x: wx * this.scale + this.cam.x, y: wy * this.scale + this.cam.y };
+            }
+
+            addImage(src, file) {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    const maxW = Math.min(400, this.canvas.width * 0.4);
+                    const imgScale = Math.min(1, maxW / img.naturalWidth);
+                    const w = Math.round(img.naturalWidth * imgScale);
+                    const h = Math.round(img.naturalHeight * imgScale);
+                    // 放置在当前视口中心（世界坐标）
+                    const cx = (this.canvas.width / 2 - this.cam.x) / this.scale;
+                    const cy = (this.canvas.height / 2 - this.cam.y) / this.scale;
+                    let x = cx - w / 2, y = cy - h / 2;
+                    let tries = 0;
+                    while (tries++ < 20 && this.nodes.some(n =>
+                        Math.abs(n.x - x) < 40 && Math.abs(n.y - y) < 40)) {
+                        x += 30; y += 30;
+                    }
+                    const mc = document.createElement('canvas');
+                    mc.width = w; mc.height = h;
+                    this.nodes.push({ id: 'n' + Date.now(), img, src, file: file || null, x, y, w, h, maskCanvas: mc });
+                    document.getElementById('boardEmptyState').style.display = 'none';
+                    this._updateSidePanel();
+                };
+                img.src = src;
+            }
+
+            removeSelected() {
+                if (!this.selectedId) return;
+                this.nodes = this.nodes.filter(n => n.id !== this.selectedId);
+                this.selectedId = null;
+                if (this.nodes.length === 0)
+                    document.getElementById('boardEmptyState').style.display = 'flex';
+                this._updateSidePanel();
+            }
+
+            // ── 编辑模式 ──
+            _enterEdit(id) {
+                this.editId = id;
+                const n = this._node(id);
+                if (!n) return;
+                const oc = this.maskCanvas;
+                this._syncMaskCanvas();
+                oc.width  = n.maskCanvas.width;
+                oc.height = n.maskCanvas.height;
+                this.maskCtx.clearRect(0, 0, oc.width, oc.height);
+                this.maskCtx.drawImage(n.maskCanvas, 0, 0);
+                document.getElementById('editOverlay').style.display = 'block';
+                this._updateSidePanel();
+            }
+
+            _syncMaskCanvas() {
+                const n = this._node(this.editId);
+                if (!n) return;
+                const mc = this.maskCanvas;
+                const sp = this.worldToScreen(n.x, n.y);
+                mc.style.left   = sp.x + 'px';
+                mc.style.top    = sp.y + 'px';
+                mc.style.width  = (n.w * this.scale) + 'px';
+                mc.style.height = (n.h * this.scale) + 'px';
+            }
+
+            _exitEdit() {
+                if (!this.editId) return;
+                const n = this._node(this.editId);
+                if (n) {
+                    // 保存蒙版回节点
+                    n.maskCanvas.getContext('2d').clearRect(0, 0, n.maskCanvas.width, n.maskCanvas.height);
+                    n.maskCanvas.getContext('2d').drawImage(this.maskCanvas, 0, 0);
+                }
+                this.editId = null;
+                this.drawing = false;
+                document.getElementById('editOverlay').style.display = 'none';
+                this._updateSidePanel();
+            }
+
+            clearMask() {
+                this.maskCtx.clearRect(0, 0, this.maskCanvas.width, this.maskCanvas.height);
+                if (this.editId) {
+                    const n = this._node(this.editId);
+                    if (n) n.maskCanvas.getContext('2d').clearRect(0, 0, n.maskCanvas.width, n.maskCanvas.height);
+                }
+            }
+
+            sendSelectedToChat() {
+                const id = this.editId || this.selectedId;
+                const n = this._node(id);
+                if (!n) { appendMessage('ai', '⚠️ 请先选中一张图片'); return; }
+                if (this.editId && this.editId === n.id) {
+                    const nc = n.maskCanvas.getContext('2d');
+                    nc.clearRect(0, 0, n.maskCanvas.width, n.maskCanvas.height);
+                    nc.drawImage(this.maskCanvas, 0, 0);
+                }
+                const natW = n.img.naturalWidth || n.w;
+                const natH = n.img.naturalHeight || n.h;
+                // 统一输出 1024×1024，与 mask 保持完全一致
+                const TARGET = 1024;
+                const side = Math.max(natW, natH);
+                const scale = TARGET / side;
+                const dw = Math.round(natW * scale);
+                const dh = Math.round(natH * scale);
+                const offX = Math.floor((TARGET - dw) / 2);
+                const offY = Math.floor((TARGET - dh) / 2);
+                const off = document.createElement('canvas');
+                off.width = TARGET; off.height = TARGET;
+                const oc2 = off.getContext('2d');
+                oc2.fillStyle = '#ffffff';
+                oc2.fillRect(0, 0, TARGET, TARGET);
+                oc2.drawImage(n.img, offX, offY, dw, dh);
+                off.toBlob(blob => {
+                    if (!blob) return;
+                    handleImageDropAppend([new File([blob], 'canvas-ref.png', { type: 'image/png' })]);
+                }, 'image/png');
+                this.exportMaskBlob(id, maskBlob => {
+                    window.pendingMask = maskBlob;
+                });
+            }
+
+            sendEditedToChat() {
+                const id = this.editId || this.selectedId;
+                const n = this._node(id);
+                if (!n) { appendMessage('ai', '⚠️ 请先选中或编辑一张图片'); return; }
+                const off = document.createElement('canvas');
+                off.width = n.w; off.height = n.h;
+                const oc = off.getContext('2d');
+                oc.drawImage(n.img, 0, 0, n.w, n.h);
+                oc.drawImage(n.maskCanvas, 0, 0, n.w, n.h);
+                off.toBlob(blob => {
+                    if (!blob) return;
+                    handleImageDropAppend([new File([blob], 'canvas-ref.png', { type: 'image/png' })]);
+                }, 'image/png');
+            }
+
+            // ── 侧边栏状态切换 ──
+            _updateSidePanel() {
+                const up   = document.getElementById('sideUploadSection');
+                const info = document.getElementById('sideInfoSection');
+                const edit = document.getElementById('sideEditSection');
+                if (this.editId) {
+                    up.style.display = 'none'; info.style.display = 'none'; edit.style.display = '';
+                } else if (this.selectedId) {
+                    const n = this._node(this.selectedId);
+                    up.style.display = 'none'; edit.style.display = 'none'; info.style.display = '';
+                    document.getElementById('sideImgInfo').innerHTML =
+                        `尺寸：${n.img.naturalWidth} × ${n.img.naturalHeight}<br>显示：${n.w} × ${n.h}`;
+                } else {
+                    info.style.display = 'none'; edit.style.display = 'none'; up.style.display = '';
+                }
+            }
+
+            // ── 渲染 ──
+            _raf() {
+                requestAnimationFrame(() => this._raf());
+                this._draw();
+            }
+
+            _draw() {
+                const ctx = this.ctx;
+                const W = this.canvas.width, H = this.canvas.height;
+                ctx.clearRect(0, 0, W, H);
+
+                // 网格背景（屏幕坐标，不受变换影响）
+                ctx.save();
+                ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+                ctx.lineWidth = 1;
+                const gs = 40 * this.scale;
+                const ox = ((this.cam.x % gs) + gs) % gs;
+                const oy = ((this.cam.y % gs) + gs) % gs;
+                for (let x = ox; x < W; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+                for (let y = oy; y < H; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+                ctx.restore();
+
+                // 图片节点（世界坐标，通过 setTransform 映射到屏幕）
+                ctx.save();
+                ctx.setTransform(this.scale, 0, 0, this.scale, this.cam.x, this.cam.y);
+                for (const n of this.nodes) {
+                    const isDragging = this.dragNode && this.dragNode.id === n.id;
+                    if (isDragging) {
+                        // 原位置画半透明占位
+                        ctx.save();
+                        ctx.globalAlpha = 0.3;
+                        ctx.drawImage(n.img, this._dragOrigin.x, this._dragOrigin.y, n.w, n.h);
+                        ctx.restore();
+                    }
+                    ctx.drawImage(n.img, n.x, n.y, n.w, n.h);
+                    if (n.id !== this.editId) {
+                        ctx.drawImage(n.maskCanvas, n.x, n.y, n.w, n.h);
+                    }
+                    if (n.id === this.selectedId || n.id === this.editId) {
+                        ctx.save();
+                        ctx.strokeStyle = n.id === this.editId ? '#f59e0b' : '#6366f1';
+                        ctx.lineWidth = 2 / this.scale;
+                        ctx.strokeRect(n.x - 1, n.y - 1, n.w + 2, n.h + 2);
+                        if (n.id === this.selectedId && n.id !== this.editId) {
+                            ctx.fillStyle = '#6366f1';
+                            ctx.beginPath();
+                            ctx.roundRect(n.x + n.w - 22, n.y + 2, 20, 20, 4);
+                            ctx.fill();
+                            ctx.fillStyle = '#fff';
+                            ctx.font = `${12 / this.scale}px sans-serif`;
+                            ctx.fillText('↗', n.x + n.w - 17, n.y + 16);
+                        }
+                        ctx.restore();
+                    }
+                }
+                ctx.restore();
+
+                // 同步编辑蒙版覆盖层位置
+                if (this.editId) {
+                    const n = this._node(this.editId);
+                    if (n) {
+                        const sp = this.worldToScreen(n.x, n.y);
+                        this.maskCanvas.style.left   = sp.x + 'px';
+                        this.maskCanvas.style.top    = sp.y + 'px';
+                        this.maskCanvas.style.width  = (n.w * this.scale) + 'px';
+                        this.maskCanvas.style.height = (n.h * this.scale) + 'px';
+                    }
+                }
+            }
+
+            // ── 事件绑定 ──
+            _bindEvents() {
+                const c = this.canvas;
+
+                // 鼠标按下
+                c.addEventListener('mousedown', e => {
+                    e.preventDefault(); // 始终阻止 HTML5 drag，内部拖动完全由 mousemove 控制
+                    if (this.editId) return;
+                    const wp = this.screenToWorld(e.clientX - c.getBoundingClientRect().left,
+                                                   e.clientY - c.getBoundingClientRect().top);
+                    const hit = this._hitTest(wp.x, wp.y);
+
+                    if (hit) {
+                        const now = Date.now();
+                        if (this.lastClick.id === hit.id && now - this.lastClick.t < 400) {
+                            this.selectedId = hit.id;
+                            this._enterEdit(hit.id);
+                            return;
+                        }
+                        this.lastClick = { id: hit.id, t: now };
+                        this.selectedId = hit.id;
+                        this.panStart = null; // 确保不残留 panStart
+                        this.dragNode = hit;
+                        this.dragOffset = { x: wp.x - hit.x, y: wp.y - hit.y };
+                        this._dragStartPos = { x: e.clientX, y: e.clientY };
+                        this._dragOrigin = { x: hit.x, y: hit.y };
+                        this._updateSidePanel();
+                    } else {
+                        this.selectedId = null;
+                        this.dragNode = null; // 确保不残留 dragNode
+                        this.panStart = { mx: e.clientX, my: e.clientY, cx: this.cam.x, cy: this.cam.y };
+                        this._updateSidePanel();
+                    }
+                });
+
+                // 鼠标移动（window 级别，确保拖出 canvas 边界时图片继续跟随）
+                window.addEventListener('mousemove', e => {
+                    if (this.editId) return;
+                    this._mousePos = { x: e.clientX, y: e.clientY };
+                    if (this.dragNode) {
+                        const rect = c.getBoundingClientRect();
+                        const wp = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                        this.dragNode.x = wp.x - this.dragOffset.x;
+                        this.dragNode.y = wp.y - this.dragOffset.y;
+                    } else if (this.panStart) {
+                        this.cam.x = this.panStart.cx + (e.clientX - this.panStart.mx);
+                        this.cam.y = this.panStart.cy + (e.clientY - this.panStart.my);
+                    }
+                });
+
+                // 鼠标松开（window 级别）
+                window.addEventListener('mouseup', e => {
+                    const node = this.dragNode;
+                    this.dragNode = null;
+                    this.panStart = null;
+
+                    if (node && this._dragStartPos) {
+                        const dx = e.clientX - this._dragStartPos.x;
+                        const dy = e.clientY - this._dragStartPos.y;
+                        const moved = Math.sqrt(dx * dx + dy * dy) > 8;
+                        const startPos = this._dragStartPos;
+                        this._dragStartPos = null;
+
+                        if (moved) {
+                            const chatPanel = document.getElementById('chatPanel');
+                            if (chatPanel) {
+                                const cr = chatPanel.getBoundingClientRect();
+                                const inChat = e.clientX >= cr.left && e.clientX <= cr.right &&
+                                               e.clientY >= cr.top  && e.clientY <= cr.bottom;
+                                if (inChat) {
+                                    // 还原节点到拖动起点
+                                    node.x = this._dragOrigin.x;
+                                    node.y = this._dragOrigin.y;
+
+                                    // 用 canvas 绘制确保拿到像素数据
+                                    const off = document.createElement('canvas');
+                                    off.width  = node.img.naturalWidth  || node.w;
+                                    off.height = node.img.naturalHeight || node.h;
+                                    off.getContext('2d').drawImage(node.img, 0, 0, off.width, off.height);
+                                    off.toBlob(b => {
+                                        if (b) handleImageDropAppend([new File([b], 'canvas-ref.png', { type: 'image/png' })]);
+                                    }, 'image/png');
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // 滚轮缩放（以鼠标位置为中心）
+                c.addEventListener('wheel', e => {
+                    e.preventDefault();
+                    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+                    const rect = c.getBoundingClientRect();
+                    const mx = e.clientX - rect.left;
+                    const my = e.clientY - rect.top;
+                    this.cam.x = mx - (mx - this.cam.x) * factor;
+                    this.cam.y = my - (my - this.cam.y) * factor;
+                    this.scale = Math.max(0.1, Math.min(10, this.scale * factor));
+                    if (this.editId) this._syncMaskCanvas();
+                }, { passive: false });
+
+                // 拖入图片（从右侧生成结果或输入区引用）
+                c.addEventListener('dragenter', e => { e.preventDefault(); e.stopPropagation(); });
+                c.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); });
+                c.addEventListener('drop', e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    document.getElementById('dropOverlay').classList.remove('active');
+                    const url = e.dataTransfer.getData('text/plain');
+                    const refIdx = e.dataTransfer.getData('application/x-ref-index');
+                    if (url) {
+                        this.addImage(url, null);
+                        if (refIdx !== '') removeFile(parseInt(refIdx));
+                        return;
+                    }
+                    const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
+                    files.forEach(f => this.addImage(URL.createObjectURL(f), f));
+                });
+
+                // ESC 退出编辑；Ctrl+Z 撤销；Delete 删除选中图片
+                document.addEventListener('keydown', e => {
+                    if (e.key === 'Escape' && this.editId) { this._exitEdit(); return; }
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && this.editId) {
+                        e.preventDefault();
+                        if (this.undoStack.length > 0) {
+                            this.maskCtx.putImageData(this.undoStack.pop(), 0, 0);
+                        }
+                        return;
+                    }
+                    if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedId && !this.editId) {
+                        // 只在焦点不在输入框时响应，避免误删
+                        const tag = document.activeElement.tagName;
+                        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                        e.preventDefault();
+                        this.removeSelected();
+                    }
+                });
+
+                // 蒙版绘制事件（editMaskCanvas）
+                const mc = this.maskCanvas;
+                const getMP = (ev) => {
+                    const r = mc.getBoundingClientRect();
+                    const src = ev.touches ? ev.touches[0] : ev;
+                    return {
+                        x: (src.clientX - r.left) * (mc.width / r.width),
+                        y: (src.clientY - r.top)  * (mc.height / r.height)
+                    };
+                };
+
+                mc.addEventListener('mousedown', e => {
+                    // 保存快照到撤销栈（每笔开始前）
+                    this.undoStack.push(this.maskCtx.getImageData(0, 0, mc.width, mc.height));
+                    if (this.undoStack.length > 20) this.undoStack.shift();
+
+                    if (this.tool === 'lasso') {
+                        this.lassoPoints = [getMP(e)];
+                        // 保存当前蒙版快照用于套索预览时恢复
+                        this._lassoBaseSnapshot = this.maskCtx.getImageData(0, 0, mc.width, mc.height);
+                        this.drawing = true;
+                        return;
+                    }
+                    this.drawing = true;
+                    const p = getMP(e);
+                    this.maskCtx.beginPath();
+                    this.maskCtx.moveTo(p.x, p.y);
+                });
+
+                mc.addEventListener('mousemove', e => {
+                    if (!this.drawing) return;
+                    const p = getMP(e);
+
+                    if (this.tool === 'lasso') {
+                        this.lassoPoints.push(p);
+                        // 实时预览：重绘已有蒙版 + 虚线路径
+                        this._drawLassoPreview();
+                        return;
+                    }
+
+                    const sz = parseInt(document.getElementById('brushSizeSlider').value) || 30;
+                    this.maskCtx.lineWidth = sz;
+                    this.maskCtx.lineCap = 'round';
+                    this.maskCtx.lineJoin = 'round';
+                    if (this.tool === 'eraser') {
+                        this.maskCtx.globalCompositeOperation = 'destination-out';
+                        this.maskCtx.strokeStyle = 'rgba(0,0,0,1)';
+                    } else {
+                        this.maskCtx.globalCompositeOperation = 'source-over';
+                        this.maskCtx.strokeStyle = 'rgba(255,80,80,0.55)';
+                    }
+                    this.maskCtx.lineTo(p.x, p.y);
+                    this.maskCtx.stroke();
+                });
+
+                const finishStroke = () => {
+                    if (!this.drawing) return;
+                    this.drawing = false;
+
+                    if (this.tool === 'lasso' && this.lassoPoints.length > 2) {
+                        // 先恢复基础快照（清除预览虚线），再填充闭合区域
+                        if (this._lassoBaseSnapshot) {
+                            this.maskCtx.putImageData(this._lassoBaseSnapshot, 0, 0);
+                        }
+                        this.maskCtx.save();
+                        this.maskCtx.globalCompositeOperation = 'source-over';
+                        this.maskCtx.fillStyle = 'rgba(255,80,80,0.55)';
+                        this.maskCtx.beginPath();
+                        this.lassoPoints.forEach((p, i) =>
+                            i === 0 ? this.maskCtx.moveTo(p.x, p.y) : this.maskCtx.lineTo(p.x, p.y));
+                        this.maskCtx.closePath();
+                        this.maskCtx.fill();
+                        this.maskCtx.restore();
+                        this.lassoPoints = [];
+                        this._lassoBaseSnapshot = null;
+                        return;
+                    }
+                    this.lassoPoints = [];
+                    this._lassoBaseSnapshot = null;
+                    this.maskCtx.closePath();
+                };
+                mc.addEventListener('mouseup',    finishStroke);
+                mc.addEventListener('mouseleave', finishStroke);
+
+                // 上传文件
+                const uploadCard = document.getElementById('inpaintUploadCard');
+                const fileInput  = document.getElementById('inpaintFileInput');
+                if (uploadCard) {
+                    uploadCard.addEventListener('click', () => fileInput.click());
+                    uploadCard.addEventListener('dragover', e => e.preventDefault());
+                    uploadCard.addEventListener('drop', e => {
+                        e.preventDefault();
+                        const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
+                        files.forEach(f => this.addImage(URL.createObjectURL(f), f));
+                    });
+                }
+                if (fileInput) {
+                    fileInput.addEventListener('change', e => {
+                        Array.from(e.target.files || []).forEach(f => this.addImage(URL.createObjectURL(f), f));
+                        fileInput.value = '';
+                    });
+                }
+            }
+
+            _drawLassoPreview() {
+                if (this.lassoPoints.length < 2) return;
+                // 先恢复套索开始前的蒙版快照，再叠加预览线（避免线条累积）
+                if (this._lassoBaseSnapshot) {
+                    this.maskCtx.putImageData(this._lassoBaseSnapshot, 0, 0);
+                }
+                const ctx = this.maskCtx;
+                ctx.save();
+                ctx.strokeStyle = 'rgba(99,102,241,0.9)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([5, 4]);
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.beginPath();
+                this.lassoPoints.forEach((p, i) =>
+                    i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // ── 工具方法 ──
+            _node(id) { return this.nodes.find(n => n.id === id); }
+
+            _hitTest(wx, wy) {
+                // 从顶层往下找
+                for (let i = this.nodes.length - 1; i >= 0; i--) {
+                    const n = this.nodes[i];
+                    if (wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h) return n;
+                }
+                return null;
+            }
+
+            _resize() {
+                const panel = document.getElementById('canvasPanel');
+                this.canvas.width  = panel.clientWidth;
+                this.canvas.height = panel.clientHeight;
+            }
+
+            exportMaskBlob(nodeId, callback) {
+                const n = this._node(nodeId || this.editId || this.selectedId);
+                if (!n) return;
+                // 如果当前正在 edit 该节点，笔迹在 overlay(this.maskCanvas)，直接用它
+                const mc = (this.editId && this.editId === n.id) ? this.maskCanvas : n.maskCanvas;
+                const natW = n.img.naturalWidth  || n.w;
+                const natH = n.img.naturalHeight || n.h;
+
+                // 第一步：在显示尺寸上做二值化（有笔迹→纯白，无笔迹→纯黑）
+                // 先在原始尺寸二值化，再缩放，避免缩放插值产生半透明边缘
+                const bin = document.createElement('canvas');
+                bin.width = mc.width; bin.height = mc.height;
+                const bc = bin.getContext('2d');
+                bc.drawImage(mc, 0, 0);
+                const bd = bc.getImageData(0, 0, bin.width, bin.height);
+                const bpx = bd.data;
+                for (let i = 0; i < bpx.length; i += 4) {
+                    // 有笔迹 → 纯白不透明（缩放后仍是白色）
+                    // 无笔迹 → 纯黑不透明
+                    if (bpx[i+3] > 10) { bpx[i]=255; bpx[i+1]=255; bpx[i+2]=255; bpx[i+3]=255; }
+                    else                { bpx[i]=0;   bpx[i+1]=0;   bpx[i+2]=0;   bpx[i+3]=255; }
+                }
+                bc.putImageData(bd, 0, 0);
+
+                // 第二步：统一缩放到 1024×1024，与原图保持完全一致
+                const TARGET = 1024;
+                const side = Math.max(natW, natH);
+                const scale = TARGET / side;
+                const dw = Math.round(natW * scale);
+                const dh = Math.round(natH * scale);
+                const offX = Math.floor((TARGET - dw) / 2);
+                const offY = Math.floor((TARGET - dh) / 2);
+                const off = document.createElement('canvas');
+                off.width = TARGET; off.height = TARGET;
+                const oc = off.getContext('2d');
+                // 背景填黑（保护区域）
+                oc.fillStyle = '#000';
+                oc.fillRect(0, 0, TARGET, TARGET);
+                oc.drawImage(bin, offX, offY, dw, dh);
+
+                // 第三步：透明=编辑区，不透明=保护区（linapi.net 官方规范）
+                const data = oc.getImageData(0, 0, TARGET, TARGET);
+                const d = data.data;
+                for (let i = 0; i < d.length; i += 4) {
+                    if (d[i] > 128) { d[i]=0; d[i+1]=0; d[i+2]=0; d[i+3]=0; }   // 白→透明（编辑区域）
+                    else             { d[i]=0; d[i+1]=0; d[i+2]=0; d[i+3]=255; } // 黑→不透明（保护区域）
+                }
+                oc.putImageData(data, 0, 0);
+                off.toBlob(callback, 'image/png');
+            }
+        }
+
+        let board = null;
+        window._boardProxy = { clearMask: () => board && board.clearMask(), sendSelectedToChat: () => board && board.sendSelectedToChat() };
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('mainSidebar');
+            const btn = document.getElementById('sidebarToggleBtn');
+            const collapsed = !sidebar.classList.contains('collapsed');
+            sidebar.classList.toggle('collapsed', collapsed);
+            sidebar.dataset.collapsed = collapsed ? '1' : '';
+            if (collapsed) {
+                sidebar.style.width = '36px';
+            } else {
+                const saved = parseInt(localStorage.getItem('layout.sidebarW') || '200');
+                sidebar.style.width = saved + 'px';
+            }
+            btn.querySelector('svg').style.transform = collapsed ? 'rotate(180deg)' : '';
+        }
+
+        function setInpaintTool(tool) {
+            if (!board) return;
+            board.tool = tool;
+            document.getElementById('brushBtn').classList.toggle('active', tool === 'brush');
+            document.getElementById('eraserBtn').classList.toggle('active', tool === 'eraser');
+            document.getElementById('lassoBtn').classList.toggle('active', tool === 'lasso');
+        }
+
+        // 兼容旧调用
+        function openInpaintMode(src, file) { if (board) board.addImage(src, file); }
+        function clearInpaintMask()         { if (board) board.clearMask(); }
+        function sendCanvasToChatRef()      { if (board) board.sendEditedToChat(); }
+        function loadInpaintImageFromUrl(url) { if (board) board.addImage(url, null); }
+
+        async function submitInpaint() {
+            if (!board) return;
+            const id = board.editId || board.selectedId;
+            const n = board._node(id);
+            if (!n) return alert('请先在画布上选中一张图片！');
+
+            const prompt = (document.getElementById('promptInput').value || '').trim();
+            if (!prompt) return alert('请先在右侧输入框填写编辑指令，例如：把背景换成雪山');
+
+            board.exportMaskBlob(id, async (maskBlob) => {
+                try {
+                    const fd = new FormData();
+                    // 原图：优先用原始 File 对象，否则从 img 元素绘制
+                    if (n.file) {
+                        fd.append('image', n.file);
+                    } else {
+                        const off = document.createElement('canvas');
+                        off.width  = n.img.naturalWidth  || n.w;
+                        off.height = n.img.naturalHeight || n.h;
+                        off.getContext('2d').drawImage(n.img, 0, 0, off.width, off.height);
+                        const imgBlob = await new Promise(res => off.toBlob(res, 'image/png'));
+                        fd.append('image', imgBlob, 'image.png');
+                    }
+                    fd.append('mask',   maskBlob, 'mask.png');
+                    fd.append('prompt', prompt);
+                    const res = await fetch('/api/inpaint', { method: 'POST', body: fd });
+                    const result = await res.json();
+                    if (!res.ok) throw new Error(result.error || '请求失败');
+                    if (result.results && result.results[0]) {
+                        const imgUrl = `/api/image?path=${encodeURIComponent(result.results[0])}`;
+                        appendMessage('ai', `<div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:8px;">✅ 局部编辑完成</div><img src="${imgUrl}" class="result-image" style="max-width:400px;border-radius:10px;display:block;" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image','${imgUrl}','inpaint.png',event)">`, true);
+                    } else throw new Error('未返回图片结果');
+                } catch (err) { alert('生成失败：' + err.message); }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            board = new CanvasBoard();
+            new ResizeObserver(() => board._resize()).observe(document.getElementById('canvasPanel'));
+            initResizers();
+            const configModal = document.getElementById('configModal');
+            if (configModal) configModal.onclick = function(e) {
+                if (e.target === this) closeConfigModal();
+            };
+            const proxyModal = document.getElementById('proxyModal');
+            if (proxyModal) proxyModal.onclick = function(e) {
+                if (e.target === this) closeProxyModal();
+            };
+        });
+
+        function initResizers() {
+            const savedSidebar = parseInt(localStorage.getItem('layout.sidebarW') || '200');
+            const savedChat    = parseInt(localStorage.getItem('layout.chatW')    || '380');
+            const sidebar   = document.getElementById('mainSidebar');
+            const chatPanel = document.getElementById('chatPanel');
+            if (sidebar)   sidebar.style.width   = savedSidebar + 'px';
+            if (chatPanel) chatPanel.style.width  = savedChat    + 'px';
+            setupResizer('resizerLeft',  'mainSidebar', 'left');
+            setupResizer('resizerRight', 'chatPanel',   'right');
+        }
+
+        function setupResizer(resizerId, targetId, side) {
+            const resizer = document.getElementById(resizerId);
+            if (!resizer) return;
+            resizer.addEventListener('mousedown', e => {
+                e.preventDefault();
+                const target = document.getElementById(targetId);
+                const startX = e.clientX;
+                const startW = target.getBoundingClientRect().width;
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                const onMove = ev => {
+                    if (target.dataset.collapsed === '1') return; // 折叠时禁止 resize
+                    const dx = ev.clientX - startX;
+                    const delta = side === 'left' ? dx : -dx;
+                    const minW = side === 'left' ? 200 : 300;
+                    const canvas = document.getElementById('canvasPanel');
+                    const canvasW = canvas.getBoundingClientRect().width;
+                    const maxExpand = Math.max(0, canvasW - 300);
+                    const clampedDelta = Math.min(delta, maxExpand);
+                    const newW = Math.max(minW, startW + clampedDelta);
+                    target.style.width = newW + 'px';
+                };
+                const onUp = () => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                    const key = side === 'left' ? 'layout.sidebarW' : 'layout.chatW';
+                    localStorage.setItem(key, parseInt(document.getElementById(targetId).style.width));
+                };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        }
+
     </script>
 
     <!-- 历史记录全屏界面 (默认隐藏) -->
@@ -1841,11 +2689,6 @@
         </div>
     </div>
 
-    <!-- ── 企业标签 ── -->
-    <div class="footer-company-label">
-        <span class="label-icon">©</span>
-        东莞市果行创新电商有限公司
-    </div>
 </body>
 
 </html>

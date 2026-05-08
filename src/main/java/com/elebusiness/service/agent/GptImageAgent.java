@@ -76,12 +76,12 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setReadTimeout(120_000);
 
             try (OutputStream os = conn.getOutputStream()) {
-                writeField(os, boundary, "model",   "gpt-image-2");
-                writeField(os, boundary, "prompt",  prompt != null ? prompt : "product photo on clean background");
-                writeField(os, boundary, "size",    "1024x1024");
-                writeField(os, boundary, "quality", "standard");
-                writeField(os, boundary, "n",       "1");
-                writeFile(os,  boundary, "image",   imageFile);
+                writeField(os, boundary, "model",         "gpt-image-2");
+                writeField(os, boundary, "prompt",        prompt != null ? prompt : "product photo on clean background");
+                writeField(os, boundary, "size",          "1024x1024");
+                writeField(os, boundary, "quality",       "auto");
+                writeField(os, boundary, "output_format", "png");
+                writeFile(os,  boundary, "image",         imageFile);
                 os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
             }
 
@@ -102,6 +102,52 @@ public class GptImageAgent implements ImageGeneratorAgent {
         }
     }
 
+    /** 局部重绘：image + mask → /v1/images/edits */
+    public boolean generateWithMask(String prompt, File imageFile, File maskFile, String outputPath) {
+        String apiKey  = appProperties.getGptImage().getApiKey();
+        String baseUrl = appProperties.getGptImage().getBaseUrl();
+        if (apiKey == null || apiKey.isBlank()) {
+            log.error("GPT-Image API Key 未配置");
+            return false;
+        }
+        try {
+            String boundary = "----GptImageBoundary" + Long.toHexString(System.currentTimeMillis());
+            URL url = new URL(baseUrl + "/v1/images/edits");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(30_000);
+            conn.setReadTimeout(120_000);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                writeField(os, boundary, "model",         "gpt-image-2");
+                writeField(os, boundary, "prompt",        prompt != null ? prompt : "");
+                writeField(os, boundary, "size",          "1024x1024");
+                writeField(os, boundary, "quality",       "auto");
+                writeField(os, boundary, "output_format", "png");
+                writeFile(os,  boundary, "image",         imageFile);
+                writeFile(os,  boundary, "mask",          maskFile);
+                os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+            }
+
+            int status = conn.getResponseCode();
+            InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream();
+            String respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            conn.disconnect();
+
+            if (status < 200 || status >= 300) {
+                log.error("GPT-Image inpaint 失败 ({}): {}", status, respBody);
+                return false;
+            }
+            return saveFromResponse(respBody, outputPath);
+        } catch (Exception e) {
+            log.error("GPT-Image inpaint 异常: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
     /** 无图片时调用 /v1/images/generations */
     private boolean generateTextOnly(String prompt, String outputPath, String apiKey, String baseUrl) {
         try {
@@ -109,9 +155,8 @@ public class GptImageAgent implements ImageGeneratorAgent {
                 "model",         "gpt-image-2",
                 "prompt",        prompt != null ? prompt : "product photo",
                 "size",          "1024x1024",
-                "quality",       "standard",
-                "output_format", "png",
-                "n",             1
+                "quality",       "auto",
+                "output_format", "png"
             );
 
             String jsonBody = mapper.writeValueAsString(payload);
