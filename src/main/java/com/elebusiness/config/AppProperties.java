@@ -93,8 +93,8 @@ public class AppProperties {
 
     public static class Api {
         private int delaySeconds = 2;
-        private int timeoutSeconds = 90;
-        private int maxRetries = 3;
+        private int timeoutSeconds = 75;
+        private int maxRetries = 2;
         private int maxConcurrent = 6;
 
         public int getDelaySeconds() { return delaySeconds; }

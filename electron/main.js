@@ -19,12 +19,9 @@ function res(...parts) {
     return path.join(base, ...parts);
 }
 
-// ── 用户数据目录偏好文件（存放在 exe 同级目录，随 exe 携带） ──
+// ── 用户数据目录偏好文件（存放在系统 userData，跨次启动稳定保留） ──
 function prefFile() {
-    const dir = app.isPackaged
-        ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath))
-        : path.join(__dirname, '..');
-    return path.join(dir, '.ai-studio-pref.json');
+    return path.join(app.getPath('userData'), 'pref.json');
 }
 
 function loadDataDir() {
@@ -37,16 +34,19 @@ function loadDataDir() {
 }
 
 function saveDataDir(dataDir) {
-    try { fs.writeFileSync(prefFile(), JSON.stringify({ dataDir }), 'utf8'); } catch (_) {}
+    try {
+        fs.mkdirSync(path.dirname(prefFile()), { recursive: true });
+        fs.writeFileSync(prefFile(), JSON.stringify({ dataDir }), 'utf8');
+    } catch (_) {}
 }
 
 // ── 首次运行：弹窗让用户选择存储目录 ──
 async function pickDataDir() {
     const result = await dialog.showOpenDialog(splashWin, {
-        title: '选择 AI Studio 数据存储位置',
+        title: '请选择下载路径',
         message: '配置文件和生成图片将存储在此文件夹',
         properties: ['openDirectory', 'createDirectory'],
-        buttonLabel: '确认使用此文件夹',
+        buttonLabel: '选择此文件夹',
     });
     if (result.canceled || !result.filePaths.length) {
         app.quit();
@@ -117,6 +117,9 @@ async function startJava() {
     const dataDir = await prepareDataDir();
     if (!dataDir) return;
 
+    // 步骤 2：启动 AI 服务
+    setLoadingStep(2);
+
     const jvmArgs = [
         `-Dspring.web.resources.static-locations=file:${res('frontend').replace(/\\/g, '/')}/`,
         `-Dapp.paths.config-file=${path.join(dataDir, 'config.json').replace(/\\/g, '/')}`,
@@ -157,10 +160,17 @@ function waitForServer(timeoutMs = 90_000) {
     });
 }
 
+// ── 推进启动画面步骤（0=检查环境, 1=初始化目录, 2=启动服务, 3=等待就绪） ──
+function setLoadingStep(index) {
+    if (splashWin && !splashWin.isDestroyed()) {
+        splashWin.webContents.executeJavaScript(`updateStep(${index})`).catch(() => {});
+    }
+}
+
 // ── 启动画面 ──
 function createSplash() {
     splashWin = new BrowserWindow({
-        width: 420, height: 280,
+        width: 420, height: 320,
         frame:       false,
         transparent: false,
         resizable:   false,
@@ -231,9 +241,23 @@ function createMain() {
 // ── 应用启动 ──
 app.whenReady().then(async () => {
     createSplash();
-    await startJava();
+
+    // 步骤 0 由 loading.html 自身脚本设置；等页面加载完后再推进
+    await new Promise(r => {
+        if (splashWin.webContents.isLoading()) {
+            splashWin.webContents.once('did-finish-load', r);
+        } else {
+            r();
+        }
+    });
+
+    // 步骤 1：初始化数据目录（内部含 prepareDataDir，可能弹窗让用户选目录）
+    setLoadingStep(1);
+    await startJava();   // 内部 prepareDataDir 完成后推进步骤 2
 
     try {
+        // 步骤 3：等待服务就绪
+        setLoadingStep(3);
         await waitForServer();
         createMain();
     } catch (e) {

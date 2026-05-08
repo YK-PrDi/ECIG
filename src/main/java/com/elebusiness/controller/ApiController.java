@@ -257,7 +257,6 @@ public class ApiController {
 
         boolean hasImages = images != null && !images.isEmpty();
 
-        // 纯文生图时 prompt 必填；有图片时 prompt 可为空（模型自行发挥）
         if (!hasImages && (prompt == null || prompt.isBlank())) {
             return ResponseEntity.badRequest().body(Map.of("error", "纯文生图模式需要提供提示词"));
         }
@@ -267,7 +266,7 @@ public class ApiController {
                 "自定义生成/" + timestamp).getAbsolutePath();
         new File(outputDir).mkdirs();
 
-        // images[0] = 参考图（可选），images[1..n] = 白底图（可选）
+        // multipart 必须在请求线程内落盘，提交到异步任务前先把上传文件持久化
         File refTempFile = null;
         List<File> whiteTempFiles = new ArrayList<>();
         if (hasImages) {
@@ -285,45 +284,76 @@ public class ApiController {
             }
         }
 
-        // 构建所有任务后并发执行
-        ExecutorService executor = imageGenerationService.getExecutor();
-        List<CompletableFuture<String>> futures = new ArrayList<>();
-        int[] idx = {1};
+        int total = !hasImages ? count
+                : (whiteTempFiles.isEmpty() ? 1 : whiteTempFiles.size()) * count;
 
-        if (!hasImages) {
-            for (int i = 0; i < count; i++) {
-                final String outputPath = new File(outputDir, idx[0]++ + ".jpg").getAbsolutePath();
-                futures.add(CompletableFuture.supplyAsync(() -> {
-                    boolean ok = imageGenerationService.generateImage(prompt, null, null, outputPath, agentId);
-                    return ok ? outputPath : "失败: 生成未返回图片";
-                }, executor));
-            }
-        } else {
-            List<File> bgFiles = whiteTempFiles.isEmpty() ? List.of(refTempFile) : whiteTempFiles;
-            final String refPath = refTempFile.getAbsolutePath();
-            for (File bgFile : bgFiles) {
+        GenerationTask task = taskService.createTask(total);
+        final File refFinal = refTempFile;
+        final List<File> whiteFinal = whiteTempFiles;
+        final boolean hasImagesFinal = hasImages;
+
+        taskService.submit(task, () -> {
+            ExecutorService executor = imageGenerationService.getExecutor();
+            List<CompletableFuture<String>> futures = new ArrayList<>();
+            int[] idx = {1};
+
+            if (!hasImagesFinal) {
                 for (int i = 0; i < count; i++) {
-                    final File bg = bgFile;
-                    final String outputPath = new File(outputDir, idx[0]++ + ".jpg").getAbsolutePath();
+                    final int n = idx[0]++;
+                    final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                     futures.add(CompletableFuture.supplyAsync(() -> {
-                        boolean ok = imageGenerationService.generateImage(
-                                prompt, refPath, bg.getAbsolutePath(), outputPath, agentId);
+                        if (task.isCancelled()) return "失败: 已取消";
+                        boolean ok = imageGenerationService.generateImage(prompt, null, null, outputPath, agentId);
                         return ok ? outputPath : "失败: 生成未返回图片";
                     }, executor));
                 }
+            } else {
+                List<File> bgFiles = whiteFinal.isEmpty() ? List.of(refFinal) : whiteFinal;
+                final String refPath = refFinal.getAbsolutePath();
+                for (File bgFile : bgFiles) {
+                    for (int i = 0; i < count; i++) {
+                        final File bg = bgFile;
+                        final int n = idx[0]++;
+                        final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
+                        futures.add(CompletableFuture.supplyAsync(() -> {
+                            if (task.isCancelled()) return "失败: 已取消";
+                            boolean ok = imageGenerationService.generateImage(
+                                    prompt, refPath, bg.getAbsolutePath(), outputPath, agentId);
+                            return ok ? outputPath : "失败: 生成未返回图片";
+                        }, executor));
+                    }
+                }
             }
-        }
 
-        List<Object> results = new ArrayList<>();
-        for (CompletableFuture<String> f : futures) {
-            try { results.add(f.get()); }
-            catch (Exception e) { results.add("失败: " + e.getMessage()); }
-        }
+            // 单张图硬超时 5 分钟，挂死任务直接放弃，不再拖累整体进度
+            int n = 1;
+            for (CompletableFuture<String> f : futures) {
+                String r;
+                try {
+                    r = f.get(5, TimeUnit.MINUTES);
+                } catch (TimeoutException te) {
+                    f.cancel(true);
+                    r = "失败: 单张图超时 (>5 分钟)";
+                } catch (Exception e) {
+                    r = "失败: " + e.getMessage();
+                }
+                String name = n++ + ".jpg";
+                if (r.startsWith("失败")) {
+                    task.addResult(result(name, "error", r, null));
+                } else {
+                    task.addResult(result(name, "success", null, r));
+                }
+                task.incrementProgress();
+            }
 
-        if (refTempFile != null) refTempFile.delete();
-        for (File wf : whiteTempFiles) wf.delete();
+            // 把输出目录作为最后一条 info 结果，便于前端调 /api/gallery 渲染
+            task.addResult(result("__OUTPUT_DIR__", "info", null, outputDir));
 
-        return ResponseEntity.ok(Map.of("results", results, "output_dir", outputDir));
+            if (refFinal != null) refFinal.delete();
+            for (File wf : whiteFinal) wf.delete();
+        });
+
+        return ResponseEntity.ok(Map.of("taskId", task.getId(), "output_dir", outputDir));
     }
 
     @GetMapping("/api/image")

@@ -1,6 +1,6 @@
 {
   "name": "ai-studio",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "AI 产品图片生成系统",
   "main": "main.js",
   "scripts": {
@@ -17,10 +17,20 @@
     "copyright": "ELE Business",
     "win": {
       "target": [
-        { "target": "portable", "arch": ["x64"] }
+        { "target": "nsis", "arch": ["x64"] }
       ],
       "icon": "build/icon.ico",
       "sign": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AI Studio",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
     },
     "extraResources": [
       { "from": "../dist/app.jar",  "to": "app.jar"  },

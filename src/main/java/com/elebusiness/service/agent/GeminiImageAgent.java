@@ -109,10 +109,10 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
                         log.warn("Gemini API 错误 {} (尝试 {}/{}): {}", code, attempt + 1, maxRetries,
                                 responseBody.substring(0, Math.min(300, responseBody.length())));
                         if (code == 503 && attempt < maxRetries - 1) {
-                            Thread.sleep(60000);
+                            Thread.sleep(10000);
                             continue;
                         } else if (code == 429 && attempt < maxRetries - 1) {
-                            Thread.sleep(30000);
+                            Thread.sleep(15000);
                             continue;
                         } else if (attempt < maxRetries - 1) {
                             Thread.sleep(5000L * (attempt + 1));
@@ -121,12 +121,21 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
                         return false;
                     }
 
+                    // 200 OK 但 Gemini 安全/版权策略拦截，重试也不会出图，直接放弃
+                    String finishReason = extractFinishReason(responseBody);
+                    if ("SAFETY".equals(finishReason) || "RECITATION".equals(finishReason)
+                            || "PROHIBITED_CONTENT".equals(finishReason) || "BLOCKLIST".equals(finishReason)) {
+                        log.warn("Gemini 拒绝生成（finishReason={}），跳过重试", finishReason);
+                        return false;
+                    }
+
                     boolean saved = extractAndSaveImage(responseBody, outputPath);
                     if (saved) {
                         log.info("Gemini 图片生成成功: {}", outputPath);
                         return true;
                     }
-                    log.warn("Gemini 响应中未找到图片数据 (尝试 {}/{})", attempt + 1, maxRetries);
+                    log.warn("Gemini 响应中未找到图片数据 (尝试 {}/{}, finishReason={})",
+                            attempt + 1, maxRetries, finishReason);
                 }
 
             } catch (InterruptedException e) {
@@ -177,6 +186,18 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
         modalities.add("IMAGE");
 
         return root.toString();
+    }
+
+    private String extractFinishReason(String responseJson) {
+        try {
+            JsonNode root = objectMapper.readTree(responseJson);
+            JsonNode candidates = root.path("candidates");
+            if (candidates.isArray() && !candidates.isEmpty()) {
+                JsonNode reason = candidates.get(0).path("finishReason");
+                if (!reason.isMissingNode()) return reason.asText();
+            }
+        } catch (Exception ignored) {}
+        return "";
     }
 
     private boolean extractAndSaveImage(String responseJson, String outputPath) throws Exception {

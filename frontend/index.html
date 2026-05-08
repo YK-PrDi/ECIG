@@ -374,6 +374,12 @@
                     <div id="progressBar"
                         style="background:var(--primary); width:0%; height:100%; transition:width 0.3s;"></div>
                 </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted); margin-top:10px;">
+                    <span>⏱ 已用 <b id="progressElapsed">0:00</b></span>
+                    <span>剩余约 <b id="progressEta">估算中…</b></span>
+                </div>
+                <div id="progressCurrent"
+                    style="font-size:0.7rem; color:var(--text-dim); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
             </div>
             <div id="progressIdle" style="text-align:center; padding:40px; color:var(--text-dim); font-size:0.85rem;">
                 队列空闲</div>
@@ -775,6 +781,9 @@
             document.getElementById(`btn-${mode}`).classList.add('active');
 
             drawer.classList.add('open');
+            // 抽屉展开后同步 chat padding，确保最后一条消息不被遮挡
+            requestAnimationFrame(() => { syncChatPadding(); });
+
             if (mode === 'standard') {
                 sidebar.classList.remove('minimized');
             } else {
@@ -956,23 +965,9 @@
 
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
                     const data = await resp.json();
-                    if (data.error) throw new Error(data.error);
-                    if (data.results) {
-                        const failed  = data.results.filter(r => typeof r === 'string' && r.startsWith('失败'));
-                        const success = data.results.filter(r => typeof r === 'string' && !r.startsWith('失败'));
-                        if (success.length === 0) {
-                            const detail = failed.map(r => `• ${r}`).join('\n');
-                            appendMessage('ai', `❌ 生成失败\n${detail}`);
-                        } else {
-                            if (failed.length > 0) {
-                                appendMessage('ai', `⚠️ 部分失败（${failed.length} 张）：${failed.join('；')}`);
-                            }
-                            renderGeneratedImages([{ name: '自定义生成', status: 'success', output: data.output_dir }]);
-                            // 把第一张成功结果设为下一轮重绘基底
-                            setSessionImage(success[0]);
-                        }
-                        clearFiles();
-                    }
+                    if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
+                    clearFiles();
+                    startPolling(data.taskId);
                 } catch (e) {
                     document.getElementById('generateBtn').disabled = false;
                     appendMessage('ai', '生成失败：' + e.message);
@@ -1004,19 +999,9 @@
 
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
                     const data = await resp.json();
-                    if (data.error) throw new Error(data.error);
-                    if (data.results) {
-                        const failed  = data.results.filter(r => typeof r === 'string' && r.startsWith('失败'));
-                        const success = data.results.filter(r => typeof r === 'string' && !r.startsWith('失败'));
-                        if (success.length === 0) {
-                            appendMessage('ai', `❌ 生成失败\n${failed.map(r => '• ' + r).join('\n')}`);
-                        } else {
-                            if (failed.length > 0) appendMessage('ai', `⚠️ 部分失败（${failed.length} 张）`);
-                            renderGeneratedImages([{ name: '电商模式生成', status: 'success', output: data.output_dir }]);
-                            setSessionImage(success[0]);
-                        }
-                        clearFiles();
-                    }
+                    if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
+                    clearFiles();
+                    startPolling(data.taskId);
                 } catch (e) {
                     document.getElementById('generateBtn').disabled = false;
                     appendMessage('ai', '生成失败：' + e.message);
@@ -1048,18 +1033,55 @@
             }
         }
 
+        function fmtSec(totalSec) {
+            if (!Number.isFinite(totalSec) || totalSec < 0) return '估算中…';
+            totalSec = Math.round(totalSec);
+            const m = Math.floor(totalSec / 60);
+            const s = totalSec % 60;
+            return `${m}:${String(s).padStart(2, '0')}`;
+        }
+
+        let elapsedTimer = null;
         function startPolling(taskId) {
             document.getElementById('progressBox').style.display = 'block';
             document.getElementById('progressIdle').style.display = 'none';
+            document.getElementById('progressElapsed').textContent = '0:00';
+            document.getElementById('progressEta').textContent = '估算中…';
+            document.getElementById('progressCurrent').textContent = '';
+            const startTs = Date.now();
+
+            clearInterval(elapsedTimer);
+            elapsedTimer = setInterval(() => {
+                document.getElementById('progressElapsed').textContent = fmtSec((Date.now() - startTs) / 1000);
+            }, 1000);
+
             clearInterval(pollTimer);
             pollTimer = setInterval(async () => {
                 try {
                     const res = await fetch(`/api/task/${taskId}`);
                     const data = await res.json();
-                    document.getElementById('progressBar').style.width = Math.round(((data.progress || 0) / (data.total || 1)) * 100) + '%';
-                    document.getElementById('progressCount').textContent = `${data.progress || 0}/${data.total || 1}`;
+                    const progress = data.progress || 0;
+                    const total = data.total || 1;
+                    document.getElementById('progressBar').style.width = Math.round((progress / total) * 100) + '%';
+                    document.getElementById('progressCount').textContent = `${progress}/${total}`;
+
+                    // 预计剩余 = 已用 / 已完成 × 剩余张数
+                    const elapsedSec = (Date.now() - startTs) / 1000;
+                    if (progress > 0 && progress < total) {
+                        const eta = (elapsedSec / progress) * (total - progress);
+                        document.getElementById('progressEta').textContent = fmtSec(eta);
+                    } else if (progress >= total) {
+                        document.getElementById('progressEta').textContent = '收尾中…';
+                    }
+
+                    // 当前在做什么
+                    const cur = data.currentProduct || '';
+                    document.getElementById('progressCurrent').textContent =
+                        cur ? `正在处理: ${cur}` : (progress < total ? `正在生成第 ${progress + 1} 张…` : '');
+
                     if (data.status !== 'running' && data.status !== 'pending') {
                         clearInterval(pollTimer);
+                        clearInterval(elapsedTimer);
                         document.getElementById('generateBtn').disabled = false;
                         document.getElementById('progressBox').style.display = 'none';
                         document.getElementById('progressIdle').style.display = 'block';
@@ -1069,6 +1091,9 @@
                         const errorList   = results.filter(r => r.status === 'error');
 
                         const videoResult = successList.find(r => r.type === 'video' && r.filename);
+                        // custom/ecommerce 模式后端会塞一条 __OUTPUT_DIR__ 标记
+                        const outputDirEntry = results.find(r => r.name === '__OUTPUT_DIR__' && r.output);
+                        const customSuccess  = successList.filter(r => r.name !== '__OUTPUT_DIR__');
 
                         if (data.status === 'stopped') {
                             appendMessage('ai', `⏹ 任务已停止（已完成 ${data.progress}/${data.total}）`);
@@ -1077,6 +1102,19 @@
                             appendMessage('ai', `❌ 任务异常终止${errMsg ? '：' + errMsg : ''}`);
                         } else if (videoResult) {
                             appendVideoPlayer(videoResult.filename);
+                        } else if (outputDirEntry) {
+                            // 自定义/电商模式：按目录批量渲染，把首张成功图作为下一轮重绘基底
+                            if (customSuccess.length === 0) {
+                                const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
+                                appendMessage('ai', `❌ 全部生成失败\n${detail}`);
+                            } else {
+                                if (errorList.length > 0) {
+                                    const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
+                                    appendMessage('ai', `⚠️ 部分失败（${errorList.length} 张）\n${detail}`);
+                                }
+                                renderGeneratedImages([{ name: '生成结果', status: 'success', output: outputDirEntry.output }]);
+                                if (customSuccess[0]?.output) setSessionImage(customSuccess[0].output);
+                            }
                         } else if (errorList.length > 0 && successList.length === 0) {
                             const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
                             appendMessage('ai', `❌ 全部生成失败\n${detail}`);
@@ -1141,6 +1179,22 @@
                 </div>`, true);
         }
 
+        function syncChatPadding() {
+            const chat = document.getElementById('chatMessages');
+            const drawer = document.getElementById('configDrawer');
+            if (!chat) return;
+            const drawerOpen = drawer && drawer.classList.contains('open');
+            const extra = drawerOpen ? Math.max(0, drawer.offsetHeight - 24) : 0;
+            chat.style.paddingBottom = (24 + extra) + 'px';
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('chatMessages');
+            if (!container) return;
+            syncChatPadding();
+            container.scrollTop = container.scrollHeight;
+        }
+
         function appendMessage(role, text, isHtml = false) {
             const container = document.getElementById('chatMessages');
             const emptyState = document.getElementById('emptyState');
@@ -1156,7 +1210,7 @@
             }
 
             container.appendChild(msg);
-            container.scrollTop = container.scrollHeight;
+            scrollToBottom();
         }
 
         function setSessionImage(serverPath) {
