@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Studio — 创意中心</title>
+    <title>羽刃 — 创意中心</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="index.css">
@@ -18,9 +18,8 @@
     <!-- ── 登录层 ── -->
     <div id="loginOverlay">
         <div class="login-card">
-            <div class="login-logo"
-                style="width:48px; height:48px; border-radius:12px; margin:0 auto 20px; display:flex; align-items:center; justify-content:center; color:white; font-size:24px;">
-                ✧</div>
+            <img src="icon.png" alt="羽刃"
+                style="width: 48px; height: 48px; border-radius: 12px; margin: 0 auto 20px; display: block; object-fit: cover;">
             <h2>身份验证</h2>
             <input type="password" class="input-field" style="margin:20px 0; padding:12px;" placeholder="请输入访问密钥"
                 id="loginPass" value="123456">
@@ -31,7 +30,8 @@
     <!-- ── 导航 ── -->
     <nav class="topnav">
         <a href="#" class="brand">
-            <div class="brand-icon rainbow-logo">✧</div> AI Studio
+            <img src="icon.png" alt="羽刃" style="width: 32px; height: 32px; border-radius: 8px; object-fit: cover; margin-right: 8px;">
+            羽刃
         </a>
         <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
             <button id="themeToggleBtn" onclick="switchTheme()" title="切换明暗模式"
@@ -180,7 +180,7 @@
                                 d="M4.5 15.5L5.5 18.5L8.5 19.5L5.5 20.5L4.5 23.5L3.5 20.5L0.5 19.5L3.5 18.5L4.5 15.5Z" />
                         </svg>
                     </div>
-                    <h2>果敢直行，果然很行</h2>
+                    <h2>果敢执行，果然很行</h2>
                     <p>开启您的 AI 创想之旅</p>
                     <div class="suggestion-grid">
                         <div class="suggestion-card"
@@ -354,7 +354,17 @@
                         </div>
 
                         <div id="ecommerceConfig" class="panel-view">
-                            <div id="ecFieldsContainer" style="display:flex; flex-wrap:wrap; gap:8px 16px; align-items:flex-start; width:100%;"></div>
+                            <div class="config-group" style="width:100%; align-items:flex-start;">
+                                <label>电商方案配置</label>
+                                <div style="display:flex; gap:12px; align-items:center; margin-top:4px;">
+                                    <button class="btn-outline" style="border-color:var(--primary); color:var(--primary);" onclick="openEcommerceModal()">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        设置产品与场景参数
+                                    </button>
+                                    <div id="ecStatusBadge" style="font-size:0.75rem; color:var(--text-dim);">当前：未配置</div>
+                                </div>
+                                <div id="ecSummaryPreview" style="margin-top:10px; font-size:0.72rem; color:var(--text-dim); line-height:1.5; display:none; padding:8px; background:var(--primary-light); border-radius:6px;"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -511,8 +521,17 @@
             event.stopPropagation();
             const wrapper = el.closest('.gf-select');
             const wasOpen = wrapper.classList.contains('open');
-            document.querySelectorAll('.gf-select').forEach(sel => sel.classList.remove('open'));
-            if (!wasOpen) wrapper.classList.add('open');
+
+            // 关闭所有并重置层级
+            document.querySelectorAll('.gf-select').forEach(sel => {
+                sel.classList.remove('open');
+                sel.style.zIndex = "";
+            });
+
+            if (!wasOpen) {
+                wrapper.classList.add('open');
+                wrapper.style.zIndex = "9999"; // 展开时临时提到最高
+            }
         }
 
         function selectOption(el, event) {
@@ -860,11 +879,7 @@
             // 抽屉展开后同步 chat padding，确保最后一条消息不被遮挡
             requestAnimationFrame(() => { syncChatPadding(); });
 
-            if (mode === 'standard') {
-                sidebar.classList.remove('minimized');
-            } else {
-                sidebar.classList.add('minimized');
-            }
+            sidebar.classList.remove('minimized');
 
             if (oldPanel && oldPanel !== newPanel) {
                 oldPanel.className = 'panel-view exit';
@@ -883,7 +898,6 @@
             } else if (mode === 'ecommerce') {
                 input.placeholder = '客户附加要求（可留空）...';
                 sendBtn.className = 'btn-send custom';
-                initEcommercePanel();
             } else {
                 input.placeholder = '用文字描述视频内容、场景、动态效果...';
                 sendBtn.className = 'btn-send video';
@@ -1090,10 +1104,9 @@
             } else if (currentMode === 'ecommerce') {
                 apiPath = '/api/custom_generate';
 
-                const ecPrompt = buildEcommercePrompt(prompt);
-                if (!ecPrompt) { alert('请至少选择一个参数（如品类或风格）'); return; }
+                const ecPrompts = buildEcommercePrompts(prompt);
+                if (!ecPrompts.length) { alert('请先选择"形态结构"，再至少勾选一个卖点'); return; }
 
-                payload.prompt = ecPrompt;
                 const formData = new FormData();
                 if (droppedFiles.length > 0) {
                     droppedFiles.forEach(f => formData.append('images', f));
@@ -1103,9 +1116,12 @@
                         formData.append('images', new File([blob], 'session_base.jpg', { type: blob.type || 'image/jpeg' }));
                     } catch (_) {}
                 }
-                for (const key in payload) formData.append(key, payload[key]);
+                ecPrompts.forEach(p => formData.append('prompt', p));
+                formData.append('count',   '1');
+                formData.append('agentId', agentId);
 
-                appendMessage('user', `[电商模式] 模型: ${agentId}\n${ecPrompt.substring(0, 120)}...`);
+                const sellingLabels = ecSel.sellings.map(s => s.label).join('、');
+                appendMessage('user', `[电商模式] 模型: ${agentId}\n卖点: ${sellingLabels}（共 ${ecPrompts.length} 张）`);
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
@@ -1331,36 +1347,61 @@
         function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); executeTask(); } }
 
         // ── 电商模式 ──
-        const EC_SCENE_SUB = {
-            '浴室': [
-                { display: '淋浴房玻璃门', value: '水淋浴房玻璃门：挂浴花、起泡网、刮水板（背景有水雾感）。' },
-                { display: '洗漱台侧墙', value: '洗漱台侧墙/镜柜旁：挂吹风机线圈、擦手巾、发箍。' },
-                { display: '门后空间', value: '门后空间：挂浴袍、换洗衣物。' }
+        // 品类 4 级级联（空项 = 清空选择）
+        const EC_CATEGORY_TREE = [
+            { display: '家装主材', children: [
+                { display: '卫浴用品', children: [
+                    { display: '卫浴五金/挂件', children: [
+                        { display: '卷纸器/纸巾架' }
+                    ]}
+                ]}
+            ]}
+        ];
+
+        // 卖点 → 场景构图 映射（形态结构决定走哪组卖点）
+        const EC_SELLING_BY_SHAPE = {
+            '双层/三层置物卷纸架': [
+                { key: 'qiangjin_xifu',  label: '强劲吸附 稳固不晃',
+                  prompt: '强劲吸附 稳固不晃（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+                  composition: '图中上展示吸盘；中下是左右对称分布展示图。拍摄角度 45°正视视角；产品吸附在墙面。图中上：聚焦按压式吸盘安装结构，一只手的拇指正按压金属质感吸盘的中心区域，吸盘外围环绕蓝色半透明环形特效，特效上分布白色箭头指示吸附受力方向；图中下：左侧展示图展示本产品，上层放置高雅精致黑色男性水壶，下层放置三部叠在一起的手机体现承重性强，左上角带绿色勾；右侧展示市面普通款，放置一卷纸，左上角带红色叉。背景：深灰大理石哑光纹理墙面，光影细腻，凸显产品高级质感。' },
+                { key: 'fenceng_shouna', label: '分层收纳 加宽容量',
+                  prompt: '分层收纳 加宽容量（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+                  composition: '三层吸盘式壁挂纸巾置物架占据画面核心，顶部展示圆形吸盘固定结构；侧前方 45 度特写视角。上层置物台覆盖蓝色发光尺寸(10.2CM)标注特效，中层放置两包卫生巾，下层内置抽纸盒且抽纸自然垂下，直观展示大容量收纳能力；清晰呈现金属哑光质感与立体结构。背景：深灰大理石哑光纹理墙面，右侧露出浴室局部作场景衬托，光影柔和自然。' },
+                { key: 'quyong_fangbian', label: '取用方便 抽纸不卡顿',
+                  prompt: '取用方便 抽纸不卡顿（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+                  composition: '纸巾置物架占据画面中心偏左区域。重点展示镂空出纸结构，上下两个镂空出纸口均带有蓝色发光特效。背景：深灰大理石哑光纹理墙面，右上角露出一部分高级圆镜，右下角露出一部分深蓝色浴室柜，光影细腻。' },
+                { key: 'shengji_tanga',  label: '升级碳钢基材 防腐防锈抗腐蚀',
+                  prompt: '升级碳钢基材 防腐防锈抗腐蚀（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+                  composition: '画面下半部分是多颗大小不一的金属球体，球体表面带有"碳钢"立体标识；上方是弧形不锈钢板材，表面带有六边形压纹，形成富有层次感的视觉结构，光影细腻突出金属质感与光泽，产品细节为绝对视觉焦点。背景：深灰哑光底色，光影柔和自然带点冷色调。' },
+                { key: 'anzhuang_bianjie', label: '安装便捷 拆卸不伤墙面',
+                  prompt: '安装便捷 拆卸不伤墙面（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+                  composition: '2×2 网格布局，4 个等大圆角矩形步骤框均匀排列；每个框左上角配圆形数字序号，框内为对应安装操作特写：依次呈现手擦墙面、撕开吸盘保护膜、手按压吸盘上墙、带橙色箭头指示逆时针拧旋钮、双手按压胶贴排空气、带橙色箭头指示安装底座与纸巾架主体的过程；清晰展示手部动作与产品结构细节。背景：深灰大理石哑光纹理墙面，光影细腻。' },
+                { key: 'quanjing_sanmai', label: '强劲吸附·分层收纳·不伤墙面（主图三卖点）',
+                  prompt: '强劲吸附、分层收纳、不伤墙面（三个卖点在图右下角呈三行对称排列）；文字模板：圆角香槟金椭圆文字框，阿里巴巴普惠粗黑体',
+                  composition: '图中央是外凸90°直角墙面；45 度斜俯视视角；双产品对角线错落布局，左下二层款、右上三层款纸巾置物架，全景。均展示实际使用状态：二层款上层放手机、下层内置卷纸，三层款上层放湿纸巾盒、下层内置抽纸盒且抽纸露出。背景：轻奢风深灰大理石哑光纹理墙面，镜面级反光出产品倒影；右侧露出部分白色台上盆、黑色台面、深蓝色浴室柜与香薰瓶局部，左下角露出部分白色高级马桶。' },
             ],
-            '厨房': [
-                { display: '灶台墙面', value: '灶台墙面：挂锅铲、汤勺、抹布（背景有轻微的烟火气或整洁的调料区）' }
-            ]
         };
 
         const EC_FIELDS = [
-            { key: 'category', label: '品类', type: 'text', promptKey: '主体' },
             { key: 'install',  label: '安装方式', promptKey: '安装方式',
               options: [
-                { display: '免打孔', value: '免打孔' }, { display: '真空吸盘', value: '真空吸盘' },
-                { display: '磁吸', value: '磁吸' }, { display: '门后背式', value: '门后背式' },
-                { display: '卡扣', value: '卡扣' }
+                { display: '真空吸盘', value: '真空吸盘' },
+                { display: '免打孔',   value: '免打孔' },
+                { display: '磁吸',     value: '磁吸' },
+                { display: '门后背式', value: '门后背式' },
+                { display: '卡扣',     value: '卡扣' }
               ]
             },
             { key: 'shape', label: '形态结构', promptKey: '形态',
               options: [
-                { display: '单钩', value: '单钩' },
-                { display: '连排钩', value: '连排钩（排挂）' }
+                { display: '双层置物卷纸架', value: '双层置物卷纸架', sellingGroup: '双层/三层置物卷纸架' },
+                { display: '三层置物卷纸架', value: '三层置物卷纸架', sellingGroup: '双层/三层置物卷纸架' }
               ]
             },
-            { key: 'style', label: '风格', promptKey: '风格',
+            { key: 'style', label: '背景风格', promptKey: '背景风格',
               options: [
+                { display: '轻奢风', value: '轻奢风（深灰大理石哑光纹理墙面，镜面级反光出产品倒影，光影细腻，凸显产品高级质感）' },
                 { display: '极简主义', value: '极简主义（无主灯设计、隐藏式收纳、大面积留白）' },
-                { display: '轻奢风', value: '轻奢风（金属点缀、岩板/大理石纹理、玻璃材质、悬浮设计）' },
                 { display: '侘寂风', value: '侘寂风（微水泥质感、原木色调、哑光表面、自然粗犷）' },
                 { display: '现代前卫', value: '现代前卫（科技感、黑白灰主色调、几何线条）' },
                 { display: '原木北欧', value: '原木北欧（温暖自然、木质元素、清新明亮）' },
@@ -1369,42 +1410,15 @@
             },
             { key: 'material', label: '材质/工艺', promptKey: '材质/工艺',
               options: [
-                { display: 'S亚克力透明', value: 'S亚克力透明' },
-                { display: 'ABS/PP塑料', value: 'ABS/PP塑料挂钩' },
-                { display: '实木挂钩', value: '实木挂钩' },
-                { display: '黄铜挂钩', value: '黄铜挂钩' }
-              ]
-            },
-            { key: 'selling', label: '卖点', promptKey: '卖点',
-              options: [
-                { display: '强承重', value: '强承重（例.挂载重物（如铸铁锅、装满水的沐浴露、厚重湿浴巾），表现不掉落。）' },
-                { display: '防水防潮', value: '防水防潮（例.挂钩上有水珠，或处于淋浴水流附近，表现吸附力依然强劲。）' },
-                { display: '免打孔/无痕', value: '免打孔/无痕（例.特写背面透明胶贴或吸盘，背景为完好无损的昂贵瓷砖）' },
-                { display: '灵活用空间', value: '灵活用空间（例.倒挂在橱柜下方（收纳厨具），或夹在夹角处）' },
-                { display: '防刮防掉', value: '防刮防掉（例.挂钩端部的圆润处理、加长防滑设计特写）' }
-              ]
-            },
-            { key: 'scene', label: '场景', promptKey: '场景', hasSubOptions: true,
-              options: [
-                { display: '浴室', value: '浴室' },
-                { display: '厨房', value: '厨房' }
-              ]
-            },
-            { key: 'composition', label: '构图', promptKey: '构图',
-              options: [
-                { display: '特写', value: '特写' }, { display: '全景', value: '全景' },
-                { display: '对比', value: '对比' }, { display: '动感', value: '动感' }
-              ]
-            },
-            { key: 'lighting', label: '光影', promptKey: '光影',
-              options: [
-                { display: '自然光', value: '自然光' },
-                { display: '灯光', value: '灯光' }
+                { display: '碳钢',   value: '碳钢' },
+                { display: '不锈钢', value: '不锈钢' },
+                { display: '黄铜',   value: '黄铜' },
+                { display: 'ABS/PP塑料', value: 'ABS/PP塑料' }
               ]
             }
         ];
 
-        let ecSel = {};
+        let ecSel = { category: [], sellings: [] };
         let ecPanelInit = false;
 
         function ecEscAttr(str) {
@@ -1415,57 +1429,123 @@
             if (ecPanelInit) return;
             ecPanelInit = true;
             const arrow = `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-            const container = document.getElementById('ecFieldsContainer');
+            const container = document.getElementById('ecModalFieldsContainer');
             let html = '';
-            for (const f of EC_FIELDS) {
-                if (f.type === 'text') {
-                    html += `<div class="config-group" style="min-width:120px;flex:1 1 120px;">
-                        <label>${f.label}</label>
-                        <input type="text" class="input-field" id="ec-${f.key}"
-                            placeholder="输入${f.label}..."
-                            style="height:32px;padding:4px 10px;font-size:0.78rem;"
-                            oninput="ecSel['${f.key}']=this.value">
-                    </div>`;
-                } else {
-                    const optsHtml = f.options.map((o, i) =>
-                        `<div class="gf-option" data-key="${f.key}" data-value="${ecEscAttr(o.value)}" data-display="${ecEscAttr(o.display)}" onclick="ecPickOptionEl(this)">${ecEscAttr(o.display)}</div>`
-                    ).join('') +
-                    `<div class="gf-option" data-key="${f.key}" data-value="__custom__" data-display="自定义模式" onclick="ecPickOptionEl(this)">自定义模式...</div>`;
 
-                    const subWrap = f.hasSubOptions ? `
-                        <div class="gf-select sm drop-up" id="ec-scene-sub-wrap" style="display:none;min-width:120px;" tabindex="0">
-                            <input type="hidden" id="ec-sceneDetail" value="">
-                            <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                <span class="gf-select-text" id="ec-sceneDetail-text">场景细节</span>
-                                ${arrow}
-                            </div>
-                            <div class="gf-select-options" id="ec-sceneDetail-options"></div>
-                        </div>` : '';
-
-                    html += `<div class="config-group" style="min-width:100px;flex:1 1 100px;">
-                        <label>${f.label}</label>
-                        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
-                            <div class="gf-select sm drop-up" tabindex="0" style="min-width:100px;">
-                                <input type="hidden" id="ec-${f.key}" value="">
-                                <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                    <span class="gf-select-text" id="ec-${f.key}-text">—</span>
-                                    ${arrow}
-                                </div>
-                                <div class="gf-select-options">
-                                    <div class="gf-option selected" data-key="${f.key}" data-value="" data-display="—" onclick="ecPickOptionEl(this)">— 空</div>
-                                    ${optsHtml}
-                                </div>
-                            </div>
-                            ${subWrap}
+            html += `<div class="config-group" style="width:100%;">
+                <label>品类</label>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;" id="ec-cat-container">
+                    <div class="gf-select sm drop-up" tabindex="0" style="min-width:140px;" data-cat-level="0">
+                        <input type="hidden" class="ec-cat-input">
+                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                            <span class="gf-select-text">—</span>${arrow}
                         </div>
-                        <input type="text" class="input-field" id="ec-custom-${f.key}"
-                            placeholder="自定义模式${f.label}..."
-                            style="display:none;height:28px;padding:2px 8px;font-size:0.75rem;margin-top:4px;"
-                            oninput="ecSel['${f.key}']=this.value">
-                    </div>`;
-                }
+                        <div class="gf-select-options"></div>
+                    </div>
+                </div>
+            </div>`;
+
+            for (const f of EC_FIELDS) {
+                const optsHtml = f.options.map(o =>
+                    `<div class="gf-option" data-key="${f.key}" data-value="${ecEscAttr(o.value)}" data-display="${ecEscAttr(o.display)}" data-selling-group="${ecEscAttr(o.sellingGroup || '')}" onclick="ecPickOptionEl(this)">${ecEscAttr(o.display)}</div>`
+                ).join('') +
+                `<div class="gf-option" data-key="${f.key}" data-value="__custom__" data-display="自定义" onclick="ecPickOptionEl(this)">自定义...</div>`;
+
+                html += `<div class="config-group" style="min-width:120px;flex:1 1 120px;">
+                    <label>${f.label}</label>
+                    <div class="gf-select sm drop-up" tabindex="0" style="min-width:120px;">
+                        <input type="hidden" id="ec-${f.key}" value="">
+                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                            <span class="gf-select-text" id="ec-${f.key}-text">—</span>${arrow}
+                        </div>
+                        <div class="gf-select-options">
+                            <div class="gf-option selected" data-key="${f.key}" data-value="" data-display="—" data-selling-group="" onclick="ecPickOptionEl(this)">— 空</div>
+                            ${optsHtml}
+                        </div>
+                    </div>
+                    <input type="text" class="input-field" id="ec-custom-${f.key}"
+                        placeholder="自定义${f.label}..."
+                        style="display:none;height:28px;padding:2px 8px;font-size:0.75rem;margin-top:4px;"
+                        oninput="ecSel['${f.key}']=this.value">
+                </div>`;
             }
+
+            html += `<div class="config-group" style="width:100%;">
+                <label>卖点（可多选，选 N 个生成 N 张图）</label>
+                <div id="ec-selling-container" style="display:flex;flex-wrap:wrap;gap:6px;">
+                    <span style="font-size:0.75rem;color:var(--text-dim);">请先选择"形态结构"</span>
+                </div>
+            </div>`;
+
+            html += `<div class="config-group" style="width:100%;">
+                <label>场景构图（系统根据所选卖点自动匹配）</label>
+                <div id="ec-composition-preview"
+                    style="font-size:0.72rem;color:var(--text-dim);line-height:1.5;padding:8px 10px;background:var(--surface-alt,#F8FAFC);border:1px solid var(--border);border-radius:6px;min-height:40px;">
+                    ——
+                </div>
+            </div>`;
+
             container.innerHTML = html;
+            ecRenderCatLevel(0, EC_CATEGORY_TREE);
+        }
+
+        function ecRenderCatLevel(level, nodes) {
+            const container = document.getElementById('ec-cat-container');
+            container.querySelectorAll('.gf-select[data-cat-level]').forEach(sel => {
+                if (parseInt(sel.dataset.catLevel) >= level) sel.remove();
+            });
+            ecSel.category = ecSel.category.slice(0, level);
+            if (!nodes || nodes.length === 0) return;
+            const arrow = `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+            const optsHtml = nodes.map(n =>
+                `<div class="gf-option" data-display="${ecEscAttr(n.display)}" onclick="ecPickCatEl(this, ${level})">${ecEscAttr(n.display)}</div>`
+            ).join('');
+            const wrap = document.createElement('div');
+            wrap.className = 'gf-select sm drop-up';
+            wrap.tabIndex = 0;
+            wrap.style.minWidth = '140px';
+            wrap.dataset.catLevel = level;
+            wrap.innerHTML = `
+                <input type="hidden" class="ec-cat-input">
+                <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                    <span class="gf-select-text">—</span>${arrow}
+                </div>
+                <div class="gf-select-options">
+                    <div class="gf-option selected" data-display="—" onclick="ecPickCatEl(this, ${level})">— 空</div>
+                    ${optsHtml}
+                </div>`;
+            container.appendChild(wrap);
+        }
+
+        function ecPickCatEl(el, level) {
+            const display = el.dataset.display;
+            const wrapper = el.closest('.gf-select');
+            wrapper.classList.remove('open');
+            wrapper.querySelectorAll('.gf-option').forEach(o => o.classList.remove('selected'));
+            el.classList.add('selected');
+            wrapper.querySelector('.gf-select-text').textContent = display;
+            wrapper.querySelector('input[type=hidden]').value = display;
+            if (display === '—') {
+                ecSel.category = ecSel.category.slice(0, level);
+                ecRenderCatLevel(level, []);
+                return;
+            }
+            ecSel.category = ecSel.category.slice(0, level);
+            ecSel.category[level] = display;
+            let nodes = EC_CATEGORY_TREE;
+            for (let i = 0; i < level; i++) {
+                const hit = (nodes || []).find(n => n.display === ecSel.category[i]);
+                nodes = hit ? hit.children : [];
+            }
+            const hit = (nodes || []).find(n => n.display === display);
+            if (hit && hit.children && hit.children.length) {
+                ecRenderCatLevel(level + 1, hit.children);
+            } else {
+                const container = document.getElementById('ec-cat-container');
+                container.querySelectorAll('.gf-select[data-cat-level]').forEach(sel => {
+                    if (parseInt(sel.dataset.catLevel) > level) sel.remove();
+                });
+            }
         }
 
         function ecPickOptionEl(el) {
@@ -1478,7 +1558,6 @@
             el.classList.add('selected');
             wrapper.querySelector('input[type=hidden]').value = value;
             wrapper.querySelector('.gf-select-text').textContent = display;
-
             const customInput = document.getElementById(`ec-custom-${key}`);
             if (value === '__custom__') {
                 ecSel[key] = '';
@@ -1487,78 +1566,67 @@
                 ecSel[key] = value;
                 if (customInput) customInput.style.display = 'none';
             }
-            if (key === 'scene') ecUpdateSceneSub(value === '__custom__' ? '' : value);
-        }
-
-        function ecUpdateSceneSub(scene) {
-            const wrap = document.getElementById('ec-scene-sub-wrap');
-            if (!wrap) return;
-            ecSel['sceneDetail'] = '';
-            const hiddenInput = document.getElementById('ec-sceneDetail');
-            const textEl = document.getElementById('ec-sceneDetail-text');
-            const optContainer = document.getElementById('ec-sceneDetail-options');
-            if (hiddenInput) hiddenInput.value = '';
-            if (textEl) textEl.textContent = '场景细节';
-            const subs = EC_SCENE_SUB[scene] || [];
-            if (subs.length === 0) { wrap.style.display = 'none'; return; }
-            wrap.style.display = '';
-            const arrow = `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-            optContainer.innerHTML =
-                `<div class="gf-option selected" data-value="" data-display="—" onclick="ecPickSubEl(this)">— 空</div>` +
-                subs.map(s => `<div class="gf-option" data-value="${ecEscAttr(s.value)}" data-display="${ecEscAttr(s.display)}" onclick="ecPickSubEl(this)">${ecEscAttr(s.display)}</div>`).join('');
-        }
-
-        function ecPickSubEl(el) {
-            const wrapper = el.closest('.gf-select');
-            wrapper.classList.remove('open');
-            wrapper.querySelectorAll('.gf-option').forEach(o => o.classList.remove('selected'));
-            el.classList.add('selected');
-            wrapper.querySelector('input[type=hidden]').value = el.dataset.value;
-            wrapper.querySelector('.gf-select-text').textContent = el.dataset.display;
-            ecSel['sceneDetail'] = el.dataset.value;
-        }
-
-        function buildEcommercePrompt(userReq) {
-            const params = [];
-            const cat = (ecSel.category || (document.getElementById('ec-category')?.value) || '').trim();
-            if (cat) params.push(`主体[${cat}]`);
-
-            const styleVal = ecSel.style || '';
-            if (styleVal && styleVal !== '__custom__') params.push(`风格[${styleVal}]`);
-            else if (styleVal === '__custom__') {
-                const cv = (document.getElementById('ec-custom-style')?.value || '').trim();
-                if (cv) params.push(`风格[${cv}]`);
+            if (key === 'shape') {
+                const group = el.dataset.sellingGroup || '';
+                ecRenderSellings(group);
             }
+        }
 
-            const scene = ecSel.scene || '';
-            if (scene && scene !== '__custom__') {
-                const detail = ecSel.sceneDetail || '';
-                params.push(`场景[${detail ? scene + '，' + detail : scene}]`);
-            } else if (scene === '__custom__') {
-                const cv = (document.getElementById('ec-custom-scene')?.value || '').trim();
-                if (cv) params.push(`场景[${cv}]`);
+        function ecRenderSellings(group) {
+            const container = document.getElementById('ec-selling-container');
+            ecSel.sellings = [];
+            ecRefreshCompositionPreview();
+            if (!group || !EC_SELLING_BY_SHAPE[group]) {
+                container.innerHTML = '<span style="font-size:0.75rem;color:var(--text-dim);">请先选择"形态结构"</span>';
+                return;
             }
+            container.innerHTML = EC_SELLING_BY_SHAPE[group].map(s => `
+                <label style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.75rem;cursor:pointer;">
+                    <input type="checkbox" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(group)}', '${ecEscAttr(s.key)}', this.checked)">
+                    ${ecEscAttr(s.label)}
+                </label>
+            `).join('');
+        }
 
-            const addIfSet = (key, label) => {
+        function ecToggleSelling(group, key, checked) {
+            const list = EC_SELLING_BY_SHAPE[group] || [];
+            const item = list.find(s => s.key === key);
+            if (!item) return;
+            if (checked) {
+                if (!ecSel.sellings.find(s => s.key === key)) ecSel.sellings.push(item);
+            } else {
+                ecSel.sellings = ecSel.sellings.filter(s => s.key !== key);
+            }
+            ecRefreshCompositionPreview();
+        }
+
+        function ecRefreshCompositionPreview() {
+            const el = document.getElementById('ec-composition-preview');
+            if (!el) return;
+            if (ecSel.sellings.length === 0) { el.innerHTML = '——'; return; }
+            el.innerHTML = ecSel.sellings.map(s =>
+                `<div style="margin-bottom:6px;"><b style="color:var(--text-muted);">· ${ecEscAttr(s.label)}：</b>${ecEscAttr(s.composition)}</div>`
+            ).join('');
+        }
+
+        function buildEcommercePrompts(userReq) {
+            if (!ecSel.sellings || ecSel.sellings.length === 0) return [];
+            const base = [];
+            if (ecSel.category && ecSel.category.length) base.push(`品类[${ecSel.category.join('>')}]`);
+            const pushField = (key, label) => {
                 const v = ecSel[key] || '';
-                if (!v || v === '__custom__') {
-                    const cv = (document.getElementById(`ec-custom-${key}`)?.value || '').trim();
-                    if (cv) params.push(`${label}[${cv}]`);
-                } else {
-                    params.push(`${label}[${v}]`);
-                }
+                if (!v) return;
+                base.push(`${label}[${v}]`);
             };
-            addIfSet('material', '材质/工艺');
-            addIfSet('install', '安装方式');
-            addIfSet('shape', '形态');
-            addIfSet('selling', '卖点');
-            addIfSet('composition', '构图');
-            addIfSet('lighting', '光影');
-
-            if (userReq) params.push(`客户附加要求[${userReq}]`);
-            if (params.length === 0) return '';
-
-            return `你是一个中国电商资深视觉设计师，请根据以下用户选择的参数，写一段用于Stable Diffusion的英文生图提示词。\n公式要求：[画质词] + [主体描述] + [环境背景] + [光影/材质] + [镜头构图]。\n用户参数：${params.join('；')}。\n请输出英文逗号分隔的提示词，要求生成高质量电商主图，突出产品质感和使用场景。`;
+            pushField('install',  '安装方式');
+            pushField('shape',    '形态结构');
+            pushField('style',    '背景风格');
+            pushField('material', '材质/工艺');
+            if (userReq) base.push(`客户附加要求[${userReq}]`);
+            return ecSel.sellings.map(s => {
+                const params = [...base, `卖点[${s.prompt}]`, `场景构图[${s.composition}]`];
+                return `你是一个中国电商资深视觉设计师，请根据以下参数生成一张高清 8k 电商主图，突出产品质感与使用场景。\n参数：${params.join('；')}。`;
+            });
         }
 
         // ── 文件选择框（图片 / 文件夹）──
@@ -1755,6 +1823,39 @@
             const modal = document.getElementById('configModal');
             modal.classList.remove('show');
             setTimeout(() => modal.style.display = 'none', 300);
+        }
+
+        // ── 电商方案配置弹窗 ──
+        function openEcommerceModal() {
+            ecPanelInit = false;
+            document.getElementById('ecModalFieldsContainer').innerHTML = '';
+            initEcommercePanel();
+            const modal = document.getElementById('ecommerceModal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('show'), 10);
+            document.getElementById('userMenu').classList.remove('show');
+        }
+
+        function closeEcommerceModal() {
+            const modal = document.getElementById('ecommerceModal');
+            modal.classList.remove('show');
+            setTimeout(() => modal.style.display = 'none', 300);
+        }
+
+        function confirmEcommerceSettings() {
+            const statusBadge = document.getElementById('ecStatusBadge');
+            const summary = document.getElementById('ecSummaryPreview');
+
+            if (ecSel.sellings.length > 0) {
+                statusBadge.innerHTML = `<span style="color:#10B981">● 已就绪</span>`;
+                summary.style.display = 'block';
+                summary.innerHTML = `<b>已选品类：</b>${ecSel.category.join(' > ') || '未选'}<br><b>已选卖点：</b>${ecSel.sellings.map(s => s.label).join('、')}`;
+            } else {
+                statusBadge.innerHTML = `<span>未配置</span>`;
+                summary.style.display = 'none';
+            }
+
+            closeEcommerceModal();
         }
 
         function openProxyModal() {
@@ -2583,11 +2684,12 @@
                 const startW = target.getBoundingClientRect().width;
                 document.body.style.cursor = 'col-resize';
                 document.body.style.userSelect = 'none';
+
                 const onMove = ev => {
-                    if (target.dataset.collapsed === '1') return; // 折叠时禁止 resize
+                    if (target.dataset.collapsed === '1') return;
                     const dx = ev.clientX - startX;
                     const delta = side === 'left' ? dx : -dx;
-                    const minW = side === 'left' ? 200 : 300;
+                    const minW = side === 'left' ? 200 : 400;
                     const canvas = document.getElementById('canvasPanel');
                     const canvasW = canvas.getBoundingClientRect().width;
                     const maxExpand = Math.max(0, canvasW - 300);
@@ -2595,6 +2697,7 @@
                     const newW = Math.max(minW, startW + clampedDelta);
                     target.style.width = newW + 'px';
                 };
+
                 const onUp = () => {
                     document.removeEventListener('mousemove', onMove);
                     document.removeEventListener('mouseup', onUp);
@@ -2613,21 +2716,22 @@
     <!-- 历史记录全屏界面 (默认隐藏) -->
     <div id="historyView" class="history-view">
         <div class="history-header">
-            <h2>创作足迹 <span style="font-size:0.8rem; background:var(--primary); color:white; padding:4px 10px; border-radius:12px; vertical-align:middle; margin-left:8px;">PRO</span></h2>
+            <button class="btn-back" onclick="toggleHistoryView()">
+                <svg style="width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+                返回工作台
+            </button>
+            <h2>创作足迹 <span class="badge-pro">PRO</span></h2>
             <p>在这里找回您的每一次灵感闪现与生成结果</p>
         </div>
 
         <div class="history-toolbar">
             <div class="mode-selector" id="historyFilter" style="background:var(--bg-card); border:1px solid var(--border); position: relative;">
-                <!-- 🌟 独立的弹性果冻滑块层 -->
-                <div id="historySliderBg" style="position: absolute; top: 4px; bottom: 4px; background: #FFFFFF; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 1;"></div>
-
-                <!-- 按钮透明化，浮在滑块上方 -->
+                <div id="historySliderBg" style="position: absolute; top: 4px; bottom: 4px; background: #FFFFFF; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 1;"></div>
                 <button class="mode-btn active" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('all', this)">全部</button>
                 <button class="mode-btn" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('image', this)">图片</button>
                 <button class="mode-btn" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('video', this)">视频</button>
             </div>
-            <div style="font-size:0.85rem; color:var(--text-dim);">共 <b id="historyTotalCount" style="color:var(--text-main);">0</b> 条记录</div>
+            <div class="history-count">共 <b id="historyTotalCount">0</b> 条记录</div>
         </div>
 
         <div class="history-grid" id="historyGrid"></div>
@@ -2717,6 +2821,25 @@
             <div class="modal-footer" style="margin-top:16px;">
                 <button class="btn-outline" style="flex:1" onclick="closeProxyModal()">取消</button>
                 <button class="btn-primary" style="flex:2" id="saveProxyBtn" onclick="saveProxyConfig()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 电商方案配置弹窗 -->
+    <div id="ecommerceModal" class="modal-overlay" style="z-index: 5000;" onclick="if(event.target===this) closeEcommerceModal()">
+        <div class="modal-card" style="width: 600px;">
+            <div class="modal-header">
+                <h3>电商方案详情</h3>
+                <button class="close-btn" onclick="closeEcommerceModal()">×</button>
+            </div>
+
+            <div class="modal-body-scroller">
+                <div id="ecModalFieldsContainer" style="display:flex; flex-wrap:wrap; gap:16px; position:relative;"></div>
+            </div>
+
+            <div class="modal-footer" style="margin-top:24px; position:relative; z-index:10;">
+                <button class="btn-outline" style="flex:1" onclick="closeEcommerceModal()">取消</button>
+                <button class="btn-primary" style="flex:2" onclick="confirmEcommerceSettings()">保存配置</button>
             </div>
         </div>
     </div>
