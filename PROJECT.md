@@ -53,7 +53,7 @@ ele-business-java/
 
 | 文件 | 作用 |
 |------|------|
-| `ApiController.java` | 主接口：产品列表、标准生图、自定义生图、任务查询/停止、图片画廊 |
+| `ApiController.java` | 主接口：产品列表、企业模式、自定义模式模式、任务查询/停止、图片画廊 |
 | `VideoController.java` | 视频接口：调用 Gemini Veo 生成视频（`POST /api/video/generate`）、返回 MP4 |
 
 ### 业务逻辑
@@ -82,15 +82,15 @@ ele-business-java/
 | `GenerationTask.java` | 异步任务状态（进度、结果列表、取消标志，线程安全） |
 | `ProductInfo.java` | 从钉钉记录解析的产品信息（名称、类别、主图列表、SKU 列表） |
 | `DingTalkRecord.java` | 钉钉原始记录结构，提供字段读取辅助方法 |
-| `GenerateRequest.java` | 标准生图请求体（产品 ID 列表、模型 ID、提示词） |
+| `GenerateRequest.java` | 企业模式请求体（产品 ID 列表、模型 ID、提示词） |
 
 ### 前端
 
-| 文件 | 作用 |
-|------|------|
-| `frontend/index.html` | 主界面：三种生图模式（标准 / 自定义 / 视频）、产品选择、实时进度轮询 |
-| `frontend/index.css` | 样式：深色 / 浅色双主题、动画、响应式布局 |
-| `electron/loading.html` | 启动时的加载页（等待 Spring Boot 就绪期间显示） |
+| 文件 | 作用                                                     |
+|------|--------------------------------------------------------|
+| `frontend/index.html` | 主界面：三种生图模式（企业 / 自定义模式 / 视频）、产品选择、实时进度轮询                  |
+| `frontend/index.css` | 样式：深色 / 浅色双主题、动画、响应式布局                                 |
+| `electron/loading.html` | 启动时的加载页（等待 Spring Boot 就绪期间显示）                         |
 | `electron/package.json` | Electron 依赖及打包配置（electron-builder，输出 Windows NSIS 安装包） |
 
 ### 构建

@@ -55,7 +55,7 @@ public class VideoController {
                 task.addResult(Map.of("type", "video", "filename", filename, "status", "success"));
                 task.incrementProgress();
             } catch (Exception e) {
-                log.error("视频生成失败: {}", e.getMessage(), e);
+                log.error("视频模式失败: {}", e.getMessage(), e);
                 task.addResult(Map.of("type", "video", "status", "error", "message", e.getMessage()));
                 throw new RuntimeException(e);
             }

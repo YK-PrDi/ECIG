@@ -266,7 +266,7 @@ public class ApiController {
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String outputDir = new File(appProperties.getPaths().getOutputDir(),
-                "自定义生成/" + timestamp).getAbsolutePath();
+                "自定义模式生成/" + timestamp).getAbsolutePath();
         new File(outputDir).mkdirs();
 
         // multipart 必须在请求线程内落盘，提交到异步任务前先把上传文件持久化
@@ -384,12 +384,12 @@ public class ApiController {
         File imageTmp = null;
         File maskTmp  = null;
         try {
-            // 调试：保存到输出目录方便检查实际收到的 image 和 mask
-            imageTmp = new File(outputDir, "debug_image.png");
-            maskTmp  = new File(outputDir, "debug_mask.png");
+            // 上传文件落到系统 temp，避免污染用户输出目录；finally 里清理
+            imageTmp = File.createTempFile("inpaint_image_", ".png");
+            maskTmp  = File.createTempFile("inpaint_mask_",  ".png");
             image.transferTo(imageTmp);
             mask.transferTo(maskTmp);
-            log.info("inpaint debug: image= mask={}", imageTmp.getAbsolutePath(), maskTmp.getAbsolutePath());
+            log.info("inpaint: image={} mask={}", imageTmp.getAbsolutePath(), maskTmp.getAbsolutePath());
 
             boolean ok = gptImageAgent.generateWithMask(prompt, imageTmp, maskTmp, outputPath);
             if (!ok) {
@@ -400,6 +400,9 @@ public class ApiController {
         } catch (Exception e) {
             log.error("inpaint error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        } finally {
+            if (imageTmp != null) imageTmp.delete();
+            if (maskTmp  != null) maskTmp.delete();
         }
     }
 

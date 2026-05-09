@@ -115,13 +115,13 @@ public class VideoGenerationService {
 
                 if (done) {
                     if (root.has("error")) {
-                        throw new RuntimeException("视频生成失败: " + root.path("error").toString());
+                        throw new RuntimeException("视频模式失败: " + root.path("error").toString());
                     }
                     return extractVideoBase64(root, responseBody);
                 }
             }
         }
-        throw new RuntimeException("视频生成超时（10分钟内未完成）");
+        throw new RuntimeException("视频模式超时（10分钟内未完成）");
     }
 
     private String extractVideoBase64(JsonNode root, String responseBody) {

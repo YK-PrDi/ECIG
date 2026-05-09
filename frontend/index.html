@@ -374,10 +374,10 @@
                         <div
                             style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
                             <div class="mode-selector">
-                                <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">标准生图</button>
-                                <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义</button>
+                                <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">企业模式</button>
+                                <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义模式</button>
                                 <button class="mode-btn" id="btn-ecommerce" onclick="setMode('ecommerce')">电商模式</button>
-                                <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频生成</button>
+                                <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频模式</button>
                             </div>
                             <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                                 <span
@@ -506,7 +506,7 @@
             }
         }
 
-        // ── 自定义下拉菜单逻辑 ──
+        // ── 自定义模式下拉菜单逻辑 ──
         function toggleSelect(el, event) {
             event.stopPropagation();
             const wrapper = el.closest('.gf-select');
@@ -642,14 +642,13 @@
 
         async function initApp() {
             await loadAgents();
-            // 静默检查是否已配置，避免每次启动强制弹窗
+            // 静默检查配置状态；不再自动拉钉钉产品列表，改由用户在"同步配置"里点"保存并验证"触发
             try {
                 const cfg = await fetch('/api/config').then(r => r.json());
                 if (cfg.app_key && cfg.app_secret && cfg.union_id && cfg.app_uuid && cfg.sheet_id) {
                     isConfigured = true;
                 }
             } catch (_) {}
-            loadProducts();
             loadCategories();
         }
 
@@ -746,7 +745,7 @@
                     id: folder.path,
                     type: 'image',
                     name: folder.name,
-                    agent: folder.name.includes('自定义') ? '自定义' : 'AI 生图',
+                    agent: folder.name.includes('自定义模式') ? '自定义模式' : 'AI 生图',
                     date: formatRelativeTime(folder.modified),
                     count: folder.count,
                     filePath: folder.path,
@@ -935,15 +934,17 @@
         }
 
         async function loadProducts() {
-
+            // 未配置钉钉时不发请求：避免每次启动都打钉钉接口、报 paramError-operatorId
+            if (!isConfigured) return;
 
             try {
                 const response = await fetch('/api/products');
                 const data = await response.json();
+                if (data.error) throw new Error(data.error);
                 products = data.products || [];
                 appendMessage('ai', `✅ 产品目录同步成功，共 ${products.length} 个产品。`);
             } catch (e) {
-                appendMessage('ai', '❌ 产品目录同步失败');
+                appendMessage('ai', '❌ 产品目录同步失败：' + (e.message || ''));
             }
         }
 
@@ -1125,7 +1126,7 @@
                 const durationSeconds = parseInt(document.getElementById('videoDurationSec')?.value || '8');
 
                 const videoPayload = { prompt: payload.prompt, aspectRatio, durationSeconds };
-                appendMessage('user', `[视频生成] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s${payload.prompt ? '\n提示词: ' + payload.prompt : ''}`);
+                appendMessage('user', `[视频模式] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s${payload.prompt ? '\n提示词: ' + payload.prompt : ''}`);
 
                 try {
                     document.getElementById('generateBtn').disabled = true;
@@ -1267,7 +1268,7 @@
         function appendVideoPlayer(filename) {
             const enc = encodeURIComponent(filename);
             appendMessage('ai', `
-                <div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:10px;">✅ 视频生成完成</div>
+                <div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:10px;">✅ 视频模式完成</div>
                 <video controls playsinline style="width:100%;max-width:520px;border-radius:10px;outline:none;display:block;">
                     <source src="/api/video/file?filename=${enc}" type="video/mp4">
                 </video>
@@ -1429,7 +1430,7 @@
                     const optsHtml = f.options.map((o, i) =>
                         `<div class="gf-option" data-key="${f.key}" data-value="${ecEscAttr(o.value)}" data-display="${ecEscAttr(o.display)}" onclick="ecPickOptionEl(this)">${ecEscAttr(o.display)}</div>`
                     ).join('') +
-                    `<div class="gf-option" data-key="${f.key}" data-value="__custom__" data-display="自定义" onclick="ecPickOptionEl(this)">自定义...</div>`;
+                    `<div class="gf-option" data-key="${f.key}" data-value="__custom__" data-display="自定义模式" onclick="ecPickOptionEl(this)">自定义模式...</div>`;
 
                     const subWrap = f.hasSubOptions ? `
                         <div class="gf-select sm drop-up" id="ec-scene-sub-wrap" style="display:none;min-width:120px;" tabindex="0">
@@ -1458,7 +1459,7 @@
                             ${subWrap}
                         </div>
                         <input type="text" class="input-field" id="ec-custom-${f.key}"
-                            placeholder="自定义${f.label}..."
+                            placeholder="自定义模式${f.label}..."
                             style="display:none;height:28px;padding:2px 8px;font-size:0.75rem;margin-top:4px;"
                             oninput="ecSel['${f.key}']=this.value">
                     </div>`;
@@ -1827,39 +1828,70 @@
             }
             const btn = document.getElementById('saveConfigBtn');
             const originalText = btn.textContent;
-            btn.textContent = '验证并保存中...';
+            btn.textContent = '保存中...';
             btn.disabled = true;
-            fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    app_key:    document.getElementById('dt_app_key').value.trim(),
-                    app_secret: document.getElementById('dt_app_secret').value.trim(),
-                    union_id:   document.getElementById('dt_union_id').value.trim(),
-                    app_uuid:   document.getElementById('dt_app_uuid').value.trim(),
-                    sheet_id:   document.getElementById('dt_sheet_id').value.trim()
-                })
-            }).then(r => {
-                if (!r.ok) throw new Error('保存失败');
-                isConfigured = true;
-                btn.textContent = '配置成功！';
-                btn.style.background = '#10B981';
+
+            const restoreBtn = (msg, color) => {
+                btn.textContent = msg;
+                btn.style.background = color;
                 setTimeout(() => {
                     btn.textContent = originalText;
                     btn.style.background = '';
                     btn.disabled = false;
-                    closeConfigModal();
-                    appendMessage('ai', '系统消息：钉钉同步源参数配置成功，现在可以点击左侧按钮同步产品了。');
-                }, 800);
-            }).catch(() => {
-                btn.textContent = '保存失败，请重试';
-                btn.style.background = '#EF4444';
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.background = '';
-                    btn.disabled = false;
-                }, 1500);
-            });
+                }, 1800);
+            };
+
+            (async () => {
+                // 1) 保存
+                try {
+                    const saveResp = await fetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            app_key:    document.getElementById('dt_app_key').value.trim(),
+                            app_secret: document.getElementById('dt_app_secret').value.trim(),
+                            union_id:   document.getElementById('dt_union_id').value.trim(),
+                            app_uuid:   document.getElementById('dt_app_uuid').value.trim(),
+                            sheet_id:   document.getElementById('dt_sheet_id').value.trim()
+                        })
+                    });
+                    if (!saveResp.ok) { restoreBtn('保存失败，请重试', '#EF4444'); return; }
+                } catch (_) {
+                    restoreBtn('保存失败，请重试', '#EF4444'); return;
+                }
+
+                // 2) 验证：调一次 /api/products，钉钉参数对了才算成功
+                btn.textContent = '验证中...';
+                try {
+                    const res  = await fetch('/api/products');
+                    const data = await res.json();
+                    if (!res.ok || data.error) {
+                        const raw = data.error || '验证失败';
+                        let hint = raw;
+                        if (/operatorId/i.test(raw))          hint = 'Union ID 无效，请核对后重新保存';
+                        else if (/access_token|AccessToken/i.test(raw)) hint = 'AppKey / AppSecret 无效';
+                        else if (/appUuid|base/i.test(raw))   hint = 'AppUuid 无效，请核对多维表地址';
+                        else if (/sheet/i.test(raw))          hint = 'SheetId 无效，请核对多维表地址';
+                        restoreBtn('验证失败', '#EF4444');
+                        appendMessage('ai', `❌ 钉钉配置验证失败：${hint}`);
+                        return;
+                    }
+                    isConfigured = true;
+                    products = data.products || [];
+                    btn.textContent = '配置成功！';
+                    btn.style.background = '#10B981';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.style.background = '';
+                        btn.disabled = false;
+                        closeConfigModal();
+                        appendMessage('ai', `✅ 配置验证通过，已同步 ${products.length} 个产品。`);
+                    }, 800);
+                } catch (e) {
+                    restoreBtn('验证失败', '#EF4444');
+                    appendMessage('ai', '❌ 钉钉配置验证失败：' + (e.message || '网络错误'));
+                }
+            })();
         }
 
         // ── 无限画布（CanvasBoard）──
