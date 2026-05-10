@@ -34,3 +34,4 @@ src/main/resources/application-prod.yml
 
 # Logs
 *.log
+src/main/resources/application.yml
