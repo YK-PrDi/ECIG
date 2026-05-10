@@ -264,6 +264,7 @@ function createMain() {
         },
     });
 
+    mainWindow.webContents.session.clearCache();
     mainWindow.loadURL(APP_URL);
 
     mainWindow.once('ready-to-show', () => {
