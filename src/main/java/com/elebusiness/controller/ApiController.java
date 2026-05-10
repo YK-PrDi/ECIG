@@ -608,4 +608,28 @@ public class ApiController {
         }
         file.delete();
     }
+
+    @PostMapping("/api/feedback")
+    public ResponseEntity<Map<String, Object>> saveFeedback(@RequestBody Map<String, Object> body) {
+        try {
+            String prompt    = String.valueOf(body.getOrDefault("prompt", ""));
+            String imagePath = String.valueOf(body.getOrDefault("imagePath", ""));
+            String rating    = String.valueOf(body.getOrDefault("rating", ""));
+            String time      = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+            String line = String.format("[%s] %s | 图片: %s | Prompt: %s%n", time, rating, imagePath, prompt);
+
+            File dir = new File(appProperties.getPaths().getOutputDir());
+            dir.mkdirs();
+            File feedbackFile = new File(dir, "feedback.txt");
+            java.nio.file.Files.writeString(feedbackFile.toPath(), line,
+                    StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND);
+
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
 }

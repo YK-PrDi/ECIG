@@ -1272,7 +1272,12 @@
                         for (const img of imageItems) {
                             const imgUrl = `/api/image?path=${encodeURIComponent(img.path)}`;
                             const safeName = escHtml(result.name);
+                            const safePrompt = (result.prompt || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                            const safePath = img.path.replace(/'/g, "\\'");
+                            htmlContent += `<div class="result-image-wrap">`;
                             htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="单点预览，三连点直接下载，拖到左侧可编辑" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image', '${imgUrl}', '${safeName}.png', event)">`;
+                            htmlContent += `<div class="feedback-bar"><button class="feedback-btn" onclick="sendFeedback(this,'👍','${safePrompt}','${safePath}')" title="满意">👍</button><button class="feedback-btn" onclick="sendFeedback(this,'👎','${safePrompt}','${safePath}')" title="不满意">👎</button></div>`;
+                            htmlContent += `</div>`;
                         }
                         htmlContent += `</div></div>`;
                     }
@@ -1284,6 +1289,20 @@
 
             if (htmlContent !== `<div class="generated-results-container" style="margin-top: 4px;"></div>`) {
                 appendMessage('ai', htmlContent, true);
+            }
+        }
+
+        async function sendFeedback(btn, rating, prompt, imagePath) {
+            const bar = btn.closest('.feedback-bar');
+            try {
+                await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, imagePath, rating })
+                });
+                bar.innerHTML = `<span style="font-size:1.1rem">${rating}</span><span style="font-size:0.75rem;color:var(--text-dim);margin-left:6px;">已记录</span>`;
+            } catch (e) {
+                bar.innerHTML = `<span style="font-size:0.75rem;color:#f87171;">记录失败</span>`;
             }
         }
 
