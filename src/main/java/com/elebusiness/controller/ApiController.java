@@ -515,7 +515,8 @@ public class ApiController {
     @PostMapping("/api/gpt-image/generate")
     public ResponseEntity<Map<String, Object>> gptImageGenerate(@RequestBody Map<String, Object> body) {
         try {
-            String apiKey  = appProperties.getGptImage().getApiKey();
+            java.util.List<String> keys = appProperties.getGptImage().getApiKeys();
+            String apiKey = (keys != null && !keys.isEmpty()) ? keys.get(0) : null;
             String baseUrl = appProperties.getGptImage().getBaseUrl();
             if (apiKey == null || apiKey.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("success", false, "error", "GPT-Image API Key 未配置"));

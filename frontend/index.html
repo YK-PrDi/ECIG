@@ -986,7 +986,7 @@
                 const imgFile = droppedFiles[0];
                 const maskBlob = window.pendingMask;
                 try {
-                    document.getElementById('generateBtn').disabled = true;
+                    
                     const imgDataUrl = await new Promise(res => {
                         const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(imgFile);
                     });
@@ -1006,7 +1006,7 @@
                 } catch (err) {
                     appendMessage('ai', '局部重绘失败：' + err.message);
                 } finally {
-                    document.getElementById('generateBtn').disabled = false;
+                    
                     clearFiles();
                     window.pendingMask = null;
                 }
@@ -1031,7 +1031,7 @@
                 appendMessage('user', `[生图任务] 模型: ${agentId}\n提示词: ${payload.prompt}`);
 
                 try {
-                    document.getElementById('generateBtn').disabled = true;
+                    
                     promptInput.value = '';
 
                     const resp = await fetch(apiPath, {
@@ -1044,7 +1044,7 @@
                     insertProgressCard(data.taskId);
                     startPolling(data.taskId);
                 } catch (e) {
-                    document.getElementById('generateBtn').disabled = false;
+                    
                     appendMessage('ai', '启动失败：' + e.message);
                 }
 
@@ -1088,7 +1088,7 @@
                 }
 
                 try {
-                    document.getElementById('generateBtn').disabled = true;
+                    
                     promptInput.value = '';
 
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
@@ -1097,7 +1097,7 @@
                     clearFiles();
                     startPolling(data.taskId);
                 } catch (e) {
-                    document.getElementById('generateBtn').disabled = false;
+                    
                     appendMessage('ai', '生成失败：' + e.message);
                 }
 
@@ -1124,7 +1124,7 @@
                 appendMessage('user', `[电商模式] 模型: ${agentId}\n卖点: ${sellingLabels}（共 ${ecPrompts.length} 张）`);
 
                 try {
-                    document.getElementById('generateBtn').disabled = true;
+                    
                     promptInput.value = '';
 
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
@@ -1133,7 +1133,7 @@
                     clearFiles();
                     startPolling(data.taskId);
                 } catch (e) {
-                    document.getElementById('generateBtn').disabled = false;
+                    
                     appendMessage('ai', '生成失败：' + e.message);
                 }
 
@@ -1145,7 +1145,7 @@
                 appendMessage('user', `[视频模式] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s${payload.prompt ? '\n提示词: ' + payload.prompt : ''}`);
 
                 try {
-                    document.getElementById('generateBtn').disabled = true;
+                    
                     promptInput.value = '';
 
                     const resp = await fetch('/api/video/generate', {
@@ -1157,7 +1157,7 @@
                     if (data.error || !data.taskId) throw new Error(data.message || data.error || '提交失败');
                     startPolling(data.taskId);
                 } catch (e) {
-                    document.getElementById('generateBtn').disabled = false;
+                    
                     appendMessage('ai', '启动失败：' + e.message);
                 }
             }
@@ -1187,7 +1187,7 @@
                     if (data.status !== 'running' && data.status !== 'pending') {
                         clearInterval(pollTimer);
                         clearInterval(elapsedTimer);
-                        document.getElementById('generateBtn').disabled = false;
+                        
                         finalizeProgressCard(taskId, data);
                     }
                 } catch (e) { /* polling error */ }
@@ -1253,10 +1253,16 @@
                 if (!result.output) continue;
 
                 try {
-                    const res = await fetch(`/api/gallery?path=${encodeURIComponent(result.output)}`);
-                    const data = await res.json();
-                    const items = data.items || [];
-                    const imageItems = items.filter(item => item.type === 'image');
+                    const isImageFile = /\.(jpg|jpeg|png|webp|gif)$/i.test(result.output);
+                    let imageItems = [];
+
+                    if (isImageFile) {
+                        imageItems = [{ path: result.output }];
+                    } else {
+                        const res = await fetch(`/api/gallery?path=${encodeURIComponent(result.output)}`);
+                        const data = await res.json();
+                        imageItems = (data.items || []).filter(item => item.type === 'image');
+                    }
 
                     if (imageItems.length > 0) {
                         htmlContent += `<div class="result-group" style="margin-bottom: 16px;">`;
@@ -1796,7 +1802,7 @@
             window.pendingMask = null;
             document.getElementById('imagePreviewContainer').innerHTML = '';
             document.getElementById('imagePreviewContainer').style.display = 'none';
-            document.getElementById('generateBtn').disabled = false;
+            
         }
 
         let isConfigured = false;

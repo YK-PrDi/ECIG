@@ -13,8 +13,8 @@ import java.util.concurrent.Executors;
 @Service
 public class TaskService {
 
-    // 最多同时跑 2 个生成任务
-    private final ExecutorService executor = Executors.newFixedThreadPool(2);
+    // 最多同时跑 10 个生成任务
+    private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private final Map<String, GenerationTask> tasks = new ConcurrentHashMap<>();
 
     public GenerationTask createTask(int total) {

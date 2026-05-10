@@ -121,11 +121,11 @@ public class AppProperties {
     }
 
     public static class GptImage {
-        private String apiKey = "";
+        private java.util.List<String> apiKeys = new java.util.ArrayList<>();
         private String baseUrl = "https://api.linapi.net";
 
-        public String getApiKey() { return apiKey; }
-        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public java.util.List<String> getApiKeys() { return apiKeys; }
+        public void setApiKeys(java.util.List<String> apiKeys) { this.apiKeys = apiKeys; }
         public String getBaseUrl() { return baseUrl; }
         public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
     }

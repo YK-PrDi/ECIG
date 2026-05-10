@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class GptImageAgent implements ImageGeneratorAgent {
@@ -24,9 +25,17 @@ public class GptImageAgent implements ImageGeneratorAgent {
     private static final Logger log = LoggerFactory.getLogger(GptImageAgent.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final AppProperties appProperties;
+    private final AtomicInteger keyIndex = new AtomicInteger(0);
 
     public GptImageAgent(AppProperties appProperties) {
         this.appProperties = appProperties;
+    }
+
+    private String nextApiKey() {
+        List<String> keys = appProperties.getGptImage().getApiKeys();
+        if (keys == null || keys.isEmpty()) return null;
+        int idx = Math.abs(keyIndex.getAndIncrement() % keys.size());
+        return keys.get(idx);
     }
 
     @Override
@@ -37,7 +46,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
 
     @Override
     public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
-        String apiKey  = appProperties.getGptImage().getApiKey();
+        String apiKey  = nextApiKey();
         String baseUrl = appProperties.getGptImage().getBaseUrl();
 
         if (apiKey == null || apiKey.isBlank()) {
@@ -104,7 +113,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
 
     /** 局部重绘：image + mask → /v1/images/edits */
     public boolean generateWithMask(String prompt, File imageFile, File maskFile, String outputPath) {
-        String apiKey  = appProperties.getGptImage().getApiKey();
+        String apiKey  = nextApiKey();
         String baseUrl = appProperties.getGptImage().getBaseUrl();
         if (apiKey == null || apiKey.isBlank()) {
             log.error("GPT-Image API Key 未配置");
