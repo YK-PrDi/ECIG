@@ -17,7 +17,6 @@ import java.nio.file.Files;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class GptImageAgent implements ImageGeneratorAgent {
@@ -25,17 +24,16 @@ public class GptImageAgent implements ImageGeneratorAgent {
     private static final Logger log = LoggerFactory.getLogger(GptImageAgent.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final AppProperties appProperties;
-    private final AtomicInteger keyIndex = new AtomicInteger(0);
 
     public GptImageAgent(AppProperties appProperties) {
         this.appProperties = appProperties;
     }
 
-    private String nextApiKey() {
+    /** 返回所有 key 的列表，前两个优先（稳定 key），其余按顺序追加 */
+    private List<String> orderedKeys() {
         List<String> keys = appProperties.getGptImage().getApiKeys();
-        if (keys == null || keys.isEmpty()) return null;
-        int idx = Math.abs(keyIndex.getAndIncrement() % keys.size());
-        return keys.get(idx);
+        if (keys == null || keys.isEmpty()) return List.of();
+        return new java.util.ArrayList<>(keys); // yml 中前两个即为优先 key
     }
 
     @Override
@@ -46,20 +44,22 @@ public class GptImageAgent implements ImageGeneratorAgent {
 
     @Override
     public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
-        String apiKey  = nextApiKey();
-        String baseUrl = appProperties.getGptImage().getBaseUrl();
-
-        if (apiKey == null || apiKey.isBlank()) {
+        List<String> keys = appProperties.getGptImage().getApiKeys();
+        if (keys == null || keys.isEmpty()) {
             log.error("GPT-Image API Key 未配置");
             return false;
         }
-
-        // 优先使用 whiteBgPath 作为编辑基底，其次 refImagePath，都没有则纯文生图
+        String baseUrl = appProperties.getGptImage().getBaseUrl();
         File imageFile = resolveImageFile(whiteBgPath, refImagePath);
-        if (imageFile != null) {
-            return generateWithImage(prompt, imageFile, outputPath, apiKey, baseUrl);
+        for (String apiKey : orderedKeys()) {
+            boolean ok = imageFile != null
+                    ? generateWithImage(prompt, imageFile, outputPath, apiKey, baseUrl)
+                    : generateTextOnly(prompt, outputPath, apiKey, baseUrl);
+            if (ok) return true;
+            log.warn("GPT-Image key 尾号[{}] 失败，尝试下一个", apiKey.length() > 6 ? apiKey.substring(apiKey.length() - 6) : apiKey);
         }
-        return generateTextOnly(prompt, outputPath, apiKey, baseUrl);
+        log.error("GPT-Image 所有 key 均失败");
+        return false;
     }
 
     private File resolveImageFile(String whiteBgPath, String refImagePath) {
@@ -111,14 +111,25 @@ public class GptImageAgent implements ImageGeneratorAgent {
         }
     }
 
-    /** 局部重绘：image + mask → /v1/images/edits */
+    /** 局部重绘：image + mask → /v1/images/edits，失败自动 fallback 到其他 key */
     public boolean generateWithMask(String prompt, File imageFile, File maskFile, String outputPath) {
-        String apiKey  = nextApiKey();
-        String baseUrl = appProperties.getGptImage().getBaseUrl();
-        if (apiKey == null || apiKey.isBlank()) {
+        List<String> keys = appProperties.getGptImage().getApiKeys();
+        if (keys == null || keys.isEmpty()) {
             log.error("GPT-Image API Key 未配置");
             return false;
         }
+        String baseUrl = appProperties.getGptImage().getBaseUrl();
+        for (String apiKey : orderedKeys()) {
+            boolean ok = doGenerateWithMask(prompt, imageFile, maskFile, outputPath, apiKey, baseUrl);
+            if (ok) return true;
+            log.warn("GPT-Image inpaint key 尾号[{}] 失败，尝试下一个", apiKey.length() > 6 ? apiKey.substring(apiKey.length() - 6) : apiKey);
+        }
+        log.error("GPT-Image inpaint 所有 key 均失败");
+        return false;
+    }
+
+    private boolean doGenerateWithMask(String prompt, File imageFile, File maskFile,
+                                       String outputPath, String apiKey, String baseUrl) {
         try {
             String boundary = "----GptImageBoundary" + Long.toHexString(System.currentTimeMillis());
             URL url = new URL(baseUrl + "/v1/images/edits");
