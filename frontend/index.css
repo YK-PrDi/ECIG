@@ -284,7 +284,7 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
 .msg-video a { display: inline-block; margin-top: 8px; font-size: 0.8rem; color: #4F46E5; text-decoration: none; font-weight: 500; }
 .msg-video a:hover { text-decoration: underline; }
 .msg-images { max-width: 100%; }
-.msg-images-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-top: 12px; }
+.msg-images-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-top: 12px; align-items: start; }
 .result-image {
     width: 100%;
     aspect-ratio: 1 / 1;
@@ -1156,12 +1156,13 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 }
 
 /* 点赞点踩 */
-.result-image-wrap { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
-.feedback-bar { display: flex; align-items: center; gap: 4px; height: 28px; }
-.feedback-bar-text { font-size: 0.72rem; color: var(--text-dim, #6b7280); letter-spacing: 0.02em; }
-.feedback-btn { background: none; border: none; border-radius: 6px; padding: 4px 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.45; transition: opacity 0.15s, background 0.15s; }
-.feedback-btn svg { width: 16px; height: 16px; display: block; stroke: var(--text-primary, #e5e7eb); }
-.feedback-btn:hover { opacity: 1; background: rgba(255,255,255,0.07); }
+.result-image-wrap { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+.feedback-bar { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.feedback-bar-text { font-size: 0.6rem; color: rgba(255,255,255,0.6); line-height: 1; }
+.feedback-btn { background: none; border: none; padding: 2px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.45; transition: opacity 0.15s; line-height: 0; }
+.feedback-btn svg { width: 14px; height: 14px; display: block; stroke: #6b7280; flex-shrink: 0; }
+.feedback-btn:hover { opacity: 1; }
+.feedback-btn:hover svg { stroke: #9ca3af; }
 .feedback-btn.active-like { opacity: 1; }
 .feedback-btn.active-like svg { stroke: #4ade80; }
 .feedback-btn.active-dislike { opacity: 1; }

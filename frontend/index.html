@@ -734,7 +734,7 @@
             }
 
             grid.innerHTML = filteredData.map(item => `
-                <div class="history-card" onclick="handleMediaClick('image', '/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}', '${escHtml(item.name)}.png', event)">
+                <div class="history-card" onclick="openHistoryFolder('${item.filePath.replace(/'/g, "\\'")}', '${escHtml(item.name)}')">
                     <div class="history-img-wrapper">
                         <img src="/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}" alt="${escHtml(item.name)}" loading="lazy">
                     </div>
@@ -742,8 +742,8 @@
                     <div class="history-overlay">
                         <div class="history-prompt">${escHtml(item.name)}</div>
                         <div class="history-meta">
-                            <span>🖼️ ${escHtml(String(item.count))} 张</span>
-                            <span>🕒 ${escHtml(item.date)}</span>
+                            <span>${escHtml(String(item.count))} 张</span>
+                            <span>${escHtml(item.date)}</span>
                         </div>
                     </div>
                 </div>
@@ -779,6 +779,41 @@
             } catch (error) {
                 console.error('历史记录加载失败', error);
                 grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 80px; color: #ef4444;">网络异常，无法获取历史记录</div>`;
+            }
+        }
+
+        async function openHistoryFolder(folderPath, folderName) {
+            try {
+                const res = await fetch(`/api/gallery?path=${encodeURIComponent(folderPath)}`);
+                const data = await res.json();
+                const images = (data.items || []).filter(i => i.type === 'image');
+                if (images.length === 0) return;
+
+                const mask = document.createElement('div');
+                mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:40px 24px;overflow-y:auto;';
+                mask.onclick = e => { if (e.target === mask) mask.remove(); };
+
+                const title = document.createElement('div');
+                title.style.cssText = 'color:#e5e7eb;font-size:0.9rem;margin-bottom:16px;align-self:flex-start;max-width:900px;width:100%;display:flex;justify-content:space-between;align-items:center;';
+                title.innerHTML = `<span>${escHtml(folderName)}</span><button onclick="this.closest('div[style]').remove()" style="background:none;border:none;color:#9ca3af;font-size:1.2rem;cursor:pointer;">✕</button>`;
+
+                const grid = document.createElement('div');
+                grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;max-width:900px;width:100%;';
+
+                images.forEach(img => {
+                    const url = `/api/image?path=${encodeURIComponent(img.path)}`;
+                    const el = document.createElement('img');
+                    el.src = url;
+                    el.style.cssText = 'width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;';
+                    el.onclick = e => { e.stopPropagation(); handleMediaClick('image', url, img.name, e); };
+                    grid.appendChild(el);
+                });
+
+                mask.appendChild(title);
+                mask.appendChild(grid);
+                document.body.appendChild(mask);
+            } catch (e) {
+                console.error('打开历史文件夹失败', e);
             }
         }
 
@@ -1307,13 +1342,23 @@
 
         async function sendFeedback(btn, rating, prompt, imagePath) {
             const bar = btn.closest('.feedback-bar');
-            if (bar.dataset.voted) return;
-            bar.dataset.voted = '1';
+            const btns = bar.querySelectorAll('.feedback-btn');
+            const current = bar.dataset.voted;
+            btns.forEach(b => b.classList.remove('active-like', 'active-dislike'));
+            let label = bar.querySelector('.feedback-bar-text');
+            if (current === rating) {
+                delete bar.dataset.voted;
+                if (label) label.remove();
+                return;
+            }
+            bar.dataset.voted = rating;
             btn.classList.add(rating === 'like' ? 'active-like' : 'active-dislike');
-            const label = document.createElement('span');
-            label.className = 'feedback-bar-text';
-            label.textContent = rating === 'like' ? '已标记' : '不满意';
-            bar.appendChild(label);
+            if (!label) {
+                label = document.createElement('span');
+                label.className = 'feedback-bar-text';
+                bar.appendChild(label);
+            }
+            label.textContent = rating === 'like' ? '✓' : '✗';
             try {
                 await fetch('/api/feedback', {
                     method: 'POST',
@@ -1321,7 +1366,7 @@
                     body: JSON.stringify({ prompt, imagePath, rating })
                 });
             } catch (e) {
-                label.textContent = '记录失败';
+                label.textContent = '!';
                 label.style.color = '#f87171';
             }
         }
