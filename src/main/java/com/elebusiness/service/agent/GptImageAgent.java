@@ -89,7 +89,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
                 writeField(os, boundary, "prompt",        prompt != null ? prompt : "product photo on clean background");
                 writeField(os, boundary, "size",          "1024x1024");
                 writeField(os, boundary, "quality",       "auto");
-                writeField(os, boundary, "output_format", "png");
+                writeField(os, boundary, "output_format", "jpeg");
                 writeFile(os,  boundary, "image",         imageFile);
                 os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
             }
@@ -135,7 +135,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
                 writeField(os, boundary, "prompt",        prompt != null ? prompt : "");
                 writeField(os, boundary, "size",          "1024x1024");
                 writeField(os, boundary, "quality",       "auto");
-                writeField(os, boundary, "output_format", "png");
+                writeField(os, boundary, "output_format", "jpeg");
                 writeFile(os,  boundary, "image",         imageFile);
                 writeFile(os,  boundary, "mask",          maskFile);
                 os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
@@ -165,7 +165,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
                 "prompt",        prompt != null ? prompt : "product photo",
                 "size",          "1024x1024",
                 "quality",       "auto",
-                "output_format", "png"
+                "output_format", "jpeg"
             );
 
             String jsonBody = mapper.writeValueAsString(payload);

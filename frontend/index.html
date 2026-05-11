@@ -1053,6 +1053,10 @@
 
                 // 合并类目提示词与用户输入
                 const finalPrompt = [prompt, selectedPrompt.prompt].filter(Boolean).join('\n') || '自动生成';
+
+                // gemini 不支持纯文生图，无图时自动切换到 gpt-image
+                const effectiveAgentId = (agentId === 'gemini' && droppedFiles.length === 0 && !sessionImagePath)
+                    ? 'gpt-image' : agentId;
                 payload.prompt = finalPrompt;
                 if (selectedPrompt.negativePrompt) payload.negativePrompt = selectedPrompt.negativePrompt;
 
@@ -1070,6 +1074,8 @@
                 for (const key in payload) {
                     formData.append(key, payload[key]);
                 }
+                // 覆盖 agentId，确保纯文生图时不用 gemini
+                formData.set('agentId', effectiveAgentId);
 
                 formData.append('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
                 formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);

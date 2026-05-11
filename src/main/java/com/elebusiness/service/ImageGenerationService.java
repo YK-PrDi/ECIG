@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 public class ImageGenerationService {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class);
-    private static final String DEFAULT_AGENT_ID = "gemini";
+    private static final String DEFAULT_AGENT_ID = "gpt-image";
 
     private final AppProperties appProperties;
     private final Map<String, ImageGeneratorAgent> agentMap;
