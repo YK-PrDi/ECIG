@@ -43,11 +43,13 @@ public class ApiController {
     private final TaskService taskService;
     private final PromptService promptService;
     private final GptImageAgent gptImageAgent;
+    private final com.elebusiness.service.PromptCondenser promptCondenser;
 
     public ApiController(ConfigService configService, DingTalkService dingTalkService,
                          ImageGenerationService imageGenerationService,
                          AppProperties appProperties, TaskService taskService,
-                         PromptService promptService, GptImageAgent gptImageAgent) {
+                         PromptService promptService, GptImageAgent gptImageAgent,
+                         com.elebusiness.service.PromptCondenser promptCondenser) {
         this.configService = configService;
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
@@ -55,6 +57,7 @@ public class ApiController {
         this.taskService = taskService;
         this.promptService = promptService;
         this.gptImageAgent = gptImageAgent;
+        this.promptCondenser = promptCondenser;
     }
 
     @GetMapping("/api/prompts")
@@ -222,6 +225,13 @@ public class ApiController {
                 }
                 task.incrementProgress();
             }
+
+            // 标准模式的思考信息：展示用户 prompt + 模型
+            task.addResult(result("__AI_THOUGHT__0", "info",
+                "【提示词直送（未经 LLM 处理）】\n模型: " + agentId
+                + "\n\n【用户附加提示词】\n" + (userPrompt == null || userPrompt.isBlank() ? "（无）" : userPrompt)
+                + "\n\n注：标准模式下每张图的最终 prompt 由系统根据产品类别、主图/SKU/详情场景模板拼装，详情见后台日志。",
+                null));
         });
 
         return ResponseEntity.ok(Map.of("taskId", task.getId()));
@@ -254,14 +264,43 @@ public class ApiController {
     @PostMapping("/api/custom_generate")
     public ResponseEntity<Map<String, Object>> customGenerate(
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
-            @RequestParam("prompt") String prompt,
+            @RequestParam("prompt") List<String> prompts,
             @RequestParam(value = "count", defaultValue = "1") int count,
             @RequestParam(value = "agentId", defaultValue = "gemini") String agentId) {
 
         boolean hasImages = images != null && !images.isEmpty();
 
-        if (!hasImages && (prompt == null || prompt.isBlank())) {
+        // 过滤空 prompt
+        List<String> promptList = new ArrayList<>();
+        if (prompts != null) for (String p : prompts) if (p != null && !p.isBlank()) promptList.add(p);
+        if (promptList.isEmpty() && !hasImages) {
             return ResponseEntity.badRequest().body(Map.of("error", "纯文生图模式需要提供提示词"));
+        }
+        if (promptList.isEmpty()) promptList.add("");
+
+        // GPT-Image 对长 prompt 敏感（>550 字易超时），用 Gemini 提前批量压缩；失败自动降级原文
+        // 同时收集 LLM 思考过程，回传前端展示
+        List<String> thoughts = new ArrayList<>();
+        if (agentId != null && agentId.startsWith("gpt-image")) {
+            List<String> compressed = new ArrayList<>(promptList.size());
+            for (String p : promptList) {
+                com.elebusiness.service.PromptCondenser.Condensed c = promptCondenser.condenseDetailed(p);
+                compressed.add(c.compressed());
+                thoughts.add(
+                    "【Gemini 压缩思考】\n" + (c.thought() == null || c.thought().isBlank() ? "（模型未返回思考文本）" : c.thought())
+                    + "\n\n【原提示词（" + p.length() + " 字）】\n" + p
+                    + "\n\n【压缩后（" + c.compressed().length() + " 字，实际发给 GPT-Image）】\n" + c.compressed()
+                );
+            }
+            promptList = compressed;
+        } else {
+            // 其他 agent：不走 LLM 压缩，但展示"实际发给模型的完整 prompt"作为思考信息
+            for (String p : promptList) {
+                thoughts.add(
+                    "【提示词直送（未经 LLM 处理）】\n模型: " + agentId
+                    + "\n长度: " + p.length() + " 字\n\n【最终提示词】\n" + p
+                );
+            }
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
@@ -287,13 +326,15 @@ public class ApiController {
             }
         }
 
-        int total = !hasImages ? count
-                : (whiteTempFiles.isEmpty() ? 1 : whiteTempFiles.size()) * count;
+        int bgGroups = !hasImages ? 1 : (whiteTempFiles.isEmpty() ? 1 : whiteTempFiles.size());
+        int total = promptList.size() * count * bgGroups;
 
         GenerationTask task = taskService.createTask(total);
         final File refFinal = refTempFile;
         final List<File> whiteFinal = whiteTempFiles;
         final boolean hasImagesFinal = hasImages;
+        final List<String> promptsFinal = promptList;
+        final List<String> thoughtsFinal = thoughts;
 
         taskService.submit(task, () -> {
             ExecutorService executor = imageGenerationService.getExecutor();
@@ -301,29 +342,35 @@ public class ApiController {
             int[] idx = {1};
 
             if (!hasImagesFinal) {
-                for (int i = 0; i < count; i++) {
-                    final int n = idx[0]++;
-                    final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
-                    futures.add(CompletableFuture.supplyAsync(() -> {
-                        if (task.isCancelled()) return "失败: 已取消";
-                        boolean ok = imageGenerationService.generateImage(prompt, null, null, outputPath, agentId);
-                        return ok ? outputPath : "失败: 生成未返回图片";
-                    }, executor));
+                for (String p : promptsFinal) {
+                    for (int i = 0; i < count; i++) {
+                        final int n = idx[0]++;
+                        final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
+                        final String promptFinal = p;
+                        futures.add(CompletableFuture.supplyAsync(() -> {
+                            if (task.isCancelled()) return "失败: 已取消";
+                            boolean ok = imageGenerationService.generateImage(promptFinal, null, null, outputPath, agentId);
+                            return ok ? outputPath : "失败: 生成未返回图片";
+                        }, executor));
+                    }
                 }
             } else {
                 List<File> bgFiles = whiteFinal.isEmpty() ? List.of(refFinal) : whiteFinal;
                 final String refPath = refFinal.getAbsolutePath();
-                for (File bgFile : bgFiles) {
-                    for (int i = 0; i < count; i++) {
-                        final File bg = bgFile;
-                        final int n = idx[0]++;
-                        final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
-                        futures.add(CompletableFuture.supplyAsync(() -> {
-                            if (task.isCancelled()) return "失败: 已取消";
-                            boolean ok = imageGenerationService.generateImage(
-                                    prompt, refPath, bg.getAbsolutePath(), outputPath, agentId);
-                            return ok ? outputPath : "失败: 生成未返回图片";
-                        }, executor));
+                for (String p : promptsFinal) {
+                    for (File bgFile : bgFiles) {
+                        for (int i = 0; i < count; i++) {
+                            final File bg = bgFile;
+                            final int n = idx[0]++;
+                            final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
+                            final String promptFinal = p;
+                            futures.add(CompletableFuture.supplyAsync(() -> {
+                                if (task.isCancelled()) return "失败: 已取消";
+                                boolean ok = imageGenerationService.generateImage(
+                                        promptFinal, refPath, bg.getAbsolutePath(), outputPath, agentId);
+                                return ok ? outputPath : "失败: 生成未返回图片";
+                            }, executor));
+                        }
                     }
                 }
             }
@@ -351,6 +398,11 @@ public class ApiController {
 
             // 把输出目录作为最后一条 info 结果，便于前端调 /api/gallery 渲染
             task.addResult(result("__OUTPUT_DIR__", "info", null, outputDir));
+
+            // 把思考过程塞进 results，前端渲染为可折叠灰字块
+            for (int i = 0; i < thoughtsFinal.size(); i++) {
+                task.addResult(result("__AI_THOUGHT__" + i, "info", thoughtsFinal.get(i), null));
+            }
 
             if (refFinal != null) refFinal.delete();
             for (File wf : whiteFinal) wf.delete();
@@ -396,7 +448,12 @@ public class ApiController {
                 return ResponseEntity.internalServerError()
                         .body(Map.of("error", "GPT-Image 局部重绘失败，请检查 API Key 或网络"));
             }
-            return ResponseEntity.ok(Map.of("results", List.of(outputPath), "output_dir", outputDir));
+            return ResponseEntity.ok(Map.of(
+                "results", List.of(outputPath),
+                "output_dir", outputDir,
+                "thought", "【局部重绘 · 提示词直送（未经 LLM 处理）】\n模型: gpt-image\n"
+                    + "长度: " + prompt.length() + " 字\n\n【最终提示词】\n" + prompt
+            ));
         } catch (Exception e) {
             log.error("inpaint error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
@@ -514,55 +571,71 @@ public class ApiController {
 
     @PostMapping("/api/gpt-image/generate")
     public ResponseEntity<Map<String, Object>> gptImageGenerate(@RequestBody Map<String, Object> body) {
-        try {
-            java.util.List<String> keys = appProperties.getGptImage().getApiKeys();
-            String apiKey = (keys != null && !keys.isEmpty()) ? keys.get(0) : null;
-            String baseUrl = appProperties.getGptImage().getBaseUrl();
-            if (apiKey == null || apiKey.isBlank()) {
-                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "GPT-Image API Key 未配置"));
-            }
-
-            // 构造请求体，透传前端参数
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("model", "gpt-image-2");
-            payload.put("prompt", body.getOrDefault("prompt", ""));
-            payload.put("size",    body.getOrDefault("size",    "1024x1024"));
-            payload.put("quality", body.getOrDefault("quality", "auto"));
-            payload.put("background",   body.getOrDefault("background",   "auto"));
-            payload.put("output_format", body.getOrDefault("output_format", "png"));
-
-            String jsonBody = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload);
-
-            URL url = new URL(baseUrl + "/v1/images/generations");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(30000);
-            conn.setReadTimeout(120000);
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-            }
-
-            int status = conn.getResponseCode();
-            String respBody = new String(
-                (status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream()).readAllBytes(),
-                StandardCharsets.UTF_8
-            );
-            conn.disconnect();
-
-            if (status >= 200 && status < 300) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> resp = new com.fasterxml.jackson.databind.ObjectMapper().readValue(respBody, Map.class);
-                return ResponseEntity.ok(Map.of("success", true, "data", resp));
-            } else {
-                return ResponseEntity.status(status).body(Map.of("success", false, "error", respBody));
-            }
-        } catch (Exception e) {
-            log.error("gptImageGenerate error: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage()));
+        List<String> keys = appProperties.getGptImage().getApiKeys();
+        String baseUrl = appProperties.getGptImage().getBaseUrl();
+        if (keys == null || keys.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "GPT-Image API Key 未配置"));
         }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("model", "gpt-image-2");
+        payload.put("prompt", body.getOrDefault("prompt", ""));
+        payload.put("size",    body.getOrDefault("size",    "1024x1024"));
+        payload.put("quality", body.getOrDefault("quality", "auto"));
+        payload.put("background",   body.getOrDefault("background",   "auto"));
+        payload.put("output_format", body.getOrDefault("output_format", "png"));
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String jsonBody;
+        try { jsonBody = mapper.writeValueAsString(payload); }
+        catch (Exception e) { return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage())); }
+
+        // 按序轮询 key：遇 429/5xx 或网络异常则尝试下一个；2xx 或其他 4xx 立刻返回
+        String lastError = "所有 key 均不可用";
+        int lastStatus = 500;
+        for (String apiKey : keys) {
+            if (apiKey == null || apiKey.isBlank()) continue;
+            try {
+                URL url = new URL(baseUrl + "/v1/images/generations");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(30_000);
+                conn.setReadTimeout(120_000);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+                }
+
+                int status = conn.getResponseCode();
+                String respBody = new String(
+                    (status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream()).readAllBytes(),
+                    StandardCharsets.UTF_8
+                );
+                conn.disconnect();
+
+                if (status >= 200 && status < 300) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> resp = mapper.readValue(respBody, Map.class);
+                    return ResponseEntity.ok(Map.of("success", true, "data", resp));
+                }
+                lastStatus = status;
+                lastError = respBody;
+                // 429 限流 / 5xx 服务端问题 → 换下一个 key；其他 4xx 直接终止
+                if (status != 429 && status < 500) {
+                    return ResponseEntity.status(status).body(Map.of("success", false, "error", respBody));
+                }
+                log.warn("GPT-Image key 尾号[{}] 返回 {}，尝试下一个",
+                        apiKey.length() > 6 ? apiKey.substring(apiKey.length() - 6) : apiKey, status);
+            } catch (Exception e) {
+                lastError = e.getMessage();
+                log.warn("GPT-Image key 尾号[{}] 异常: {}",
+                        apiKey.length() > 6 ? apiKey.substring(apiKey.length() - 6) : apiKey, e.getMessage());
+            }
+        }
+        log.error("gptImageGenerate 所有 key 均失败: {}", lastError);
+        return ResponseEntity.status(lastStatus).body(Map.of("success", false, "error", lastError));
     }
 
     private int countImages(File dir) {

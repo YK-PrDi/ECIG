@@ -1037,6 +1037,7 @@
                     if (result.results?.[0]) {
                         const imgUrl = `/api/image?path=${encodeURIComponent(result.results[0])}`;
                         appendMessage('ai', `<div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:8px;">✅ 局部重绘完成</div><img src="${imgUrl}" class="result-image" style="max-width:400px;border-radius:10px;display:block;" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image','${imgUrl}','inpaint.png',event)">`, true);
+                        if (result.thought) appendThoughts([result.thought]);
                     } else throw new Error('未返回图片结果');
                 } catch (err) {
                     appendMessage('ai', '局部重绘失败：' + err.message);
@@ -1146,7 +1147,7 @@
                 apiPath = '/api/custom_generate';
 
                 const ecPrompts = buildEcommercePrompts(prompt);
-                if (!ecPrompts.length) { alert('请先选择"形态结构"，再至少勾选一个卖点'); return; }
+                if (!ecPrompts.length) { alert('无法生成提示词，请至少选择或填写一项参数'); return; }
 
                 const formData = new FormData();
                 if (droppedFiles.length > 0) {
@@ -1161,7 +1162,9 @@
                 formData.append('count',   '1');
                 formData.append('agentId', agentId);
 
-                const sellingLabels = ecSel.sellings.map(s => s.label).join('、');
+                const sellingLabels = ecSel.sellings.length
+                    ? ecSel.sellings.map(s => s.label).join('、')
+                    : '（未选卖点·基础图）';
                 appendMessage('user', `[电商模式] 模型: ${agentId}\n卖点: ${sellingLabels}（共 ${ecPrompts.length} 张）`);
 
                 try {
@@ -1265,26 +1268,52 @@
             const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
             if (card) card.remove();
             const results = data.results || [];
-            const successList = results.filter(r => r.status === 'success');
+            const thoughts = results.filter(r => typeof r.name === 'string' && r.name.startsWith('__AI_THOUGHT__'))
+                                    .map(r => r.message).filter(Boolean);
+            const successList = results.filter(r => r.status === 'success' && !(r.name || '').startsWith('__'));
             const errorList   = results.filter(r => r.status === 'error');
             const videoResult = successList.find(r => r.type === 'video' && r.filename);
             if (data.status === 'stopped') {
                 appendMessage('ai', `⏹ 任务已停止（已完成 ${data.progress}/${data.total}）`);
+                appendThoughts(thoughts);
             } else if (data.status === 'error') {
                 const errMsg = errorList[0]?.message || '';
                 appendMessage('ai', `❌ 任务异常终止${errMsg ? '：' + errMsg : ''}`);
+                appendThoughts(thoughts);
             } else if (videoResult) {
                 appendVideoPlayer(videoResult.filename);
+                appendThoughts(thoughts);
             } else if (errorList.length > 0 && successList.length === 0) {
                 const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
                 appendMessage('ai', `❌ 全部生成失败\n${detail}`);
+                appendThoughts(thoughts);
             } else if (errorList.length > 0) {
                 const detail = errorList.map(r => `• ${r.name}：${r.message || '生成失败'}`).join('\n');
                 appendMessage('ai', `⚠️ 部分完成（${successList.length} 成功 / ${errorList.length} 失败）\n${detail}`);
+                renderGeneratedImages(successList);
+                appendThoughts(thoughts);
             } else {
                 appendMessage('ai', `✅ 生成完成！共 ${successList.length} 个产品处理成功。正在为您加载渲染结果...`);
                 renderGeneratedImages(successList);
+                appendThoughts(thoughts);
             }
+        }
+
+        // ── AI 思考过程折叠块（灰字，点击展开） ──
+        function appendThoughts(thoughts) {
+            if (!thoughts || thoughts.length === 0) return;
+            const container = document.getElementById('chatMessages');
+            if (!container) return;
+            const escape = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const blocks = thoughts.map((t, i) => {
+                const label = thoughts.length > 1 ? `第 ${i + 1} 张` : '本次生成';
+                return `<details class="ai-thought-block" style="margin:6px 0;padding:8px 12px;background:rgba(148,163,184,0.08);border:1px dashed rgba(148,163,184,0.35);border-radius:8px;font-size:0.75rem;color:var(--text-dim);">
+                    <summary style="cursor:pointer;font-weight:500;user-select:none;">💭 AI 思考过程（${label}）</summary>
+                    <pre style="margin:8px 0 0;white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:0.72rem;line-height:1.55;">${escape(t)}</pre>
+                </details>`;
+            }).join('');
+            container.insertAdjacentHTML('beforeend', `<div class="ai-thoughts-wrap">${blocks}</div>`);
+            container.scrollTop = container.scrollHeight;
         }
 
         async function renderGeneratedImages(successList) {
@@ -1448,28 +1477,32 @@
             ]}
         ];
 
-        // 卖点 → 场景构图 映射（形态结构决定走哪组卖点）
-        const EC_SELLING_BY_SHAPE = {
-            '双层/三层置物卷纸架': [
-                { key: 'qiangjin_xifu',  label: '强劲吸附 稳固不晃',
-                  prompt: '强劲吸附 稳固不晃（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-                  composition: '图中上展示吸盘；中下是左右对称分布展示图。拍摄角度 45°正视视角；产品吸附在墙面。图中上：聚焦按压式吸盘安装结构，一只手的拇指正按压金属质感吸盘的中心区域，吸盘外围环绕蓝色半透明环形特效，特效上分布白色箭头指示吸附受力方向；图中下：左侧展示图展示本产品，上层放置高雅精致黑色男性水壶，下层放置三部叠在一起的手机体现承重性强，左上角带绿色勾；右侧展示市面普通款，放置一卷纸，左上角带红色叉。背景：深灰大理石哑光纹理墙面，光影细腻，凸显产品高级质感。' },
-                { key: 'fenceng_shouna', label: '分层收纳 加宽容量',
-                  prompt: '分层收纳 加宽容量（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-                  composition: '三层吸盘式壁挂纸巾置物架占据画面核心，顶部展示圆形吸盘固定结构；侧前方 45 度特写视角。上层置物台覆盖蓝色发光尺寸(10.2CM)标注特效，中层放置两包卫生巾，下层内置抽纸盒且抽纸自然垂下，直观展示大容量收纳能力；清晰呈现金属哑光质感与立体结构。背景：深灰大理石哑光纹理墙面，右侧露出浴室局部作场景衬托，光影柔和自然。' },
-                { key: 'quyong_fangbian', label: '取用方便 抽纸不卡顿',
-                  prompt: '取用方便 抽纸不卡顿（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-                  composition: '纸巾置物架占据画面中心偏左区域。重点展示镂空出纸结构，上下两个镂空出纸口均带有蓝色发光特效。背景：深灰大理石哑光纹理墙面，右上角露出一部分高级圆镜，右下角露出一部分深蓝色浴室柜，光影细腻。' },
-                { key: 'shengji_tanga',  label: '升级碳钢基材 防腐防锈抗腐蚀',
-                  prompt: '升级碳钢基材 防腐防锈抗腐蚀（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-                  composition: '画面下半部分是多颗大小不一的金属球体，球体表面带有"碳钢"立体标识；上方是弧形不锈钢板材，表面带有六边形压纹，形成富有层次感的视觉结构，光影细腻突出金属质感与光泽，产品细节为绝对视觉焦点。背景：深灰哑光底色，光影柔和自然带点冷色调。' },
-                { key: 'anzhuang_bianjie', label: '安装便捷 拆卸不伤墙面',
-                  prompt: '安装便捷 拆卸不伤墙面（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-                  composition: '2×2 网格布局，4 个等大圆角矩形步骤框均匀排列；每个框左上角配圆形数字序号，框内为对应安装操作特写：依次呈现手擦墙面、撕开吸盘保护膜、手按压吸盘上墙、带橙色箭头指示逆时针拧旋钮、双手按压胶贴排空气、带橙色箭头指示安装底座与纸巾架主体的过程；清晰展示手部动作与产品结构细节。背景：深灰大理石哑光纹理墙面，光影细腻。' },
-                { key: 'quanjing_sanmai', label: '强劲吸附·分层收纳·不伤墙面（主图三卖点）',
-                  prompt: '强劲吸附、分层收纳、不伤墙面（三个卖点在图右下角呈三行对称排列）；文字模板：圆角香槟金椭圆文字框，阿里巴巴普惠粗黑体',
-                  composition: '图中央是外凸90°直角墙面；45 度斜俯视视角；双产品对角线错落布局，左下二层款、右上三层款纸巾置物架，全景。均展示实际使用状态：二层款上层放手机、下层内置卷纸，三层款上层放湿纸巾盒、下层内置抽纸盒且抽纸露出。背景：轻奢风深灰大理石哑光纹理墙面，镜面级反光出产品倒影；右侧露出部分白色台上盆、黑色台面、深蓝色浴室柜与香薰瓶局部，左下角露出部分白色高级马桶。' },
-            ],
+        // 卖点按"形态结构当前值"查：预设时双层/三层共用同一组（可在 UI 里各自增删）
+        const EC_SELLING_ROLLHOLDER_PRESET = [
+            { key: 'qiangjin_xifu',  label: '强劲吸附 稳固不晃',
+              prompt: '强劲吸附 稳固不晃（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+              composition: '图中上展示吸盘；中下是左右对称分布展示图。拍摄角度 45°正视视角；产品吸附在墙面。图中上：聚焦按压式吸盘安装结构，一只手的拇指正按压金属质感吸盘的中心区域，吸盘外围环绕蓝色半透明环形特效，特效上分布白色箭头指示吸附受力方向；图中下：左侧展示图展示本产品，上层放置高雅精致黑色男性水壶，下层放置三部叠在一起的手机体现承重性强，左上角带绿色勾；右侧展示市面普通款，放置一卷纸，左上角带红色叉。背景：深灰大理石哑光纹理墙面，光影细腻，凸显产品高级质感。' },
+            { key: 'fenceng_shouna', label: '分层收纳 加宽容量',
+              prompt: '分层收纳 加宽容量（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+              composition: '三层吸盘式壁挂纸巾置物架占据画面核心，顶部展示圆形吸盘固定结构；侧前方 45 度特写视角。上层置物台覆盖蓝色发光尺寸(10.2CM)标注特效，中层放置两包卫生巾，下层内置抽纸盒且抽纸自然垂下，直观展示大容量收纳能力；清晰呈现金属哑光质感与立体结构。背景：深灰大理石哑光纹理墙面，右侧露出浴室局部作场景衬托，光影柔和自然。' },
+            { key: 'quyong_fangbian', label: '取用方便 抽纸不卡顿',
+              prompt: '取用方便 抽纸不卡顿（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+              composition: '纸巾置物架占据画面中心偏左区域。重点展示镂空出纸结构，上下两个镂空出纸口均带有蓝色发光特效。背景：深灰大理石哑光纹理墙面，右上角露出一部分高级圆镜，右下角露出一部分深蓝色浴室柜，光影细腻。' },
+            { key: 'shengji_tanga',  label: '升级碳钢基材 防腐防锈抗腐蚀',
+              prompt: '升级碳钢基材 防腐防锈抗腐蚀（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+              composition: '画面下半部分是多颗大小不一的金属球体，球体表面带有"碳钢"立体标识；上方是弧形不锈钢板材，表面带有六边形压纹，形成富有层次感的视觉结构，光影细腻突出金属质感与光泽，产品细节为绝对视觉焦点。背景：深灰哑光底色，光影柔和自然带点冷色调。' },
+            { key: 'anzhuang_bianjie', label: '安装便捷 拆卸不伤墙面',
+              prompt: '安装便捷 拆卸不伤墙面（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
+              composition: '2×2 网格布局，4 个等大圆角矩形步骤框均匀排列；每个框左上角配圆形数字序号，框内为对应安装操作特写：依次呈现手擦墙面、撕开吸盘保护膜、手按压吸盘上墙、带橙色箭头指示逆时针拧旋钮、双手按压胶贴排空气、带橙色箭头指示安装底座与纸巾架主体的过程；清晰展示手部动作与产品结构细节。背景：深灰大理石哑光纹理墙面，光影细腻。' },
+            { key: 'quanjing_sanmai', label: '强劲吸附·分层收纳·不伤墙面（主图三卖点）',
+              prompt: '强劲吸附、分层收纳、不伤墙面（三个卖点在图右下角呈三行对称排列）；文字模板：圆角香槟金椭圆文字框，阿里巴巴普惠粗黑体',
+              composition: '图中央是外凸90°直角墙面；45 度斜俯视视角；双产品对角线错落布局，左下二层款、右上三层款纸巾置物架，全景。均展示实际使用状态：二层款上层放手机、下层内置卷纸，三层款上层放湿纸巾盒、下层内置抽纸盒且抽纸露出。背景：轻奢风深灰大理石哑光纹理墙面，镜面级反光出产品倒影；右侧露出部分白色台上盆、黑色台面、深蓝色浴室柜与香薰瓶局部，左下角露出部分白色高级马桶。' },
+        ];
+
+        // key = 形态结构的值，不命中时卖点区为空（可手动添加）
+        const EC_SELLING_PRESET = {
+            '双层置物卷纸架': EC_SELLING_ROLLHOLDER_PRESET,
+            '三层置物卷纸架': EC_SELLING_ROLLHOLDER_PRESET,
         };
 
         const EC_FIELDS = [
@@ -1484,8 +1517,8 @@
             },
             { key: 'shape', label: '形态结构', promptKey: '形态',
               options: [
-                { display: '双层置物卷纸架', value: '双层置物卷纸架', sellingGroup: '双层/三层置物卷纸架' },
-                { display: '三层置物卷纸架', value: '三层置物卷纸架', sellingGroup: '双层/三层置物卷纸架' }
+                { display: '双层置物卷纸架', value: '双层置物卷纸架' },
+                { display: '三层置物卷纸架', value: '三层置物卷纸架' }
               ]
             },
             { key: 'style', label: '背景风格', promptKey: '背景风格',
@@ -1508,6 +1541,61 @@
             }
         ];
 
+        // ── 用户自定义选项（localStorage 持久化） ──
+        // 结构: { [fieldKey]: [{display, value}...] }
+        // 卖点: ec_user_sellings = { [shapeValue]: [{key,label,prompt,composition}...] }
+        const EC_LS_OPTS     = 'ec_user_opts_v1';
+        const EC_LS_SELLINGS = 'ec_user_sellings_v1';
+
+        function ecLoad(key) {
+            try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { return {}; }
+        }
+        function ecSave(key, obj) {
+            try { localStorage.setItem(key, JSON.stringify(obj)); } catch (_) {}
+        }
+        function ecUserOpts(fieldKey) {
+            return ecLoad(EC_LS_OPTS)[fieldKey] || [];
+        }
+        function ecUserSellings(shapeValue) {
+            return ecLoad(EC_LS_SELLINGS)[shapeValue] || [];
+        }
+        function ecAddUserOpt(fieldKey, display, value) {
+            const all = ecLoad(EC_LS_OPTS);
+            const list = all[fieldKey] || [];
+            if (list.find(o => o.value === value)) return false;
+            list.push({ display, value });
+            all[fieldKey] = list;
+            ecSave(EC_LS_OPTS, all);
+            return true;
+        }
+        function ecRemoveUserOpt(fieldKey, value) {
+            const all = ecLoad(EC_LS_OPTS);
+            if (!all[fieldKey]) return;
+            all[fieldKey] = all[fieldKey].filter(o => o.value !== value);
+            ecSave(EC_LS_OPTS, all);
+        }
+        function ecAddUserSelling(shapeValue, selling) {
+            const all = ecLoad(EC_LS_SELLINGS);
+            const list = all[shapeValue] || [];
+            if (list.find(s => s.key === selling.key)) return false;
+            list.push(selling);
+            all[shapeValue] = list;
+            ecSave(EC_LS_SELLINGS, all);
+            return true;
+        }
+        function ecRemoveUserSelling(shapeValue, key) {
+            const all = ecLoad(EC_LS_SELLINGS);
+            if (!all[shapeValue]) return;
+            all[shapeValue] = all[shapeValue].filter(s => s.key !== key);
+            ecSave(EC_LS_SELLINGS, all);
+        }
+
+        // 聚合预设+用户自定义的卖点列表（按当前形态值查）
+        function ecGetSellings(shapeValue) {
+            if (!shapeValue) return [];
+            return [...(EC_SELLING_PRESET[shapeValue] || []), ...ecUserSellings(shapeValue)];
+        }
+
         let ecSel = { category: [], sellings: [] };
         let ecPanelInit = false;
 
@@ -1518,17 +1606,17 @@
         function initEcommercePanel() {
             if (ecPanelInit) return;
             ecPanelInit = true;
-            const arrow = `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
             const container = document.getElementById('ecModalFieldsContainer');
             let html = '';
 
+            // 品类 4 级级联
             html += `<div class="config-group" style="width:100%;">
-                <label>品类</label>
+                <label>品类（各级可留空）</label>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;" id="ec-cat-container">
                     <div class="gf-select sm drop-up" tabindex="0" style="min-width:140px;" data-cat-level="0">
                         <input type="hidden" class="ec-cat-input">
                         <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                            <span class="gf-select-text">—</span>${arrow}
+                            <span class="gf-select-text">—</span>${ecArrow()}
                         </div>
                         <div class="gf-select-options"></div>
                     </div>
@@ -1536,32 +1624,23 @@
             </div>`;
 
             for (const f of EC_FIELDS) {
-                const optsHtml = f.options.map(o =>
-                    `<div class="gf-option" data-key="${f.key}" data-value="${ecEscAttr(o.value)}" data-display="${ecEscAttr(o.display)}" data-selling-group="${ecEscAttr(o.sellingGroup || '')}" onclick="ecPickOptionEl(this)">${ecEscAttr(o.display)}</div>`
-                ).join('') +
-                `<div class="gf-option" data-key="${f.key}" data-value="__custom__" data-display="自定义" onclick="ecPickOptionEl(this)">自定义...</div>`;
-
-                html += `<div class="config-group" style="min-width:120px;flex:1 1 120px;">
-                    <label>${f.label}</label>
-                    <div class="gf-select sm drop-up" tabindex="0" style="min-width:120px;">
+                html += `<div class="config-group" style="min-width:140px;flex:1 1 140px;">
+                    <label>${f.label}（可留空）</label>
+                    <div class="gf-select sm drop-up" tabindex="0" style="min-width:140px;" data-field="${f.key}">
                         <input type="hidden" id="ec-${f.key}" value="">
                         <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                            <span class="gf-select-text" id="ec-${f.key}-text">—</span>${arrow}
+                            <span class="gf-select-text" id="ec-${f.key}-text">—</span>${ecArrow()}
                         </div>
-                        <div class="gf-select-options">
-                            <div class="gf-option selected" data-key="${f.key}" data-value="" data-display="—" data-selling-group="" onclick="ecPickOptionEl(this)">— 空</div>
-                            ${optsHtml}
-                        </div>
+                        <div class="gf-select-options" id="ec-${f.key}-opts"></div>
                     </div>
-                    <input type="text" class="input-field" id="ec-custom-${f.key}"
-                        placeholder="自定义${f.label}..."
-                        style="display:none;height:28px;padding:2px 8px;font-size:0.75rem;margin-top:4px;"
-                        oninput="ecSel['${f.key}']=this.value">
                 </div>`;
             }
 
             html += `<div class="config-group" style="width:100%;">
-                <label>卖点（可多选，选 N 个生成 N 张图）</label>
+                <label style="display:flex;align-items:center;gap:8px;">
+                    卖点（可多选，选 N 个生成 N 张图；为空则生成 1 张基础图）
+                    <button type="button" onclick="ecPromptAddSelling()" style="font-size:0.7rem;padding:2px 8px;border:1px dashed var(--border);border-radius:6px;background:transparent;cursor:pointer;color:var(--text-muted);">➕ 为当前形态添加卖点</button>
+                </label>
                 <div id="ec-selling-container" style="display:flex;flex-wrap:wrap;gap:6px;">
                     <span style="font-size:0.75rem;color:var(--text-dim);">请先选择"形态结构"</span>
                 </div>
@@ -1570,13 +1649,60 @@
             html += `<div class="config-group" style="width:100%;">
                 <label>场景构图（系统根据所选卖点自动匹配）</label>
                 <div id="ec-composition-preview"
-                    style="font-size:0.72rem;color:var(--text-dim);line-height:1.5;padding:8px 10px;background:var(--surface-alt,#F8FAFC);border:1px solid var(--border);border-radius:6px;min-height:40px;">
-                    ——
-                </div>
+                    style="font-size:0.72rem;color:var(--text-dim);line-height:1.5;padding:8px 10px;background:var(--surface-alt,#F8FAFC);border:1px solid var(--border);border-radius:6px;min-height:40px;">——</div>
             </div>`;
 
             container.innerHTML = html;
             ecRenderCatLevel(0, EC_CATEGORY_TREE);
+            for (const f of EC_FIELDS) ecRenderFieldOptions(f);
+        }
+
+        function ecArrow() {
+            return `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+        }
+
+        // 渲染单个字段的选项列表（含预设 + 用户自定义 + ➕ 添加项）
+        function ecRenderFieldOptions(f) {
+            const box = document.getElementById(`ec-${f.key}-opts`);
+            if (!box) return;
+            const presets = f.options.map(o =>
+                `<div class="gf-option" data-key="${f.key}" data-value="${ecEscAttr(o.value)}" data-display="${ecEscAttr(o.display)}" onclick="ecPickOptionEl(this)">${ecEscAttr(o.display)}</div>`
+            ).join('');
+            const customs = ecUserOpts(f.key).map(o =>
+                `<div class="gf-option" data-key="${f.key}" data-value="${ecEscAttr(o.value)}" data-display="${ecEscAttr(o.display)}" onclick="ecPickOptionEl(this)" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                    <span>${ecEscAttr(o.display)} <em style="color:var(--text-dim);font-style:normal;font-size:0.68rem;">· 我的</em></span>
+                    <span onclick="event.stopPropagation();ecDeleteUserOpt('${f.key}','${ecEscAttr(o.value)}')" style="color:var(--text-dim);cursor:pointer;padding:0 4px;">✕</span>
+                </div>`
+            ).join('');
+            box.innerHTML =
+                `<div class="gf-option selected" data-key="${f.key}" data-value="" data-display="—" onclick="ecPickOptionEl(this)">— 空</div>` +
+                presets + customs +
+                `<div class="gf-option" style="color:var(--primary);border-top:1px dashed var(--border);" onclick="ecPromptAddOpt('${f.key}','${ecEscAttr(f.label)}')">➕ 添加自定义选项</div>`;
+        }
+
+        function ecPromptAddOpt(fieldKey, fieldLabel) {
+            const v = (prompt(`为【${fieldLabel}】添加一个新选项：`) || '').trim();
+            if (!v) return;
+            if (ecAddUserOpt(fieldKey, v, v)) {
+                const f = EC_FIELDS.find(x => x.key === fieldKey);
+                if (f) ecRenderFieldOptions(f);
+            }
+        }
+
+        function ecDeleteUserOpt(fieldKey, value) {
+            if (!confirm('删除这个自定义选项？')) return;
+            ecRemoveUserOpt(fieldKey, value);
+            const f = EC_FIELDS.find(x => x.key === fieldKey);
+            if (f) ecRenderFieldOptions(f);
+            // 如果当前选中的就是它，清空选择
+            if (ecSel[fieldKey] === value) {
+                ecSel[fieldKey] = '';
+                const hidden = document.getElementById(`ec-${fieldKey}`);
+                const text   = document.getElementById(`ec-${fieldKey}-text`);
+                if (hidden) hidden.value = '';
+                if (text) text.textContent = '—';
+                if (fieldKey === 'shape') ecRenderSellings('');
+            }
         }
 
         function ecRenderCatLevel(level, nodes) {
@@ -1586,7 +1712,6 @@
             });
             ecSel.category = ecSel.category.slice(0, level);
             if (!nodes || nodes.length === 0) return;
-            const arrow = `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
             const optsHtml = nodes.map(n =>
                 `<div class="gf-option" data-display="${ecEscAttr(n.display)}" onclick="ecPickCatEl(this, ${level})">${ecEscAttr(n.display)}</div>`
             ).join('');
@@ -1598,7 +1723,7 @@
             wrap.innerHTML = `
                 <input type="hidden" class="ec-cat-input">
                 <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                    <span class="gf-select-text">—</span>${arrow}
+                    <span class="gf-select-text">—</span>${ecArrow()}
                 </div>
                 <div class="gf-select-options">
                     <div class="gf-option selected" data-display="—" onclick="ecPickCatEl(this, ${level})">— 空</div>
@@ -1648,38 +1773,57 @@
             el.classList.add('selected');
             wrapper.querySelector('input[type=hidden]').value = value;
             wrapper.querySelector('.gf-select-text').textContent = display;
-            const customInput = document.getElementById(`ec-custom-${key}`);
-            if (value === '__custom__') {
-                ecSel[key] = '';
-                if (customInput) { customInput.style.display = 'block'; customInput.value = ''; customInput.focus(); }
-            } else {
-                ecSel[key] = value;
-                if (customInput) customInput.style.display = 'none';
-            }
-            if (key === 'shape') {
-                const group = el.dataset.sellingGroup || '';
-                ecRenderSellings(group);
-            }
+            ecSel[key] = value;
+            if (key === 'shape') ecRenderSellings(value);
         }
 
-        function ecRenderSellings(group) {
+        // 按"形态结构当前值"渲染卖点：命中则列出，不命中则留空（但仍可添加自定义）
+        function ecRenderSellings(shapeValue) {
             const container = document.getElementById('ec-selling-container');
             ecSel.sellings = [];
             ecRefreshCompositionPreview();
-            if (!group || !EC_SELLING_BY_SHAPE[group]) {
+            const list = ecGetSellings(shapeValue);
+            if (!shapeValue) {
                 container.innerHTML = '<span style="font-size:0.75rem;color:var(--text-dim);">请先选择"形态结构"</span>';
                 return;
             }
-            container.innerHTML = EC_SELLING_BY_SHAPE[group].map(s => `
+            if (list.length === 0) {
+                container.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);">当前形态暂无预设卖点，可点上方"➕ 为当前形态添加卖点"</span>`;
+                return;
+            }
+            const isUser = s => ecUserSellings(shapeValue).some(u => u.key === s.key);
+            container.innerHTML = list.map(s => `
                 <label style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.75rem;cursor:pointer;">
-                    <input type="checkbox" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(group)}', '${ecEscAttr(s.key)}', this.checked)">
-                    ${ecEscAttr(s.label)}
+                    <input type="checkbox" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(shapeValue)}','${ecEscAttr(s.key)}',this.checked)">
+                    ${ecEscAttr(s.label)}${isUser(s) ? '<em style="color:var(--text-dim);font-style:normal;font-size:0.68rem;margin-left:4px;">· 我的</em>' : ''}
+                    ${isUser(s) ? `<span onclick="event.preventDefault();event.stopPropagation();ecDeleteUserSelling('${ecEscAttr(shapeValue)}','${ecEscAttr(s.key)}')" style="color:var(--text-dim);cursor:pointer;margin-left:2px;">✕</span>` : ''}
                 </label>
             `).join('');
         }
 
-        function ecToggleSelling(group, key, checked) {
-            const list = EC_SELLING_BY_SHAPE[group] || [];
+        function ecPromptAddSelling() {
+            const shapeValue = ecSel.shape || '';
+            if (!shapeValue) { alert('请先选择"形态结构"'); return; }
+            const label = (prompt('卖点简称（显示在 checkbox 旁，例如"强劲吸附"）：') || '').trim();
+            if (!label) return;
+            const sellingPrompt = (prompt('卖点文字要求（将拼进生图 prompt，例如位置/字体/排版等）：', label) || '').trim();
+            if (!sellingPrompt) return;
+            const composition = (prompt('场景构图描述（必填，将拼进生图 prompt）：') || '').trim();
+            if (!composition) return;
+            const key = 'user_' + Date.now();
+            ecAddUserSelling(shapeValue, { key, label, prompt: sellingPrompt, composition });
+            ecRenderSellings(shapeValue);
+        }
+
+        function ecDeleteUserSelling(shapeValue, key) {
+            if (!confirm('删除这个自定义卖点？')) return;
+            ecRemoveUserSelling(shapeValue, key);
+            ecSel.sellings = ecSel.sellings.filter(s => s.key !== key);
+            ecRenderSellings(shapeValue);
+        }
+
+        function ecToggleSelling(shapeValue, key, checked) {
+            const list = ecGetSellings(shapeValue);
             const item = list.find(s => s.key === key);
             if (!item) return;
             if (checked) {
@@ -1700,22 +1844,28 @@
         }
 
         function buildEcommercePrompts(userReq) {
-            if (!ecSel.sellings || ecSel.sellings.length === 0) return [];
             const base = [];
             if (ecSel.category && ecSel.category.length) base.push(`品类[${ecSel.category.join('>')}]`);
             const pushField = (key, label) => {
                 const v = ecSel[key] || '';
-                if (!v) return;
-                base.push(`${label}[${v}]`);
+                if (v) base.push(`${label}[${v}]`);
             };
             pushField('install',  '安装方式');
             pushField('shape',    '形态结构');
             pushField('style',    '背景风格');
             pushField('material', '材质/工艺');
             if (userReq) base.push(`客户附加要求[${userReq}]`);
+
+            const intro = '你是一个中国电商资深视觉设计师，请根据以下参数生成一张高清 8k 电商主图，突出产品质感与使用场景。';
+
+            // 无卖点 → 基础参数生 1 张；允许所有字段都为空（base 为空时只输出意图）
+            if (!ecSel.sellings || ecSel.sellings.length === 0) {
+                const paramsText = base.length ? `参数：${base.join('；')}。` : '（用户未指定参数，请按通用电商主图风格发挥。）';
+                return [`${intro}\n${paramsText}`];
+            }
             return ecSel.sellings.map(s => {
                 const params = [...base, `卖点[${s.prompt}]`, `场景构图[${s.composition}]`];
-                return `你是一个中国电商资深视觉设计师，请根据以下参数生成一张高清 8k 电商主图，突出产品质感与使用场景。\n参数：${params.join('；')}。`;
+                return `${intro}\n参数：${params.join('；')}。`;
             });
         }
 
@@ -2734,6 +2884,7 @@
                     if (result.results && result.results[0]) {
                         const imgUrl = `/api/image?path=${encodeURIComponent(result.results[0])}`;
                         appendMessage('ai', `<div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:8px;">✅ 局部编辑完成</div><img src="${imgUrl}" class="result-image" style="max-width:400px;border-radius:10px;display:block;" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image','${imgUrl}','inpaint.png',event)">`, true);
+                        if (result.thought) appendThoughts([result.thought]);
                     } else throw new Error('未返回图片结果');
                 } catch (err) { alert('生成失败：' + err.message); }
             });

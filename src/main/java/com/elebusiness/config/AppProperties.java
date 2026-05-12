@@ -59,7 +59,6 @@ public class AppProperties {
     public static class DingTalk {
         private String appKey;
         private String appSecret;
-        private String userId;
         private String appUuid;
         private String sheetId;
 
@@ -67,8 +66,6 @@ public class AppProperties {
         public void setAppKey(String appKey) { this.appKey = appKey; }
         public String getAppSecret() { return appSecret; }
         public void setAppSecret(String appSecret) { this.appSecret = appSecret; }
-        public String getUserId() { return userId; }
-        public void setUserId(String userId) { this.userId = userId; }
         public String getAppUuid() { return appUuid; }
         public void setAppUuid(String appUuid) { this.appUuid = appUuid; }
         public String getSheetId() { return sheetId; }
