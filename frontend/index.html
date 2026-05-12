@@ -527,6 +527,9 @@
                 sel.classList.remove('open');
                 sel.style.zIndex = "";
             });
+            // 关闭品类级联，避免与字段下拉同时展开互相遮挡
+            const cas = document.getElementById('ec-cat-cascader');
+            if (cas) cas.classList.remove('open');
 
             if (!wasOpen) {
                 wrapper.classList.add('open');
@@ -1723,9 +1726,9 @@
             const container = document.getElementById('ecModalFieldsContainer');
             let html = '';
 
-            // 品类：右出式级联菜单（点击 / hover 子菜单向右展开）
+            // 品类：列式级联菜单（点击条目右侧 › 向右展开下一级；点击条目本体：叶子即选中、非叶子同向下钻）
             html += `<div class="config-group" style="width:100%;">
-                <label>品类（各级可留空，点击展开子级）</label>
+                <label>品类（各级可留空；点击右侧 › 向下钻，点击叶子即选中）</label>
                 <div class="ec-cascader" id="ec-cat-cascader" tabindex="0">
                     <div class="ec-cascader-trigger" onclick="ecToggleCascader(event)">
                         <span class="ec-cascader-text" id="ec-cat-text">— 点击选择</span>
@@ -1769,38 +1772,91 @@
             for (const f of EC_FIELDS) ecRenderFieldOptions(f);
         }
 
-        // ── 品类右出级联菜单 ──
+        // ── 品类列式级联菜单 ──
+        // 每点一级在右侧新增一列，可无限深；点击叶子或已无子级的条目即确认选中。
+        let ecCatPath = [];  // 当前已"展开到"的路径（不一定是最终选中）
+
         function ecToggleCascader(e) {
             e.stopPropagation();
-            document.getElementById('ec-cat-cascader').classList.toggle('open');
+            const cas = document.getElementById('ec-cat-cascader');
+            const willOpen = !cas.classList.contains('open');
+            if (willOpen) {
+                // 关闭页面上所有字段下拉，避免同层叠压
+                document.querySelectorAll('.gf-select.open').forEach(sel => {
+                    sel.classList.remove('open');
+                    sel.style.zIndex = '';
+                });
+            }
+            cas.classList.toggle('open');
         }
 
         function ecRenderCascader() {
-            const panels = document.getElementById('ec-cat-panels');
-            panels.innerHTML = ecBuildCascaderLevel(EC_CATEGORY_TREE, 0, []);
+            ecCatPath = [...(ecSel.category || [])];
+            ecRefreshCascaderColumns();
         }
 
-        function ecBuildCascaderLevel(nodes, level, path) {
-            if (!nodes || nodes.length === 0) return '';
-            const items = nodes.map(n => {
-                const newPath = [...path, n.display];
+        // 根据 ecCatPath 重建所有列（第 0 列 + 每层展开到的子列）
+        function ecRefreshCascaderColumns() {
+            const panels = document.getElementById('ec-cat-panels');
+            if (!panels) return;
+            const cols = [];
+            // 第 0 列：根
+            cols.push(ecBuildColumn(EC_CATEGORY_TREE, 0));
+            // 按 ecCatPath 逐级找子节点，生成后续列
+            let nodes = EC_CATEGORY_TREE;
+            for (let i = 0; i < ecCatPath.length; i++) {
+                const hit = (nodes || []).find(n => n.display === ecCatPath[i]);
+                if (!hit || !hit.children || !hit.children.length) break;
+                nodes = hit.children;
+                cols.push(ecBuildColumn(nodes, i + 1));
+            }
+            panels.innerHTML = cols.join('');
+        }
+
+        function ecBuildColumn(nodes, level) {
+            const items = (nodes || []).map(n => {
                 const hasChildren = n.children && n.children.length > 0;
-                const childrenHtml = hasChildren ? `<div class="ec-cascader-submenu">${ecBuildCascaderLevel(n.children, level + 1, newPath)}</div>` : '';
-                return `<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''}"
-                    onclick="event.stopPropagation();ecPickCascader(${JSON.stringify(newPath).replace(/"/g, '&quot;')})">
-                    <span>${ecEscAttr(n.display)}</span>
-                    ${hasChildren ? '<span class="ec-cascader-arrow-r">›</span>' : ''}
-                    ${childrenHtml}
+                const isActive    = ecCatPath[level] === n.display;
+                return `<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''} ${isActive ? 'active' : ''}"
+                    onclick="event.stopPropagation();ecPickCascaderItem(${level}, '${ecEscAttr(n.display)}', ${hasChildren})">
+                    <span class="ec-cascader-label">${ecEscAttr(n.display)}</span>
+                    ${hasChildren ? `<span class="ec-cascader-arrow-r" onclick="event.stopPropagation();ecDrillDown(${level}, '${ecEscAttr(n.display)}')">›</span>` : ''}
                 </div>`;
             }).join('');
-            const clearBtn = level === 0 ? `<div class="ec-cascader-item" onclick="event.stopPropagation();ecPickCascader([])" style="color:var(--text-dim);">— 清空</div>` : '';
-            return `<div class="ec-cascader-panel">${clearBtn}${items}</div>`;
+            const clearBtn = level === 0
+                ? `<div class="ec-cascader-item" onclick="event.stopPropagation();ecPickCascader([])" style="color:var(--text-dim);border-bottom:1px dashed var(--border);">— 清空</div>`
+                : '';
+            return `<div class="ec-cascader-panel" data-level="${level}">${clearBtn}${items}</div>`;
+        }
+
+        // 点击条目本体：如果是叶子 → 选中并关闭；如果有子级 → 同 drill-down，展开下一级但不立即确认
+        function ecPickCascaderItem(level, display, hasChildren) {
+            ecCatPath = ecCatPath.slice(0, level);
+            ecCatPath.push(display);
+            if (hasChildren) {
+                ecRefreshCascaderColumns();
+                return;
+            }
+            // 叶子 → 确认选中
+            ecSel.category = [...ecCatPath];
+            const txt = document.getElementById('ec-cat-text');
+            if (txt) txt.textContent = ecSel.category.join(' › ');
+            document.getElementById('ec-cat-cascader').classList.remove('open');
+        }
+
+        // 点击条目右侧 › ：只展开，不作为最终选择
+        function ecDrillDown(level, display) {
+            ecCatPath = ecCatPath.slice(0, level);
+            ecCatPath.push(display);
+            ecRefreshCascaderColumns();
         }
 
         function ecPickCascader(pathArr) {
             ecSel.category = Array.isArray(pathArr) ? pathArr : [];
+            ecCatPath = [...ecSel.category];
             const txt = document.getElementById('ec-cat-text');
             if (txt) txt.textContent = ecSel.category.length ? ecSel.category.join(' › ') : '— 点击选择';
+            ecRefreshCascaderColumns();
             document.getElementById('ec-cat-cascader').classList.remove('open');
         }
 
