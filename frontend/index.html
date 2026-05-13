@@ -1166,6 +1166,15 @@
             } else if (currentMode === 'ecommerce') {
                 apiPath = '/api/custom_generate';
 
+                // 详情页必须带参考图（每张 ref → 1 张对应详情页）
+                const isDetail = ecSel.imageType === '详情页';
+                // 多张优先用 droppedFiles；没有才 fallback 到会话底图（单张）
+                const refCount = droppedFiles.length > 0 ? droppedFiles.length : (sessionImagePath ? 1 : 0);
+                if (isDetail && refCount === 0) {
+                    alert('详情页生成需要至少 1 张参考主图，请先上传或在会话里选中一张主图再试');
+                    return;
+                }
+
                 const ecPrompts = buildEcommercePrompts(prompt);
                 if (!ecPrompts.length) { alert('无法生成提示词，请至少选择或填写一项参数'); return; }
 
@@ -1178,14 +1187,27 @@
                         formData.append('images', new File([blob], 'session_base.jpg', { type: blob.type || 'image/jpeg' }));
                     } catch (_) {}
                 }
-                ecPrompts.forEach(p => formData.append('prompt', p));
+
+                // 详情页：每张参考图单独做一次 ref，共用同一条详情页 prompt，生成 N 张详情页
+                const usePair = isDetail && refCount >= 1;
+                let promptsToSend = ecPrompts;
+                if (usePair) {
+                    const sharedPrompt = ecPrompts[0];
+                    promptsToSend = Array.from({ length: refCount }, () => sharedPrompt);
+                    formData.append('pairImages', 'true');
+                }
+                promptsToSend.forEach(p => formData.append('prompt', p));
                 formData.append('count',   '1');
                 formData.append('agentId', agentId);
+                if (isDetail) formData.append('aspect', '9:16');
 
                 const sellingLabels = ecSel.sellings.length
                     ? ecSel.sellings.map(s => s.label).join('、')
                     : '（未选卖点·基础图）';
-                appendMessage('user', `[电商模式] 模型: ${agentId}\n卖点: ${sellingLabels}（共 ${ecPrompts.length} 张）`);
+                const headline = usePair
+                    ? `[电商模式·详情页] 模型: ${agentId}\n${refCount} 张参考图 → ${refCount} 张详情页`
+                    : `[电商模式] 模型: ${agentId}\n卖点: ${sellingLabels}（共 ${promptsToSend.length} 张）`;
+                appendMessage('user', headline);
 
                 try {
                     
@@ -1882,6 +1904,12 @@
             ).join('');
         }
 
+        // 生图一致性约束：前置"主体锁定"段 + 尾部"负向清单"段
+        // - 只在"有参考图"的前提下强调"严格以参考图产品为准"（没图时放这句反而会让模型空想）
+        // - 负向段用自然语言而非 stable-diffusion 风格 tag；GPT-Image 吃这种
+        const EC_SUBJECT_LOCK = '【主体一致性-最高优先级】画面主体必须严格以参考图中的产品为准：形状轮廓、零件数量与位置（如喷孔/按键/旋钮/螺纹/接口）、配色、材质质感、logo 与标识位置 一律保持不变；如给出多张参考图，视作同一款产品的不同视角/细节，综合理解后再按下方要求重绘场景与文案排版。';
+        const EC_NEGATIVE      = '【禁止】不得增减或改变产品零件数量（如喷孔数、按键数、旋钮数、层数、挂钩数）；不得合并或简化结构；不得改变色彩、材质与 logo；不得出现文字/符号错写或乱码；不得模糊材质或丢失细节；不得把多场景拼在同一张图里（除非模板明确要求）。';
+
         function buildEcommercePrompts(userReq) {
             const base = [];
             if (ecSel.category && ecSel.category.length) base.push(`品类[${ecSel.category.join('>')}]`);
@@ -1907,34 +1935,30 @@
             pushField('shortPrompt',  '附加拍摄指令');
             if (userReq) base.push(`客户附加要求[${userReq}]`);
 
+            const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
+                           || (typeof sessionImagePath !== 'undefined' && !!sessionImagePath);
+            const lockLine = hasRef ? (EC_SUBJECT_LOCK + '\n') : '';
             const intro = '你是一个中国电商资深视觉设计师，请根据以下参数生成一张高清电商主图，突出产品质感与使用场景。';
 
-            // 详情页：强制输出 6 张独立 9:16，每张一条 prompt（不能拼成一张）
+            // 详情页分支：必须有参考图；每张 ref × 同一条共用 prompt → 1 张对应详情页
             if (ecSel.imageType === '详情页') {
-                const detailIntro = '你是一个中国电商资深视觉设计师。这是详情页图片生成任务：本次只生成 6 张中的第 {n}/6 张，纵向 9:16 比例，单张独立图片；禁止把多个场景拼成一张图，禁止分栏网格布局，禁止把 6 张做成拼图或长图。';
-                const sellings = (ecSel.sellings && ecSel.sellings.length)
-                    ? ecSel.sellings.slice(0, 6)
-                    : [];
-                return Array.from({ length: 6 }, (_, i) => {
-                    const s = sellings[i];
-                    const parts = [...base];
-                    if (s) {
-                        parts.push(`卖点[${s.prompt}]`);
-                        parts.push(`场景构图[${s.composition}]`);
-                    } else {
-                        parts.push(`分镜序号[第 ${i + 1} 张，请自由发挥一个独立 9:16 详情页场景，与其它张差异化]`);
-                    }
-                    return `${detailIntro.replace('{n}', i + 1)}\n参数：${parts.join('；')}。`;
-                });
+                const sellingsText = (ecSel.sellings && ecSel.sellings.length)
+                    ? '；突出卖点：' + ecSel.sellings.map(s => s.label).join('、')
+                    : '';
+                const pairIntro = '你是一个中国电商资深视觉设计师。这是详情页配对生成任务：基于给定的参考主图，保留产品造型/色彩/材质与主视觉一致，仅改为纵向 9:16 详情页构图与文案排版（禁止分栏网格、禁止拼图、禁止把多张场景合并成 1 张）。';
+                const paramsText = base.length
+                    ? `参数：${base.join('；')}${sellingsText}。`
+                    : (sellingsText ? `参数：${sellingsText.slice(1)}。` : '');
+                return [`${lockLine}${pairIntro}\n${paramsText}\n${EC_NEGATIVE}`];
             }
 
             if (!ecSel.sellings || ecSel.sellings.length === 0) {
                 const paramsText = base.length ? `参数：${base.join('；')}。` : '（用户未指定参数，请按通用电商主图风格发挥。）';
-                return [`${intro}\n${paramsText}`];
+                return [`${lockLine}${intro}\n${paramsText}\n${EC_NEGATIVE}`];
             }
             return ecSel.sellings.map(s => {
                 const params = [...base, `卖点[${s.prompt}]`, `场景构图[${s.composition}]`];
-                return `${intro}\n参数：${params.join('；')}。`;
+                return `${lockLine}${intro}\n参数：${params.join('；')}。\n${EC_NEGATIVE}`;
             });
         }
 

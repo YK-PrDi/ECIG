@@ -44,17 +44,27 @@ public class GptImageAgent implements ImageGeneratorAgent {
 
     @Override
     public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
+        return generateMulti(prompt,
+                (whiteBgPath != null && !whiteBgPath.isBlank()) ? List.of(whiteBgPath)
+                        : (refImagePath != null && !refImagePath.isBlank()) ? List.of(refImagePath) : List.of(),
+                null, outputPath, null);
+    }
+
+    @Override
+    public boolean generateMulti(String prompt, List<String> refImagePaths,
+                                 String whiteBgPath, String outputPath, String aspect) {
         List<String> keys = appProperties.getGptImage().getApiKeys();
         if (keys == null || keys.isEmpty()) {
             log.error("GPT-Image API Key 未配置");
             return false;
         }
         String baseUrl = appProperties.getGptImage().getBaseUrl();
-        File imageFile = resolveImageFile(whiteBgPath, refImagePath);
+        List<File> imageFiles = resolveImageFiles(refImagePaths);
+        String size = pickSize(aspect);
         for (String apiKey : orderedKeys()) {
-            boolean ok = imageFile != null
-                    ? generateWithImage(prompt, imageFile, outputPath, apiKey, baseUrl)
-                    : generateTextOnly(prompt, outputPath, apiKey, baseUrl);
+            boolean ok = !imageFiles.isEmpty()
+                    ? generateWithImages(prompt, imageFiles, outputPath, apiKey, baseUrl, size)
+                    : generateTextOnly(prompt, outputPath, apiKey, baseUrl, size);
             if (ok) return true;
             log.warn("GPT-Image key 尾号[{}] 失败，尝试下一个", apiKey.length() > 6 ? apiKey.substring(apiKey.length() - 6) : apiKey);
         }
@@ -62,17 +72,30 @@ public class GptImageAgent implements ImageGeneratorAgent {
         return false;
     }
 
-    private File resolveImageFile(String whiteBgPath, String refImagePath) {
-        File wf = whiteBgPath != null ? new File(whiteBgPath) : null;
-        if (wf != null && wf.exists()) return wf;
-        File rf = refImagePath != null ? new File(refImagePath) : null;
-        if (rf != null && rf.exists()) return rf;
-        return null;
+    private List<File> resolveImageFiles(List<String> paths) {
+        List<File> out = new java.util.ArrayList<>();
+        if (paths == null) return out;
+        for (String p : paths) {
+            if (p == null || p.isBlank()) continue;
+            File f = new File(p);
+            if (f.exists()) out.add(f);
+        }
+        return out;
     }
 
-    /** 有图片时调用 /v1/images/edits，图片作为编辑基底 */
-    private boolean generateWithImage(String prompt, File imageFile, String outputPath,
-                                      String apiKey, String baseUrl) {
+    /** 按 aspect 映射到 OpenAI 支持的 size；接口支持 1024x1024 / 1024x1536 / 1536x1024 / auto */
+    private String pickSize(String aspect) {
+        if (aspect == null) return "1024x1024";
+        return switch (aspect) {
+            case "9:16", "portrait" -> "1024x1536";
+            case "16:9", "landscape" -> "1536x1024";
+            default -> "1024x1024";
+        };
+    }
+
+    /** 有图片时调用 /v1/images/edits，所有图片以 image[] 形式一并提交 */
+    private boolean generateWithImages(String prompt, List<File> imageFiles, String outputPath,
+                                       String apiKey, String baseUrl, String size) {
         try {
             String boundary = "----GptImageBoundary" + Long.toHexString(System.currentTimeMillis());
             URL url = new URL(baseUrl + "/v1/images/edits");
@@ -82,15 +105,17 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setDoOutput(true);
             conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(120_000);
+            conn.setReadTimeout(180_000);
 
             try (OutputStream os = conn.getOutputStream()) {
                 writeField(os, boundary, "model",         "gpt-image-2");
                 writeField(os, boundary, "prompt",        prompt != null ? prompt : "product photo on clean background");
-                writeField(os, boundary, "size",          "1024x1024");
-                writeField(os, boundary, "quality",       "auto");
+                writeField(os, boundary, "size",          size);
+                writeField(os, boundary, "quality",       "high");
                 writeField(os, boundary, "output_format", "jpeg");
-                writeFile(os,  boundary, "image",         imageFile);
+                // OpenAI edits 接口接受 image[] 数组：单图字段名 "image"，多图统一用 "image[]"
+                String fieldName = imageFiles.size() == 1 ? "image" : "image[]";
+                for (File f : imageFiles) writeFile(os, boundary, fieldName, f);
                 os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
             }
 
@@ -145,7 +170,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
                 writeField(os, boundary, "model",         "gpt-image-2");
                 writeField(os, boundary, "prompt",        prompt != null ? prompt : "");
                 writeField(os, boundary, "size",          "1024x1024");
-                writeField(os, boundary, "quality",       "auto");
+                writeField(os, boundary, "quality",       "high");
                 writeField(os, boundary, "output_format", "jpeg");
                 writeFile(os,  boundary, "image",         imageFile);
                 writeFile(os,  boundary, "mask",          maskFile);
@@ -169,13 +194,13 @@ public class GptImageAgent implements ImageGeneratorAgent {
     }
 
     /** 无图片时调用 /v1/images/generations */
-    private boolean generateTextOnly(String prompt, String outputPath, String apiKey, String baseUrl) {
+    private boolean generateTextOnly(String prompt, String outputPath, String apiKey, String baseUrl, String size) {
         try {
             Map<String, Object> payload = Map.of(
                 "model",         "gpt-image-2",
                 "prompt",        prompt != null ? prompt : "product photo",
-                "size",          "1024x1024",
-                "quality",       "auto",
+                "size",          size,
+                "quality",       "high",
                 "output_format", "jpeg"
             );
 

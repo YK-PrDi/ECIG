@@ -50,6 +50,19 @@ public class ImageGenerationService {
         return agent.generate(prompt, refImagePath, whiteBgPath, outputPath);
     }
 
+    /**
+     * 多参考图重载（品牌/产品一致性场景）。
+     * 当 agent 未覆写 generateMulti 时，默认实现会自动降级到单参考图版本。
+     */
+    public boolean generateImageMulti(String prompt, List<String> refImagePaths,
+                                      String whiteBgPath, String outputPath,
+                                      String agentId, String aspect) {
+        ImageGeneratorAgent agent = resolveAgent(agentId);
+        log.info("使用智能体 [{}] 生成图片（refs={}, aspect={}）", agent.getId(),
+                refImagePaths == null ? 0 : refImagePaths.size(), aspect);
+        return agent.generateMulti(prompt, refImagePaths, whiteBgPath, outputPath, aspect);
+    }
+
     public void generateSkuImages(String whiteBgUrl, String refPath,
                                   String outputFolder, List<String> skuList, String agentId, String userPrompt) {
         File skuRefDir = new File(refPath, "SKU");

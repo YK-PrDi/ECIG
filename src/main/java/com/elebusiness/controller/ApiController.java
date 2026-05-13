@@ -266,7 +266,9 @@ public class ApiController {
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
             @RequestParam("prompt") List<String> prompts,
             @RequestParam(value = "count", defaultValue = "1") int count,
-            @RequestParam(value = "agentId", defaultValue = "gemini") String agentId) {
+            @RequestParam(value = "agentId", defaultValue = "gemini") String agentId,
+            @RequestParam(value = "pairImages", defaultValue = "false") boolean pairImages,
+            @RequestParam(value = "aspect", required = false) String aspect) {
 
         boolean hasImages = images != null && !images.isEmpty();
 
@@ -309,16 +311,27 @@ public class ApiController {
         new File(outputDir).mkdirs();
 
         // multipart 必须在请求线程内落盘，提交到异步任务前先把上传文件持久化
+        //  - 默认模式：第 1 张作为 ref，其余作为 white/背景（与 ref 做 bgGroups 笛卡尔积）
+        //  - pairImages=true：所有上传图各自独立作为 ref，不做 bgGroups 扩展
         File refTempFile = null;
         List<File> whiteTempFiles = new ArrayList<>();
+        List<File> pairRefs        = new ArrayList<>();
         if (hasImages) {
             try {
-                refTempFile = File.createTempFile("ref_", ".jpg");
-                images.get(0).transferTo(refTempFile);
-                for (int i = 1; i < images.size(); i++) {
-                    File wf = File.createTempFile("white_" + i + "_", ".jpg");
-                    images.get(i).transferTo(wf);
-                    whiteTempFiles.add(wf);
+                if (pairImages) {
+                    for (int i = 0; i < images.size(); i++) {
+                        File pr = File.createTempFile("pair_" + i + "_", ".jpg");
+                        images.get(i).transferTo(pr);
+                        pairRefs.add(pr);
+                    }
+                } else {
+                    refTempFile = File.createTempFile("ref_", ".jpg");
+                    images.get(0).transferTo(refTempFile);
+                    for (int i = 1; i < images.size(); i++) {
+                        File wf = File.createTempFile("white_" + i + "_", ".jpg");
+                        images.get(i).transferTo(wf);
+                        whiteTempFiles.add(wf);
+                    }
                 }
             } catch (Exception e) {
                 return ResponseEntity.internalServerError()
@@ -326,13 +339,18 @@ public class ApiController {
             }
         }
 
-        int bgGroups = !hasImages ? 1 : (whiteTempFiles.isEmpty() ? 1 : whiteTempFiles.size());
-        int total = promptList.size() * count * bgGroups;
+        // pairImages 模式：N = min(len(images), len(prompts))，长的一方多出的丢弃
+        // 非配对有图模式：所有上传图联合作为 image[]，每个 prompt 出 count 张（不再做 bgGroups 笛卡尔积）
+        int pairN = pairImages ? Math.min(pairRefs.size(), promptList.size()) : 0;
+        int total = pairImages ? (pairN * count) : (promptList.size() * count);
 
         GenerationTask task = taskService.createTask(total);
         final File refFinal = refTempFile;
         final List<File> whiteFinal = whiteTempFiles;
+        final List<File> pairRefsFinal = pairRefs;
+        final int pairNFinal = pairN;
         final boolean hasImagesFinal = hasImages;
+        final boolean pairFinal = pairImages;
         final List<String> promptsFinal = promptList;
         final List<String> thoughtsFinal = thoughts;
 
@@ -341,7 +359,23 @@ public class ApiController {
             List<CompletableFuture<String>> futures = new ArrayList<>();
             int[] idx = {1};
 
-            if (!hasImagesFinal) {
+            if (pairFinal && hasImagesFinal) {
+                // 配对模式：images[i] × prompts[i]，共生成 N 张；多余部分丢弃
+                for (int i = 0; i < pairNFinal; i++) {
+                    final File refI = pairRefsFinal.get(i);
+                    final String promptFinal = promptsFinal.get(i);
+                    for (int c = 0; c < count; c++) {
+                        final int n = idx[0]++;
+                        final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
+                        futures.add(CompletableFuture.supplyAsync(() -> {
+                            if (task.isCancelled()) return "失败: 已取消";
+                            boolean ok = imageGenerationService.generateImageMulti(
+                                    promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, agentId, aspect);
+                            return ok ? outputPath : "失败: 生成未返回图片";
+                        }, executor));
+                    }
+                }
+            } else if (!hasImagesFinal) {
                 for (String p : promptsFinal) {
                     for (int i = 0; i < count; i++) {
                         final int n = idx[0]++;
@@ -349,28 +383,29 @@ public class ApiController {
                         final String promptFinal = p;
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "失败: 已取消";
-                            boolean ok = imageGenerationService.generateImage(promptFinal, null, null, outputPath, agentId);
+                            boolean ok = imageGenerationService.generateImageMulti(
+                                    promptFinal, List.of(), null, outputPath, agentId, aspect);
                             return ok ? outputPath : "失败: 生成未返回图片";
                         }, executor));
                     }
                 }
             } else {
-                List<File> bgFiles = whiteFinal.isEmpty() ? List.of(refFinal) : whiteFinal;
-                final String refPath = refFinal.getAbsolutePath();
+                // 非配对、有图：把所有上传图作为 image[] 联合参考（增强品牌/产品一致性）
+                List<String> allRefs = new ArrayList<>();
+                allRefs.add(refFinal.getAbsolutePath());
+                for (File wf : whiteFinal) allRefs.add(wf.getAbsolutePath());
                 for (String p : promptsFinal) {
-                    for (File bgFile : bgFiles) {
-                        for (int i = 0; i < count; i++) {
-                            final File bg = bgFile;
-                            final int n = idx[0]++;
-                            final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
-                            final String promptFinal = p;
-                            futures.add(CompletableFuture.supplyAsync(() -> {
-                                if (task.isCancelled()) return "失败: 已取消";
-                                boolean ok = imageGenerationService.generateImage(
-                                        promptFinal, refPath, bg.getAbsolutePath(), outputPath, agentId);
-                                return ok ? outputPath : "失败: 生成未返回图片";
-                            }, executor));
-                        }
+                    for (int i = 0; i < count; i++) {
+                        final int n = idx[0]++;
+                        final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
+                        final String promptFinal = p;
+                        final List<String> refsFinal = allRefs;
+                        futures.add(CompletableFuture.supplyAsync(() -> {
+                            if (task.isCancelled()) return "失败: 已取消";
+                            boolean ok = imageGenerationService.generateImageMulti(
+                                    promptFinal, refsFinal, null, outputPath, agentId, aspect);
+                            return ok ? outputPath : "失败: 生成未返回图片";
+                        }, executor));
                     }
                 }
             }
@@ -406,6 +441,7 @@ public class ApiController {
 
             if (refFinal != null) refFinal.delete();
             for (File wf : whiteFinal) wf.delete();
+            for (File pr : pairRefsFinal) pr.delete();
         });
 
         return ResponseEntity.ok(Map.of("taskId", task.getId(), "output_dir", outputDir));

@@ -1,5 +1,7 @@
 package com.elebusiness.service.agent;
 
+import java.util.List;
+
 /**
  * 图片生成智能体统一契约。
  * 每个接入的 AI 模型实现此接口，即可自动注册到系统并在前端可选。
@@ -22,4 +24,17 @@ public interface ImageGeneratorAgent {
      * @return 生成成功返回 true
      */
     boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath);
+
+    /**
+     * 多参考图版本（用于品牌/产品一致性强约束场景）。
+     * 默认实现：仅取第一张走 {@link #generate}，方便老 agent 平滑兼容；支持多图的实现应覆写此方法。
+     *
+     * @param refImagePaths 参考图列表（顺序保持），可为空
+     * @param aspect        画幅比例提示，"1:1"/"9:16"/"16:9"，由 agent 自行映射到 size；null 视作 1:1
+     */
+    default boolean generateMulti(String prompt, List<String> refImagePaths,
+                                  String whiteBgPath, String outputPath, String aspect) {
+        String first = (refImagePaths != null && !refImagePaths.isEmpty()) ? refImagePaths.get(0) : null;
+        return generate(prompt, first, whiteBgPath, outputPath);
+    }
 }
