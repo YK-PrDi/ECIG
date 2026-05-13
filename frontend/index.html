@@ -461,6 +461,14 @@
 
     </div>
 
+    <!-- 电商模式静态数据（按主题拆分，先于主逻辑加载） -->
+    <script src="data/categories.js"></script>
+    <script src="data/fields.js"></script>
+    <script src="data/catalog.js"></script>
+    <!-- 品类专属数据（每个叶子品类一个文件） -->
+    <script src="data/categories/juan-zhi-qi-zhi-jin-jia.js"></script>
+    <script src="data/categories/wei-yu-zhi-wu-jia.js"></script>
+
     <script>
         function escHtml(str) {
             const d = document.createElement('div');
@@ -520,6 +528,9 @@
         function toggleSelect(el, event) {
             event.stopPropagation();
             const wrapper = el.closest('.gf-select');
+            // 品类专属字段在未选品类时不响应点击
+            const group = wrapper.closest('.config-group');
+            if (group && group.classList.contains('ec-field-disabled')) return;
             const wasOpen = wrapper.classList.contains('open');
 
             // 关闭所有并重置层级
@@ -1475,188 +1486,9 @@
         function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); executeTask(); } }
 
         // ── 电商模式 ──
-        // 品类 4 级级联（空项 = 清空选择）
-        const EC_CATEGORY_TREE = [
-            { display: '家装主材', children: [
-                { display: '卫浴用品', children: [
-                    { display: '卫浴五金/挂件', children: [
-                        { display: '卷纸器/纸巾架' },
-                        { display: '卫浴置物架' }
-                    ]}
-                ]}
-            ]}
-        ];
-
-        // 卖点按"形态结构当前值"查：预设时双层/三层共用同一组（可在 UI 里各自增删）
-        const EC_SELLING_ROLLHOLDER_PRESET = [
-            { key: 'qiangjin_xifu',  label: '强劲吸附 稳固不晃',
-              prompt: '强劲吸附 稳固不晃（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '图中上展示吸盘；中下是左右对称分布展示图。拍摄角度 45°正视视角；产品吸附在墙面。图中上：聚焦按压式吸盘安装结构，一只手的拇指正按压金属质感吸盘的中心区域，吸盘外围环绕蓝色半透明环形特效，特效上分布白色箭头指示吸附受力方向；图中下：左侧展示图展示本产品，上层放置高雅精致黑色男性水壶，下层放置三部叠在一起的手机体现承重性强，左上角带绿色勾；右侧展示市面普通款，放置一卷纸，左上角带红色叉。背景：深灰大理石哑光纹理墙面，光影细腻，凸显产品高级质感。' },
-            { key: 'fenceng_shouna', label: '分层收纳 加宽容量',
-              prompt: '分层收纳 加宽容量（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '三层吸盘式壁挂纸巾置物架占据画面核心，顶部展示圆形吸盘固定结构；侧前方 45 度特写视角。上层置物台覆盖蓝色发光尺寸(10.2CM)标注特效，中层放置两包卫生巾，下层内置抽纸盒且抽纸自然垂下，直观展示大容量收纳能力；清晰呈现金属哑光质感与立体结构。背景：深灰大理石哑光纹理墙面，右侧露出浴室局部作场景衬托，光影柔和自然。' },
-            { key: 'quyong_fangbian', label: '取用方便 抽纸不卡顿',
-              prompt: '取用方便 抽纸不卡顿（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '纸巾置物架占据画面中心偏左区域。重点展示镂空出纸结构，上下两个镂空出纸口均带有蓝色发光特效。背景：深灰大理石哑光纹理墙面，右上角露出一部分高级圆镜，右下角露出一部分深蓝色浴室柜，光影细腻。' },
-            { key: 'shengji_tanga',  label: '升级碳钢基材 防腐防锈抗腐蚀',
-              prompt: '升级碳钢基材 防腐防锈抗腐蚀（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '画面下半部分是多颗大小不一的金属球体，球体表面带有"碳钢"立体标识；上方是弧形不锈钢板材，表面带有六边形压纹，形成富有层次感的视觉结构，光影细腻突出金属质感与光泽，产品细节为绝对视觉焦点。背景：深灰哑光底色，光影柔和自然带点冷色调。' },
-            { key: 'anzhuang_bianjie', label: '安装便捷 拆卸不伤墙面',
-              prompt: '安装便捷 拆卸不伤墙面（在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '2×2 网格布局，4 个等大圆角矩形步骤框均匀排列；每个框左上角配圆形数字序号，框内为对应安装操作特写：依次呈现手擦墙面、撕开吸盘保护膜、手按压吸盘上墙、带橙色箭头指示逆时针拧旋钮、双手按压胶贴排空气、带橙色箭头指示安装底座与纸巾架主体的过程；清晰展示手部动作与产品结构细节。背景：深灰大理石哑光纹理墙面，光影细腻。' },
-            { key: 'quanjing_sanmai', label: '强劲吸附·分层收纳·不伤墙面（主图三卖点）',
-              prompt: '强劲吸附、分层收纳、不伤墙面（三个卖点在图右下角呈三行对称排列）；文字模板：圆角香槟金椭圆文字框，阿里巴巴普惠粗黑体',
-              composition: '图中央是外凸90°直角墙面；45 度斜俯视视角；双产品对角线错落布局，左下二层款、右上三层款纸巾置物架，全景。均展示实际使用状态：二层款上层放手机、下层内置卷纸，三层款上层放湿纸巾盒、下层内置抽纸盒且抽纸露出。背景：轻奢风深灰大理石哑光纹理墙面，镜面级反光出产品倒影；右侧露出部分白色台上盆、黑色台面、深蓝色浴室柜与香薰瓶局部，左下角露出部分白色高级马桶。' },
-        ];
-
-        // 转角置物架专属卖点（与双层/三层独立，不共享）
-        const EC_SELLING_CORNER_PRESET = [
-            { key: 'corner_qingshe_yanzhi',  label: '轻奢颜值三角架 重塑浴室格调',
-              prompt: '轻奢颜值三角架 重塑浴室格调（文案在图右下角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '浴室内凹 90 度墙角特写，视觉中心为双层弧形转角置物架；略微俯视角度；架内自然摆放按压式沐浴露、乳液、金属盖面霜、管状护肤品等真实洗漱用品；上下对称吸附在内凹 90° 直角墙面，一只真实女性手正取架上的护肤品；左侧露高级圆镜子局部，右下角露白色高级洗手台局部，右侧偏上露窗户局部，窗外湛蓝天空；枪灰色哑光金属质感，自带高级光泽，光影细腻突出金属光泽与护肤品通透质感。' },
-            { key: 'corner_wengu_chengzhong', label: '稳固承重 容纳全家洗护不掉落',
-              prompt: '稳固承重 容纳全家洗护不掉落（文字在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '浴室墙角特写，产品居中，人物动作点睛，层次饱满；平视角度；架内整齐摆满各类轻奢护肤品；画面下半区为弧形镂空转角置物架；双手按压泵头，精华滴落掌心，手部姿态自然；背景纯浅灰哑光底色，冷调高级。' },
-            { key: 'corner_chaoda_kongjian', label: '超大空间随心收纳',
-              prompt: '超大空间随心收纳（文字在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '俯视视角，双层置物架为视觉中心，带 90° 高亮轮廓标注；第一人称俯视视角；上下两层摆满各类洗漱用品体现大容量收纳；背景含窗户（窗外湛蓝天空）、侧边毛巾架与毛巾；一只手伸向置物架上层拿取护肤品，右下角露出人物头顶。' },
-            { key: 'corner_tanga_naiyong', label: '碳钢基材坚固耐用',
-              prompt: '碳钢基材坚固耐用（文字在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '产品特写，细节为绝对视觉焦点；特写视角；下半部分大小不一金属球体，上方弧形不锈钢板材；纯材质展示无多余背景；球体带"304"立体标识，板材带六边形压纹，层次丰富。' },
-            { key: 'corner_loukong_shuilü', label: '镂空沥水通风 防潮防锈',
-              prompt: '镂空沥水通风 防潮防锈（文字在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '垂直对称构图，置物架为视觉核心；正面平视；上下两层架顶放置洗漱用品；左侧露银色花洒局部，右侧露高级透明窗户局部（窗外湛蓝天空）；上层配透明气流线条，下层配动态水花效果，突出通风沥水特性。' },
-            { key: 'corner_mianda_anzhuang', label: '免打孔设计 安装便捷',
-              prompt: '免打孔设计 安装便捷（文字在图右上角呈两行对称排列）；文字模板：阿里巴巴普惠粗黑体',
-              composition: '3 行 2 列分栏式步骤图解，每格独立展示一个安装动作；平视特写聚焦手部与产品细节；对应步骤分别展示置物架背面、无痕贴及安装工具；左上擦墙、中上架孔位、右上标记、左下撕膜、中下按压、右下安装；呈现从准备到安装完成的 6 个连贯动作。' },
-        ];
-
-        // key = 形态结构的值，不命中时卖点区为空（可手动添加）
-        const EC_SELLING_PRESET = {
-            '双层置物卷纸架': EC_SELLING_ROLLHOLDER_PRESET,
-            '三层置物卷纸架': EC_SELLING_ROLLHOLDER_PRESET,
-            '转角置物架':     EC_SELLING_CORNER_PRESET,
-        };
-
-        const EC_FIELDS = [
-            { key: 'install',  label: '安装方式', promptKey: '安装方式',
-              options: [
-                { display: '真空吸盘', value: '真空吸盘' },
-                { display: '免打孔',   value: '免打孔' },
-                { display: '磁吸',     value: '磁吸' },
-                { display: '门后背式', value: '门后背式' },
-                { display: '卡扣',     value: '卡扣' }
-              ]
-            },
-            { key: 'imageType', label: '图片类型', promptKey: '图片类型',
-              options: [
-                { display: '主图',    value: '主图' },
-                { display: 'SKU',     value: 'SKU' },
-                { display: '详情页',  value: '详情页' }
-              ]
-            },
-            { key: 'shape', label: '形态结构', promptKey: '形态',
-              options: [
-                { display: '双层置物卷纸架', value: '双层置物卷纸架' },
-                { display: '三层置物卷纸架', value: '三层置物卷纸架' },
-                { display: '转角置物架',     value: '转角置物架' }
-              ]
-            },
-            { key: 'reference', label: '参考图', promptKey: '参考图',
-              options: [
-                { display: '单品',                 value: '单品' },
-                { display: '双品（两个同样的品）', value: '双品（两个同样的品）' },
-                { display: 'AB品（两款规格不同）', value: 'AB品（两款规格不同的产品）' }
-              ]
-            },
-            { key: 'shortPrompt', label: '简短提示词', promptKey: '附加拍摄指令',
-              options: [
-                { display: '款式替换+左右分栏特写', value: '将第一张的主图中产品款式进行替换，并在图中最左/右侧留白空间增加 3 行 1 列分栏式小图布局，分别特写展示吸盘结构、承重测试、底部通风效果' },
-                { display: '生成 6 张 9:16 详情页', value: '请你结合以上所有主图和sku图生成6张9:16的详情页图片' }
-              ]
-            },
-            { key: 'quality', label: '画质', promptKey: '画质',
-              options: [
-                { display: '1K', value: '1K' },
-                { display: '2K', value: '2K' },
-                { display: '4K', value: '4K' }
-              ]
-            },
-            { key: 'shotAngle', label: '拍摄角度', promptKey: '拍摄角度',
-              options: [
-                { display: '略微俯视角度',         value: '略微俯视角度' },
-                { display: '平视角度',             value: '平视角度' },
-                { display: '第一人称俯视视角',     value: '第一人称俯视视角' },
-                { display: '特写视角',             value: '特写视角' },
-                { display: '正面平视',             value: '正面平视' },
-                { display: '平视特写（聚焦手部与产品细节）', value: '平视特写，聚焦手部与产品细节' }
-              ]
-            },
-            { key: 'placement', label: '产品摆放', promptKey: '产品摆放',
-              options: [
-                { display: '自然摆放洗漱用品（沐浴露/乳液/护肤品）', value: '置物架内自然摆放按压式沐浴露、乳液、金属盖面霜、管状护肤品等真实洗漱用品' },
-                { display: '整齐摆满轻奢护肤品',     value: '架内整齐摆放满各类轻奢护肤品' },
-                { display: '上下两层摆满（大容量）', value: '上下两层摆满各类洗漱用品，体现大容量收纳' },
-                { display: '金属球体+弧形不锈钢板材', value: '下半部分大小不一金属球体，上方弧形不锈钢板材' },
-                { display: '上下两层顶部放洗漱用品',  value: '上下两层置物架顶部放置洗漱用品' },
-                { display: '分步骤展示安装工具',      value: '对应步骤分别展示置物架背面、无痕贴及安装工具' }
-              ]
-            },
-            { key: 'layout', label: '场景布局', promptKey: '场景布局',
-              options: [
-                { display: '浴室全景（镜+洗手台+窗户）',   value: '左侧露高级圆镜子局部，右下角露白色高级洗手台局部，右侧偏上露窗户局部，窗外湛蓝天空' },
-                { display: '弧形镂空转角架（下半区）',     value: '画面下半区为弧形镂空转角置物架' },
-                { display: '窗户+毛巾架+毛巾',             value: '背景含窗户（窗外湛蓝天空）、侧边毛巾架与毛巾' },
-                { display: '纯材质展示（无多余背景）',     value: '纯材质展示，无多余背景' },
-                { display: '花洒+窗户局部',                 value: '左侧露银色花洒局部，右侧露高级透明窗户局部（窗外湛蓝天空）' },
-                { display: '6 格安装步骤分栏',              value: '左上擦墙、中上置物架孔位、右上标记、左下撕膜、中下按压、右下安装' }
-              ]
-            },
-            { key: 'productState', label: '产品状态', promptKey: '产品状态',
-              options: [
-                { display: '上下吸附+女性手取护肤品',  value: '上下对称吸附在内凹 90° 直角墙面，一只真实女性手正取置物架上的护肤品' },
-                { display: '双手按泵头+精华滴落',       value: '双手按压泵头，精华滴落掌心，手部姿态自然' },
-                { display: '手伸向上层取用+头顶入镜',   value: '一只手伸向置物架上层拿取护肤品，右下角露出人物头顶' },
-                { display: '304 立体标识+六边形压纹',    value: '球体带"304"立体标识，板材带六边形压纹，层次丰富' },
-                { display: '透明气流+动态水花特效',     value: '上层配透明气流线条，下层配动态水花效果，突出通风沥水特性' },
-                { display: '6 个连贯安装动作',           value: '呈现从准备到安装完成的 6 个连贯动作' }
-              ]
-            },
-            { key: 'texture', label: '产品质感', promptKey: '产品质感',
-              options: [
-                { display: '枪灰哑光金属+护肤品通透', value: '枪灰色哑光金属质感，自带高级光泽，带有一定阴影反光；护肤品通透质感' }
-              ]
-            },
-            { key: 'lighting', label: '光影', promptKey: '光影',
-              options: [
-                { display: '细腻光影突出金属光泽', value: '光影细腻，突出金属质感与光泽' }
-              ]
-            },
-            { key: 'sceneDetail', label: '场景细节', promptKey: '场景细节',
-              options: [
-                { display: '写实高清+镜子/洗手台/窗户局部', value: '写实高清，细节丰富，左侧露高级圆镜子局部，右下角露白色高级洗手台局部，右侧偏上露窗户局部，窗外湛蓝天空' },
-                { display: '纯浅灰哑光底色（冷调高级）',   value: '背景纯浅灰哑光底色，冷调高级' }
-              ]
-            },
-            { key: 'style', label: '背景风格', promptKey: '背景风格',
-              options: [
-                { display: '轻奢风', value: '轻奢风（深灰大理石哑光纹理墙面，镜面级反光出产品倒影，光影细腻，凸显产品高级质感）' },
-                { display: '极简主义', value: '极简主义（无主灯设计、隐藏式收纳、大面积留白）' },
-                { display: '侘寂风', value: '侘寂风（微水泥质感、原木色调、哑光表面、自然粗犷）' },
-                { display: '现代前卫', value: '现代前卫（科技感、黑白灰主色调、几何线条）' },
-                { display: '原木北欧', value: '原木北欧（温暖自然、木质元素、清新明亮）' },
-                { display: '新中式', value: '新中式（对称美学、胡桃木色、中式格栅、水墨纹理）' }
-              ]
-            },
-            { key: 'material', label: '材质/工艺', promptKey: '材质/工艺',
-              options: [
-                { display: '碳钢',   value: '碳钢' },
-                { display: '不锈钢', value: '不锈钢' },
-                { display: '黄铜',   value: '黄铜' },
-                { display: 'ABS/PP塑料', value: 'ABS/PP塑料' }
-              ]
-            }
-        ];
+        // 静态数据定义在 frontend/data/，通过 window.* 暴露；品类专属数据在 data/categories/*.js（注册到 EC_CATALOG）
+        const EC_CATEGORY_TREE  = window.EC_CATEGORY_TREE;
+        const EC_FIELDS         = window.EC_FIELDS;
 
         // ── 用户自定义选项（localStorage 持久化） ──
         // 结构: { [fieldKey]: [{display, value}...] }
@@ -1707,10 +1539,26 @@
             ecSave(EC_LS_SELLINGS, all);
         }
 
-        // 聚合预设+用户自定义的卖点列表（按当前形态值查）
+        // 当前选中品类完整路径（如 '家装主材>卫浴用品>卫浴五金/挂件>卷纸器/纸巾架'）
+        function ecCategoryPath() {
+            return (ecSel.category || []).join('>');
+        }
+        // 是否选到叶子品类（注册表里有数据）
+        function ecIsCategoryReady() {
+            return window.ecCatalogHas(ecCategoryPath());
+        }
+
+        // 聚合预设+用户自定义的卖点列表
+        // - 预设：从所选品类的 EC_CATALOG 取，再按当前形态结构过滤（卖点声明了 shapes 时只保留命中的）
+        // - 自定义：仍按"形态结构"分桶（保持向后兼容）
         function ecGetSellings(shapeValue) {
-            if (!shapeValue) return [];
-            return [...(EC_SELLING_PRESET[shapeValue] || []), ...ecUserSellings(shapeValue)];
+            const cat = window.ecCatalogGet(ecCategoryPath());
+            const presets = (cat.sellings || []).filter(s => {
+                if (!s.shapes || !s.shapes.length) return true; // 未声明 shapes 的卖点对所有形态可用
+                if (!shapeValue) return false;                  // 已声明 shapes 但用户未选形态：不展示
+                return s.shapes.includes(shapeValue);
+            });
+            return [...presets, ...ecUserSellings(shapeValue || '')];
         }
 
         let ecSel = { category: [], sellings: [], shortPrompt: '' };
@@ -1739,8 +1587,9 @@
             </div>`;
 
             for (const f of EC_FIELDS) {
-                html += `<div class="config-group" style="min-width:140px;flex:1 1 140px;">
-                    <label>${f.label}（可留空）</label>
+                const groupCls = f.global ? '' : 'ec-cat-scoped';
+                html += `<div class="config-group ${groupCls}" data-field="${f.key}" style="min-width:140px;flex:1 1 140px;">
+                    <label>${f.label}${f.global ? '' : '<em class="ec-cat-scoped-hint" style="font-style:normal;color:var(--text-dim);font-weight:400;margin-left:6px;">· 品类专属</em>'}（可留空）</label>
                     <div class="gf-select sm drop-up" tabindex="0" style="min-width:140px;" data-field="${f.key}">
                         <input type="hidden" id="ec-${f.key}" value="">
                         <div class="gf-select-header" onclick="toggleSelect(this, event)">
@@ -1770,6 +1619,17 @@
             container.innerHTML = html;
             ecRenderCascader();
             for (const f of EC_FIELDS) ecRenderFieldOptions(f);
+            ecRefreshCategoryUI();
+        }
+
+        // 依据当前品类路径，重新：1) 注入专属字段的 options；2) 置灰/启用专属字段；3) 刷新卖点
+        function ecRefreshCategoryUI() {
+            const ready = ecIsCategoryReady();
+            document.querySelectorAll('#ecModalFieldsContainer .config-group.ec-cat-scoped').forEach(group => {
+                group.classList.toggle('ec-field-disabled', !ready);
+            });
+            for (const f of EC_FIELDS) if (!f.global) ecRenderFieldOptions(f);
+            ecRenderSellings(ecSel.shape || '');
         }
 
         // ── 品类列式级联菜单 ──
@@ -1829,6 +1689,19 @@
             return `<div class="ec-cascader-panel" data-level="${level}">${clearBtn}${items}</div>`;
         }
 
+        // 切换品类时：清空所有"品类专属字段"的当前选择 + 清空已勾卖点；保留全局字段
+        function ecResetCategoryScopedSelections() {
+            for (const f of EC_FIELDS) {
+                if (f.global) continue;
+                ecSel[f.key] = '';
+                const hidden = document.getElementById(`ec-${f.key}`);
+                const text   = document.getElementById(`ec-${f.key}-text`);
+                if (hidden) hidden.value = '';
+                if (text) text.textContent = '—';
+            }
+            ecSel.sellings = [];
+        }
+
         // 点击条目本体：如果是叶子 → 选中并关闭；如果有子级 → 同 drill-down，展开下一级但不立即确认
         function ecPickCascaderItem(level, display, hasChildren) {
             ecCatPath = ecCatPath.slice(0, level);
@@ -1838,10 +1711,13 @@
                 return;
             }
             // 叶子 → 确认选中
+            const prevPath = (ecSel.category || []).join('>');
             ecSel.category = [...ecCatPath];
             const txt = document.getElementById('ec-cat-text');
             if (txt) txt.textContent = ecSel.category.join(' › ');
             document.getElementById('ec-cat-cascader').classList.remove('open');
+            if (prevPath !== ecCatPath.join('>')) ecResetCategoryScopedSelections();
+            ecRefreshCategoryUI();
         }
 
         // 点击条目右侧 › ：只展开，不作为最终选择
@@ -1858,17 +1734,27 @@
             if (txt) txt.textContent = ecSel.category.length ? ecSel.category.join(' › ') : '— 点击选择';
             ecRefreshCascaderColumns();
             document.getElementById('ec-cat-cascader').classList.remove('open');
+            ecResetCategoryScopedSelections();
+            ecRefreshCategoryUI();
         }
 
         function ecArrow() {
             return `<svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
         }
 
+        // 字段在当前品类下的可用选项：全局字段直接用自身 options；专属字段从 EC_CATALOG 注入
+        function ecFieldOptions(f) {
+            if (f.global) return f.options || [];
+            const cat = window.ecCatalogGet(ecCategoryPath());
+            return (cat.fields && cat.fields[f.key]) || [];
+        }
+
         // 渲染单个字段的选项列表（含预设 + 用户自定义 + ➕ 添加项）
         function ecRenderFieldOptions(f) {
             const box = document.getElementById(`ec-${f.key}-opts`);
             if (!box) return;
-            const presets = f.options.map(o =>
+            const opts = ecFieldOptions(f);
+            const presets = opts.map(o =>
                 `<div class="gf-option" data-key="${f.key}" data-value="${ecEscAttr(o.value)}" data-display="${ecEscAttr(o.display)}" onclick="ecPickOptionEl(this)">${ecEscAttr(o.display)}</div>`
             ).join('');
             const customs = ecUserOpts(f.key).map(o =>
@@ -1877,9 +1763,14 @@
                     <span onclick="event.stopPropagation();ecDeleteUserOpt('${f.key}','${ecEscAttr(o.value)}')" style="color:var(--text-dim);cursor:pointer;padding:0 4px;">✕</span>
                 </div>`
             ).join('');
+            // 专属字段未选品类时：给出提示但仍允许用户添加自定义项（提示不可点）
+            const needCat = !f.global && !ecIsCategoryReady();
+            const hint = needCat
+                ? `<div class="gf-option" style="color:var(--text-dim);cursor:not-allowed;pointer-events:none;">请先选择品类</div>`
+                : '';
             box.innerHTML =
                 `<div class="gf-option selected" data-key="${f.key}" data-value="" data-display="—" onclick="ecPickOptionEl(this)">— 空</div>` +
-                presets + customs +
+                hint + presets + customs +
                 `<div class="gf-option" style="color:var(--primary);border-top:1px dashed var(--border);" onclick="ecPromptAddOpt('${f.key}','${ecEscAttr(f.label)}')">➕ 添加自定义选项</div>`;
         }
 
@@ -1922,31 +1813,34 @@
             if (key === 'shape') ecRenderSellings(value);
         }
 
-        // 按"形态结构当前值"渲染卖点：命中则列出，不命中则留空（但仍可添加自定义）
+        // 按"品类 + 形态结构"渲染卖点：未选品类禁用；选了品类未选形态时仍展示无 shapes 限定的预设
         function ecRenderSellings(shapeValue) {
             const container = document.getElementById('ec-selling-container');
             ecSel.sellings = [];
             ecRefreshCompositionPreview();
+            if (!ecIsCategoryReady()) {
+                container.innerHTML = '<span style="font-size:0.75rem;color:var(--text-dim);">请先选择品类（叶子级）</span>';
+                return;
+            }
             const list = ecGetSellings(shapeValue);
-            if (!shapeValue) {
-                container.innerHTML = '<span style="font-size:0.75rem;color:var(--text-dim);">请先选择"形态结构"</span>';
-                return;
-            }
             if (list.length === 0) {
-                container.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);">当前形态暂无预设卖点，可点上方"➕ 为当前形态添加卖点"</span>`;
+                container.innerHTML = shapeValue
+                    ? `<span style="font-size:0.75rem;color:var(--text-dim);">当前品类+形态暂无预设卖点，可点上方"➕ 为当前形态添加卖点"</span>`
+                    : `<span style="font-size:0.75rem;color:var(--text-dim);">该品类的卖点按"形态结构"区分，请先选形态；或直接添加自定义卖点</span>`;
                 return;
             }
-            const isUser = s => ecUserSellings(shapeValue).some(u => u.key === s.key);
+            const isUser = s => ecUserSellings(shapeValue || '').some(u => u.key === s.key);
             container.innerHTML = list.map(s => `
                 <label style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.75rem;cursor:pointer;">
-                    <input type="checkbox" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(shapeValue)}','${ecEscAttr(s.key)}',this.checked)">
+                    <input type="checkbox" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}',this.checked)">
                     ${ecEscAttr(s.label)}${isUser(s) ? '<em style="color:var(--text-dim);font-style:normal;font-size:0.68rem;margin-left:4px;">· 我的</em>' : ''}
-                    ${isUser(s) ? `<span onclick="event.preventDefault();event.stopPropagation();ecDeleteUserSelling('${ecEscAttr(shapeValue)}','${ecEscAttr(s.key)}')" style="color:var(--text-dim);cursor:pointer;margin-left:2px;">✕</span>` : ''}
+                    ${isUser(s) ? `<span onclick="event.preventDefault();event.stopPropagation();ecDeleteUserSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}')" style="color:var(--text-dim);cursor:pointer;margin-left:2px;">✕</span>` : ''}
                 </label>
             `).join('');
         }
 
         function ecPromptAddSelling() {
+            if (!ecIsCategoryReady()) { alert('请先选择品类（叶子级）'); return; }
             const shapeValue = ecSel.shape || '';
             if (!shapeValue) { alert('请先选择"形态结构"'); return; }
             const label = (prompt('卖点简称（显示在 checkbox 旁，例如"强劲吸附"）：') || '').trim();
@@ -1999,6 +1893,7 @@
             pushField('install',      '安装方式');
             pushField('shape',        '形态结构');
             pushField('reference',    '参考图');
+            pushField('scene',        '场景');
             pushField('style',        '背景风格');
             pushField('material',     '材质/工艺');
             pushField('quality',      '画质');

@@ -1100,6 +1100,11 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     padding: 0 16px;
 }
 
+/* 品类未选时，品类专属字段整体灰掉、不响应点击 */
+.config-group.ec-field-disabled { opacity: 0.45; pointer-events: none; }
+.config-group.ec-field-disabled .gf-select-header { background: var(--bg-workspace, #F8FAFC); cursor: not-allowed; }
+.config-group.ec-field-disabled label .ec-cat-scoped-hint { color: var(--primary); }
+
 /* 5. 卖点勾选框间距优化 */
 #ec-selling-container {
     display: flex;
