@@ -38,6 +38,7 @@ window.EC_FIELDS = [
       ]
     },
     { key: 'shortPrompt', label: '简短提示词', promptKey: '附加拍摄指令', global: true,
+      onlyImageTypes: ['SKU', '详情页'],   // 仅在 imageType 命中时启用
       options: [
         { display: '款式替换+左右分栏特写', value: '将第一张的主图中产品款式进行替换，并在图中最左/右侧留白空间增加 3 行 1 列分栏式小图布局，分别特写展示吸盘结构、承重测试、底部通风效果' },
         { display: '生成 6 张 9:16 详情页', value: '请你结合以上所有主图和sku图生成6张9:16的详情页图片' }

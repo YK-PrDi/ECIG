@@ -105,7 +105,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setDoOutput(true);
             conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(180_000);
+            conn.setReadTimeout(300_000);
 
             try (OutputStream os = conn.getOutputStream()) {
                 writeField(os, boundary, "model",         "gpt-image-2");
@@ -164,7 +164,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setDoOutput(true);
             conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(120_000);
+            conn.setReadTimeout(240_000);
 
             try (OutputStream os = conn.getOutputStream()) {
                 writeField(os, boundary, "model",         "gpt-image-2");
@@ -212,7 +212,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setDoOutput(true);
             conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(120_000);
+            conn.setReadTimeout(240_000);
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(jsonBody.getBytes(StandardCharsets.UTF_8));

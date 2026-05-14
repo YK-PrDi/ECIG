@@ -28,12 +28,12 @@ public class PromptCondenser {
     private static final String MODEL = "gemini-2.5-flash"; // 文本模型；图模型不适合做文本压缩
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
-    private static final int MAX_INPUT_LEN = 550; // 小于此长度直接跳过压缩
+    private static final int MAX_INPUT_LEN = 1200; // 小于此长度直接跳过压缩；GPT-Image 实测能稳定吃 ~1500 字
 
     private static final String SYSTEM_RULE = """
         你是电商主图生图提示词的压缩专家。请把用户给的长提示词压缩到 500 字以内，同时严格遵守：
         1. 必须保留：主体产品形态、安装结构、材质与颜色、文字/卖点标语及其位置、画面分区/构图（如"右上角两行""2×2 网格"等）、特效（蓝色发光、箭头、对比勾叉等）、背景元素（墙面材质、配饰、光影调性）。
-        2. 【最高优先级·禁止压缩或改写】涉及"产品主体一致性"的描述必须 1 字不动地保留：包括"主体一致性""禁止改变零件数量/形状/色彩/材质""不要增减喷孔/按键/旋钮/层数/挂钩"以及任何带【...】或【主体一致性-最高优先级】【禁止】等方括号标注的段落，整段照抄到输出中（不计入 500 字限制）。
+        2. 【最高优先级·禁止压缩或改写】涉及"产品主体一致性"与"物理穿模约束"的描述必须一字不动地保留：包括"主体一致性""禁止改变零件数量/形状/色彩/材质""不要增减喷孔/按键/旋钮/层数/挂钩"，以及所有关于"穿模/物体穿透/接触贴合/前后遮挡/手指穿过/穿透墙面或桌面/手指反折/接触阴影/悬空无支撑"的语句。任何带【...】或【主体一致性-最高优先级】【禁止】【禁止穿模 / 物体穿透】等方括号标注的段落整段照抄到输出中（不计入 500 字限制）。
         3. 可以删除或合并：冗余的修饰性形容词、重复描述、明显的解释性括号、"画面焦点为绝对视觉中心"这类模板话术。
         4. 禁止：换一种说法、添加原文没有的元素、翻译成英文、输出 JSON 或任何结构化格式。
         5. 输出：直接输出压缩后的中文提示词，不要加任何前缀、引号或解释。
@@ -142,13 +142,18 @@ public class PromptCondenser {
             synchronized (this) {
                 if (sharedClient == null || !proxyKey.equals(sharedClientProxyKey)) {
                     OkHttpClient.Builder b = new OkHttpClient.Builder()
-                            .connectTimeout(15, TimeUnit.SECONDS)
+                            .connectTimeout(30, TimeUnit.SECONDS)
                             .writeTimeout(30, TimeUnit.SECONDS)
-                            .readTimeout(45, TimeUnit.SECONDS);
+                            .readTimeout(60, TimeUnit.SECONDS);
                     AppProperties.Proxy p = appProperties.getProxy();
                     if (p.isEnabled()) {
+                        // 显式配置代理：强制走该代理
                         b.proxy(new java.net.Proxy(java.net.Proxy.Type.HTTP,
                                 new InetSocketAddress(p.getHost(), p.getPort())));
+                    } else {
+                        // host 留空：跟随 JVM 系统代理（与 yml 注释保持一致）
+                        // OkHttp 默认不读系统代理，必须显式 ProxySelector.getDefault()
+                        b.proxySelector(java.net.ProxySelector.getDefault());
                     }
                     sharedClient = b.build();
                     sharedClientProxyKey = proxyKey;

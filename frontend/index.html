@@ -1610,8 +1610,12 @@
 
             for (const f of EC_FIELDS) {
                 const groupCls = f.global ? '' : 'ec-cat-scoped';
-                html += `<div class="config-group ${groupCls}" data-field="${f.key}" style="min-width:140px;flex:1 1 140px;">
-                    <label>${f.label}${f.global ? '' : '<em class="ec-cat-scoped-hint" style="font-style:normal;color:var(--text-dim);font-weight:400;margin-left:6px;">· 品类专属</em>'}（可留空）</label>
+                const gateAttr = (f.onlyImageTypes && f.onlyImageTypes.length)
+                    ? ` data-only-image-types="${ecEscAttr(f.onlyImageTypes.join(','))}"` : '';
+                const gateHint = (f.onlyImageTypes && f.onlyImageTypes.length)
+                    ? `<em class="ec-img-type-hint" style="font-style:normal;color:var(--text-dim);font-weight:400;margin-left:6px;">· 仅 ${f.onlyImageTypes.join('/')}</em>` : '';
+                html += `<div class="config-group ${groupCls}" data-field="${f.key}"${gateAttr} style="min-width:140px;flex:1 1 140px;">
+                    <label>${f.label}${f.global ? '' : '<em class="ec-cat-scoped-hint" style="font-style:normal;color:var(--text-dim);font-weight:400;margin-left:6px;">· 品类专属</em>'}${gateHint}（可留空）</label>
                     <div class="gf-select sm drop-up" tabindex="0" style="min-width:140px;" data-field="${f.key}">
                         <input type="hidden" id="ec-${f.key}" value="">
                         <div class="gf-select-header" onclick="toggleSelect(this, event)">
@@ -1652,6 +1656,26 @@
             });
             for (const f of EC_FIELDS) if (!f.global) ecRenderFieldOptions(f);
             ecRenderSellings(ecSel.shape || '');
+            ecRefreshImageTypeGates();
+        }
+
+        // 依据当前 imageType，启用/禁用带 onlyImageTypes 限制的字段；不命中时清空已选值
+        function ecRefreshImageTypeGates() {
+            const cur = ecSel.imageType || '';
+            document.querySelectorAll('#ecModalFieldsContainer .config-group[data-only-image-types]').forEach(group => {
+                const allowed = (group.dataset.onlyImageTypes || '').split(',').map(s => s.trim()).filter(Boolean);
+                const ok = !!cur && allowed.includes(cur);
+                group.classList.toggle('ec-field-disabled', !ok);
+                if (!ok) {
+                    const fieldKey = group.dataset.field;
+                    if (!fieldKey) return;
+                    if (ecSel[fieldKey]) ecSel[fieldKey] = '';
+                    const hidden = document.getElementById(`ec-${fieldKey}`);
+                    const text   = document.getElementById(`ec-${fieldKey}-text`);
+                    if (hidden) hidden.value = '';
+                    if (text) text.textContent = '—';
+                }
+            });
         }
 
         // ── 品类列式级联菜单 ──
@@ -1833,6 +1857,7 @@
             wrapper.querySelector('.gf-select-text').textContent = display;
             ecSel[key] = value;
             if (key === 'shape') ecRenderSellings(value);
+            if (key === 'imageType') ecRefreshImageTypeGates();
         }
 
         // 按"品类 + 形态结构"渲染卖点：未选品类禁用；选了品类未选形态时仍展示无 shapes 限定的预设
@@ -1907,8 +1932,8 @@
         // 生图一致性约束：前置"主体锁定"段 + 尾部"负向清单"段
         // - 只在"有参考图"的前提下强调"严格以参考图产品为准"（没图时放这句反而会让模型空想）
         // - 负向段用自然语言而非 stable-diffusion 风格 tag；GPT-Image 吃这种
-        const EC_SUBJECT_LOCK = '【主体一致性-最高优先级】画面主体必须严格以参考图中的产品为准：形状轮廓、零件数量与位置（如喷孔/按键/旋钮/螺纹/接口）、配色、材质质感、logo 与标识位置 一律保持不变；如给出多张参考图，视作同一款产品的不同视角/细节，综合理解后再按下方要求重绘场景与文案排版。';
-        const EC_NEGATIVE      = '【禁止】不得增减或改变产品零件数量（如喷孔数、按键数、旋钮数、层数、挂钩数）；不得合并或简化结构；不得改变色彩、材质与 logo；不得出现文字/符号错写或乱码；不得模糊材质或丢失细节；不得把多场景拼在同一张图里（除非模板明确要求）。';
+        const EC_SUBJECT_LOCK = '【主体一致性-最高优先级】画面主体必须严格以参考图中的产品为准：形状轮廓、零件数量与位置（如喷孔/按键/旋钮/螺纹/接口）、配色、材质质感、logo 与标识位置 一律保持不变；如给出多张参考图，视作同一款产品的不同视角/细节，综合理解后再按下方要求重绘场景与文案排版。所有物体之间必须遵守真实物理规则：手部抓握、产品与墙面/桌面/置物架的接触均为表面贴合，不可相互穿透；前后遮挡关系必须清晰一致（前面的物体完整遮挡后面的物体，不得边缘混淆）。';
+        const EC_NEGATIVE      = '【禁止】不得增减或改变产品零件数量（如喷孔数、按键数、旋钮数、层数、挂钩数）；不得合并或简化结构；不得改变色彩、材质与 logo；不得出现文字/符号错写或乱码；不得模糊材质或丢失细节；不得把多场景拼在同一张图里（除非模板明确要求）。【禁止穿模 / 物体穿透】严禁出现以下任何穿模现象：手指或手掌穿过产品、产品零件穿过手；产品穿透墙面/桌面/玻璃门/置物架表面；衣袖、毛发、饰品穿过产品；两件物体在接触点出现"融合""共用边""嵌入对方内部"或"轮廓互相吃边"；手指关节弯曲方向违反人体结构（如反折、手指数量错误、手指穿过手指）；产品悬空但无支撑、或部分嵌入背景墙面；阴影方向与光源不一致或缺失接触阴影。所有接触点必须有清晰可见的接触边界与合理的接触阴影/压痕。';
 
         function buildEcommercePrompts(userReq) {
             const base = [];
