@@ -8,6 +8,11 @@ window.EC_CATEGORY_TREE = [
                 { display: '卷纸器/纸巾架' },
                 { display: '卫浴置物架' }
             ]}
+        ]},
+        { display: '厨房', children: [
+            { display: '厨房挂件', children: [
+                { display: '锅盖架' }
+            ]}
         ]}
     ]}
 ];

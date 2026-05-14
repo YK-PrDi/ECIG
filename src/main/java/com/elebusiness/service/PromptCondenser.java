@@ -57,10 +57,12 @@ public class PromptCondenser {
         return condenseDetailed(prompt).compressed();
     }
 
-    /** 同 {@link #condense} 但返回思考过程（Gemini 2.5 thinking）。 */
+    /** 同 {@link #condense} 但返回思考过程（Gemini 2.5 thinking）。
+     *  约定：未触发压缩（短路、降级、未配置）时 thought 返回空串，调用方用此区分"是否走过 LLM 压缩"。
+     */
     public Condensed condenseDetailed(String prompt) {
         if (prompt == null) return new Condensed("", "");
-        if (prompt.length() <= MAX_INPUT_LEN) return new Condensed("（提示词未超阈值，直接使用原文）", prompt);
+        if (prompt.length() <= MAX_INPUT_LEN) return new Condensed("", prompt);
 
         String key = sha1(prompt);
         String cached = cache.get(key);
@@ -72,7 +74,7 @@ public class PromptCondenser {
         String apiKey = appProperties.getGemini().getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("Gemini API Key 未配置，跳过 prompt 压缩");
-            return new Condensed("（Gemini API Key 未配置，降级为原文）", prompt);
+            return new Condensed("", prompt);
         }
 
         try {

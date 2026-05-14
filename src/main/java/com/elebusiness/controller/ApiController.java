@@ -288,11 +288,20 @@ public class ApiController {
             for (String p : promptList) {
                 com.elebusiness.service.PromptCondenser.Condensed c = promptCondenser.condenseDetailed(p);
                 compressed.add(c.compressed());
-                thoughts.add(
-                    "【Gemini 压缩思考】\n" + (c.thought() == null || c.thought().isBlank() ? "（模型未返回思考文本）" : c.thought())
-                    + "\n\n【原提示词（" + p.length() + " 字）】\n" + p
-                    + "\n\n【压缩后（" + c.compressed().length() + " 字，实际发给 GPT-Image）】\n" + c.compressed()
-                );
+                // thought 为空 ⇒ 未触发 Gemini 压缩（短路/缓存未命中且 key 未配/未超阈值）：
+                // 按"提示词直送"格式展示，避免误导用户以为走过 LLM
+                if (c.thought() == null || c.thought().isBlank()) {
+                    thoughts.add(
+                        "【提示词直送（未经 LLM 处理）】\n模型: " + agentId
+                        + "\n长度: " + p.length() + " 字\n\n【最终提示词】\n" + p
+                    );
+                } else {
+                    thoughts.add(
+                        "【Gemini 压缩思考】\n" + c.thought()
+                        + "\n\n【原提示词（" + p.length() + " 字）】\n" + p
+                        + "\n\n【压缩后（" + c.compressed().length() + " 字，实际发给 GPT-Image）】\n" + c.compressed()
+                    );
+                }
             }
             promptList = compressed;
         } else {

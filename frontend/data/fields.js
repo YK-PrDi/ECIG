@@ -23,7 +23,9 @@ window.EC_FIELDS = [
       options: [
         { display: '1K', value: '1K' },
         { display: '2K', value: '2K' },
-        { display: '4K', value: '4K' }
+        { display: '3K', value: '3K' },
+        { display: '4K', value: '4K' },
+        { display: '8K', value: '8K' }
       ]
     },
     { key: 'style', label: '背景风格', promptKey: '背景风格', global: true,
@@ -42,6 +44,16 @@ window.EC_FIELDS = [
       options: [
         { display: '款式替换+左右分栏特写', value: '将第一张的主图中产品款式进行替换，并在图中最左/右侧留白空间增加 3 行 1 列分栏式小图布局，分别特写展示吸盘结构、承重测试、底部通风效果' },
         { display: '生成 6 张 9:16 详情页', value: '请你结合以上所有主图和sku图生成6张9:16的详情页图片' }
+      ]
+    },
+    { key: 'fontTemplate', label: '字体模板', promptKey: '字体模板', global: true,
+      options: [
+        { display: '阿里巴巴普惠粗黑体', value: '阿里巴巴普惠粗黑体' },
+        { display: '白色浅黑描边粗体无衬线 60-80码 + 香槟金底衬', value: '白色浅黑描边粗体无衬线体60-80码，下方搭配哑光香槟金（暖金属色）色描边 / 底衬条' },
+        { display: '宽红色实心背景条', value: '文字框是宽红色实心背景条' },
+        { display: '底部白框黑字 + 渐变棕金框白字', value: '图中底部白框黑字 + 渐变棕金框白字' },
+        { display: '深棕粗黑体', value: '深棕粗黑体' },
+        { display: '圆角香槟金椭圆文字框 + 阿里巴巴普惠粗黑体', value: '圆角香槟金椭圆文字框，阿里巴巴普惠粗黑体' }
       ]
     },
 
