@@ -1936,6 +1936,32 @@
         const EC_NEGATIVE      = '【禁止】不得增减或改变产品零件数量（如喷孔数、按键数、旋钮数、层数、挂钩数）；不得合并或简化结构；不得改变色彩、材质与 logo；不得出现文字/符号错写或乱码；不得模糊材质或丢失细节；不得把多场景拼在同一张图里（除非模板明确要求）。【禁止穿模 / 物体穿透】严禁出现以下任何穿模现象：手指或手掌穿过产品、产品零件穿过手；产品穿透墙面/桌面/玻璃门/置物架表面；衣袖、毛发、饰品穿过产品；两件物体在接触点出现"融合""共用边""嵌入对方内部"或"轮廓互相吃边"；手指关节弯曲方向违反人体结构（如反折、手指数量错误、手指穿过手指）；产品悬空但无支撑、或部分嵌入背景墙面；阴影方向与光源不一致或缺失接触阴影。所有接触点必须有清晰可见的接触边界与合理的接触阴影/压痕。';
 
         function buildEcommercePrompts(userReq) {
+            const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
+                           || (typeof sessionImagePath !== 'undefined' && !!sessionImagePath);
+            const lockLine = hasRef ? (EC_SUBJECT_LOCK + '\n') : '';
+
+            // ── SKU / 详情页：不喂全套字段，仅在主图基础上做轻量改造 ──
+            // 理念：主图阶段已经把品类/构图/卖点完整描述过，模型已得到产品上下文；
+            //      SKU 与 详情页 只需"以主图为参考、改成相应版式"，不需要重复堆字段。
+            // 仅保留：主体一致性约束、用户附加要求、简短提示词（如有）。
+            if (ecSel.imageType === 'SKU' || ecSel.imageType === '详情页') {
+                if (!hasRef) {
+                    // 没有参考图就降级走主图分支（让用户至少能出一张）
+                    // — 这里 fallthrough 到下方主图分支
+                } else {
+                    const isDetail = ecSel.imageType === '详情页';
+                    const directive = isDetail
+                        ? '基于参考主图生成 1 张纵向 9:16 详情页：保持产品造型/色彩/材质/logo 与主视觉完全一致，仅调整为 9:16 构图与文案排版（禁止分栏网格、禁止拼图、禁止把多张场景合并成 1 张）。'
+                        : '基于参考主图生成 1 张 SKU 展示图：保持产品造型/色彩/材质/logo 与主视觉完全一致，简化场景突出产品本身（白底或纯色背景，构图干净），便于电商列表展示。';
+                    const extras = [];
+                    if (ecSel.shortPrompt) extras.push(`附加拍摄指令[${ecSel.shortPrompt}]`);
+                    if (userReq)           extras.push(`客户附加要求[${userReq}]`);
+                    const extrasLine = extras.length ? `\n${extras.join('；')}。` : '';
+                    return [`${lockLine}${directive}${extrasLine}\n${EC_NEGATIVE}`];
+                }
+            }
+
+            // ── 主图分支：完整字段拼装 ──
             const base = [];
             if (ecSel.category && ecSel.category.length) base.push(`品类[${ecSel.category.join('>')}]`);
             const pushField = (key, label) => {
@@ -1960,22 +1986,7 @@
             pushField('shortPrompt',  '附加拍摄指令');
             if (userReq) base.push(`客户附加要求[${userReq}]`);
 
-            const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
-                           || (typeof sessionImagePath !== 'undefined' && !!sessionImagePath);
-            const lockLine = hasRef ? (EC_SUBJECT_LOCK + '\n') : '';
             const intro = '你是一个中国电商资深视觉设计师，请根据以下参数生成一张高清电商主图，突出产品质感与使用场景。';
-
-            // 详情页分支：必须有参考图；每张 ref × 同一条共用 prompt → 1 张对应详情页
-            if (ecSel.imageType === '详情页') {
-                const sellingsText = (ecSel.sellings && ecSel.sellings.length)
-                    ? '；突出卖点：' + ecSel.sellings.map(s => s.label).join('、')
-                    : '';
-                const pairIntro = '你是一个中国电商资深视觉设计师。这是详情页配对生成任务：基于给定的参考主图，保留产品造型/色彩/材质与主视觉一致，仅改为纵向 9:16 详情页构图与文案排版（禁止分栏网格、禁止拼图、禁止把多张场景合并成 1 张）。';
-                const paramsText = base.length
-                    ? `参数：${base.join('；')}${sellingsText}。`
-                    : (sellingsText ? `参数：${sellingsText.slice(1)}。` : '');
-                return [`${lockLine}${pairIntro}\n${paramsText}\n${EC_NEGATIVE}`];
-            }
 
             if (!ecSel.sellings || ecSel.sellings.length === 0) {
                 const paramsText = base.length ? `参数：${base.join('；')}。` : '（用户未指定参数，请按通用电商主图风格发挥。）';
@@ -2204,10 +2215,20 @@
             const statusBadge = document.getElementById('ecStatusBadge');
             const summary = document.getElementById('ecSummaryPreview');
 
-            if (ecSel.sellings.length > 0) {
+            // SKU/详情页 不依赖卖点，所以判定"已就绪"应看：品类、图片类型、卖点 任一项有值
+            const hasCategory  = ecSel.category && ecSel.category.length > 0;
+            const hasImageType = !!ecSel.imageType;
+            const hasSellings  = ecSel.sellings && ecSel.sellings.length > 0;
+            const ready = hasCategory || hasImageType || hasSellings;
+
+            if (ready) {
                 statusBadge.innerHTML = `<span style="color:#10B981">● 已就绪</span>`;
                 summary.style.display = 'block';
-                summary.innerHTML = `<b>已选品类：</b>${ecSel.category.join(' > ') || '未选'}<br><b>已选卖点：</b>${ecSel.sellings.map(s => s.label).join('、')}`;
+                const parts = [];
+                if (hasCategory)  parts.push(`<b>品类：</b>${ecSel.category.join(' > ')}`);
+                if (hasImageType) parts.push(`<b>图片类型：</b>${ecSel.imageType}`);
+                if (hasSellings)  parts.push(`<b>卖点：</b>${ecSel.sellings.map(s => s.label).join('、')}`);
+                summary.innerHTML = parts.join('<br>');
             } else {
                 statusBadge.innerHTML = `<span>未配置</span>`;
                 summary.style.display = 'none';
