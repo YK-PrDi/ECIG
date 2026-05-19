@@ -552,7 +552,10 @@
             event.stopPropagation();
             const wrapper = el.closest('.gf-select');
             const val = el.getAttribute('data-value');
-            const text = el.textContent;
+            // 取第一个文本节点，剔除星标 span
+            const text = el.childNodes[0].nodeType === Node.TEXT_NODE
+                ? el.childNodes[0].textContent.trim()
+                : el.textContent.replace('★', '').trim();
 
             wrapper.querySelector('input').value = val;
             wrapper.querySelector('.gf-select-text').textContent = text;
@@ -991,13 +994,19 @@
                 if (data && data.length) agents = data;
             } catch (e) { }
 
-            const wrapper = document.getElementById('agentSelectWrapper');
-            wrapper.querySelector('input').value = agents[0].id;
-            wrapper.querySelector('.gf-select-text').textContent = agents[0].name;
+            // 优先选中 gpt-image 系列，降级到列表第一项
+            const preferred = agents.find(a => a.id.startsWith('gpt-image')) || agents[0];
 
-            document.getElementById('agentSelectOptions').innerHTML = agents.map((a, i) =>
-                `<div class="gf-option ${i === 0 ? 'selected' : ''}" data-value="${a.id}" onclick="selectOption(this, event)">${a.name}</div>`
-            ).join('');
+            const wrapper = document.getElementById('agentSelectWrapper');
+            wrapper.querySelector('input').value = preferred.id;
+            wrapper.querySelector('.gf-select-text').textContent = preferred.name;
+
+            document.getElementById('agentSelectOptions').innerHTML = agents.map(a => {
+                const nameHtml = a.id.startsWith('gpt-image')
+                    ? `${a.name} <span style="color:#f59e0b;font-size:0.85rem;">★</span>`
+                    : a.name;
+                return `<div class="gf-option ${a.id === preferred.id ? 'selected' : ''}" data-value="${a.id}" onclick="selectOption(this, event)">${nameHtml}</div>`;
+            }).join('');
 
             updateControlStates();
         }
