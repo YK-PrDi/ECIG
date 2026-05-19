@@ -478,6 +478,7 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     padding: 20px;
 }
 .modal-overlay.show { display: flex; opacity: 1; }
+.modal-overlay.show .modal-card { transform: scale(1) translateY(0); }
 .modal-card {
     width: 460px; max-width: 100%; max-height: 85vh; overflow-y: auto;
     background: var(--bg-panel); border: 1px solid var(--border);
@@ -1173,73 +1174,72 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 .feedback-btn.active-dislike { opacity: 1; }
 .feedback-btn.active-dislike svg { stroke: #f87171; }
 
-/* ── 电商品类级联菜单（列式展开） ── */
-.ec-cascader { position: relative; display: inline-block; min-width: 260px; }
-.ec-cascader-trigger {
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg-panel);
-    cursor: pointer;
-    font-size: 0.78rem;
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 8px;
-    user-select: none;
+/* ── 电商品类级联菜单（高级重制版） ── */
+.cate-select-modal_selectMainV3__1vNuu {
+    display: flex; flex-direction: column; gap: 12px; width: 100%;
 }
-.ec-cascader-trigger:hover { border-color: var(--primary); }
-.ec-cascader-text { color: var(--text-main); }
+.always-use-v3 {
+    margin-bottom: 8px;
+}
+.always-use-title {
+    font-size: 13px; font-weight: bold; color: var(--text-dim); margin-bottom: 8px;
+}
+.always-use-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.last-choose-category {
+    display: inline-flex; align-items: center; gap: 12px;
+    background: var(--primary-light); padding: 6px 12px; border-radius: 6px;
+    font-size: 12px;
+}
+.choose-category { color: var(--primary); font-weight: 500; cursor: pointer; }
+.choose-category:hover { color: #4F46E5; }
+.cate-select-modal_keywordsSearch__2yRKy { margin-bottom: 12px; }
+.IPT_inputBlock_5-188-0 {
+    display: flex; align-items: center; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px;
+}
+.IPT_input_5-188-0 { border: none; outline: none; background: transparent; width: 100%; font-size: 13px; color: var(--text-main); }
 
-/* 展开后的多列容器：横向 flex，整体作为一个浮层 */
-.ec-cascader-panels {
-    position: absolute; left: 0; top: calc(100% + 4px);
-    display: none;
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 6px;
-    background: transparent;
-    z-index: 9999;              /* 盖过字段下拉（1000/9999）与其他浮层 */
-    max-width: calc(100vw - 40px);
-    overflow-x: auto;           /* 列过多时允许整行横向滚动（鼠标滚轮即可） */
-    padding-bottom: 4px;        /* 给下方阴影留空间 */
+.cate-select-modal_moveWithJumpContainer__17yNb {
+    display: flex; flex-direction: row; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-panel); height: 350px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
 }
-.ec-cascader.open .ec-cascader-panels { display: flex; }
+.cate-select-modal_moveWithJumpContainer__17yNb::-webkit-scrollbar { height: 6px; }
+.cate-select-modal_moveWithJumpContainer__17yNb::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 3px; }
+.cate-select-modal_moveCateContainer__1TphY {
+    display: flex; flex-direction: row; min-width: 100%; height: 100%;
+}
+.cate-select-modal_cateContainer__3wKRL {
+    display: flex; flex-direction: row; min-width: 100%; height: 100%;
+}
+.item-group-container-v4 {
+    flex: 0 0 auto; width: 220px; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
+}
+.item-group-container-v4:last-child { border-right: none; }
+.all-items-container { height: 100%; display: flex; flex-direction: column; }
+.Scrollbar_wrapper_5-188-0 { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scrollbar-width: thin; }
+.Scrollbar_wrapper_5-188-0::-webkit-scrollbar { width: 6px; }
+.Scrollbar_wrapper_5-188-0::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 3px; }
+.staple-category-ul { list-style: none; margin: 0; padding: 8px 0; }
+.content-cat { padding: 0 8px; margin-bottom: 2px; }
+.content-cat .cate {
+    display: flex; align-items: center; padding: 8px 10px; border-radius: 6px;
+    cursor: pointer; transition: background 0.2s, color 0.2s; text-decoration: none;
+    color: var(--text-main);
+}
+.content-cat .cate:hover { background: var(--primary-light); }
+.content-cat.selected .cate {
+    background: rgba(79, 70, 229, 0.08); color: #4F46E5; font-weight: 600;
+}
+.content-cat .first-letter {
+    width: 20px; text-align: center; font-size: 12px; color: var(--text-dim); font-weight: bold; margin-right: 4px;
+}
+.content-cat .c-name { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.content-cat .c-img { width: 14px; height: 14px; fill: currentColor; opacity: 0.6; }
+.bottom-tip {
+    padding: 12px; font-size: 12px; color: var(--text-dim); text-align: center; border-top: 1px dashed var(--border);
+}
+.bottom-tip a { color: #4F46E5; cursor: pointer; text-decoration: none; }
 
-.ec-cascader-panel {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-    padding: 4px;
-    min-width: 170px;
-    max-height: 320px;
-    overflow-y: auto;
-    flex: 0 0 auto;
-}
-.ec-cascader-item {
-    padding: 6px 10px 6px 12px;
-    font-size: 0.78rem;
-    cursor: pointer;
-    border-radius: 4px;
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 8px;
-    white-space: nowrap;
-}
-.ec-cascader-item:hover { background: var(--primary-light); }
-.ec-cascader-item.active {
-    background: var(--primary-light);
-    color: var(--primary);
-    font-weight: 600;
-}
-.ec-cascader-label { flex: 1 1 auto; }
-.ec-cascader-arrow-r {
-    color: var(--text-dim);
-    font-size: 1rem;
-    line-height: 1;
-    padding: 2px 4px;
-    border-radius: 3px;
-    flex: 0 0 auto;
-}
-.ec-cascader-item.has-children .ec-cascader-arrow-r:hover {
-    background: rgba(0,0,0,0.06);
-    color: var(--primary);
-}
+/* 覆盖旧版下拉样式，使弹窗内的级联能正常流式布局 */
+.ec-cascader { width: 100%; }
+.ec-cascader-panels { display: none; } /* 旧的隐藏 */

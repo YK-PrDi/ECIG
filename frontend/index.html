@@ -468,7 +468,6 @@
     <!-- 品类专属数据（每个叶子品类一个文件） -->
     <script src="data/categories/juan-zhi-qi-zhi-jin-jia.js"></script>
     <script src="data/categories/wei-yu-zhi-wu-jia.js"></script>
-    <script src="data/categories/guo-gai-jia.js"></script>
 
     <script>
         function escHtml(str) {
@@ -1167,14 +1166,12 @@
             } else if (currentMode === 'ecommerce') {
                 apiPath = '/api/custom_generate';
 
-                // SKU / 详情页 都必须带参考图（每张 ref → 1 张对应输出）
+                // 详情页必须带参考图（每张 ref → 1 张对应详情页）
                 const isDetail = ecSel.imageType === '详情页';
-                const isSku    = ecSel.imageType === 'SKU';
                 // 多张优先用 droppedFiles；没有才 fallback 到会话底图（单张）
                 const refCount = droppedFiles.length > 0 ? droppedFiles.length : (sessionImagePath ? 1 : 0);
-                if ((isDetail || isSku) && refCount === 0) {
-                    const label = isDetail ? '详情页' : 'SKU';
-                    alert(`${label} 生成需要至少 1 张参考主图，请先上传或在会话里选中一张主图再试`);
+                if (isDetail && refCount === 0) {
+                    alert('详情页生成需要至少 1 张参考主图，请先上传或在会话里选中一张主图再试');
                     return;
                 }
 
@@ -1631,7 +1628,7 @@
 
             html += `<div class="config-group" style="width:100%;">
                 <label style="display:flex;align-items:center;gap:8px;">
-                    卖点（单选；不选则生成 1 张通用基础图）
+                    卖点（可多选，选 N 个生成 N 张图；为空则生成 1 张基础图）
                     <button type="button" onclick="ecPromptAddSelling()" style="font-size:0.7rem;padding:2px 8px;border:1px dashed var(--border);border-radius:6px;background:transparent;cursor:pointer;color:var(--text-muted);">➕ 为当前形态添加卖点</button>
                 </label>
                 <div id="ec-selling-container" style="display:flex;flex-wrap:wrap;gap:6px;">
@@ -1880,10 +1877,9 @@
                 return;
             }
             const isUser = s => ecUserSellings(shapeValue || '').some(u => u.key === s.key);
-            // 主图：单选（一次只生成 1 张）；详情页：仍按所选卖点列表
             container.innerHTML = list.map(s => `
                 <label style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.75rem;cursor:pointer;">
-                    <input type="radio" name="ec-selling" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}',this.checked)">
+                    <input type="checkbox" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}',this.checked)">
                     ${ecEscAttr(s.label)}${isUser(s) ? '<em style="color:var(--text-dim);font-style:normal;font-size:0.68rem;margin-left:4px;">· 我的</em>' : ''}
                     ${isUser(s) ? `<span onclick="event.preventDefault();event.stopPropagation();ecDeleteUserSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}')" style="color:var(--text-dim);cursor:pointer;margin-left:2px;">✕</span>` : ''}
                 </label>
@@ -1916,10 +1912,8 @@
             const list = ecGetSellings(shapeValue);
             const item = list.find(s => s.key === key);
             if (!item) return;
-            // radio 模式下 onchange 只会在新选中时触发（checked=true）。
-            // 旧选项不会发 uncheck 事件，所以这里采用"替换"语义。
             if (checked) {
-                ecSel.sellings = [item];
+                if (!ecSel.sellings.find(s => s.key === key)) ecSel.sellings.push(item);
             } else {
                 ecSel.sellings = ecSel.sellings.filter(s => s.key !== key);
             }
@@ -1942,30 +1936,6 @@
         const EC_NEGATIVE      = '【禁止】不得增减或改变产品零件数量（如喷孔数、按键数、旋钮数、层数、挂钩数）；不得合并或简化结构；不得改变色彩、材质与 logo；不得出现文字/符号错写或乱码；不得模糊材质或丢失细节；不得把多场景拼在同一张图里（除非模板明确要求）。【禁止穿模 / 物体穿透】严禁出现以下任何穿模现象：手指或手掌穿过产品、产品零件穿过手；产品穿透墙面/桌面/玻璃门/置物架表面；衣袖、毛发、饰品穿过产品；两件物体在接触点出现"融合""共用边""嵌入对方内部"或"轮廓互相吃边"；手指关节弯曲方向违反人体结构（如反折、手指数量错误、手指穿过手指）；产品悬空但无支撑、或部分嵌入背景墙面；阴影方向与光源不一致或缺失接触阴影。所有接触点必须有清晰可见的接触边界与合理的接触阴影/压痕。';
 
         function buildEcommercePrompts(userReq) {
-            const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
-                           || (typeof sessionImagePath !== 'undefined' && !!sessionImagePath);
-            // 品类专属 lock / negative 优先；未配置则回退全局默认
-            const cat        = window.ecCatalogGet ? window.ecCatalogGet(ecCategoryPath()) : null;
-            const subjectLock = (cat && cat.subjectLock) || EC_SUBJECT_LOCK;
-            const negative    = (cat && cat.negative)    || EC_NEGATIVE;
-            const lockLine   = hasRef ? (subjectLock + '\n') : '';
-
-            // ── SKU / 详情页：不喂全套字段，仅在主图基础上做轻量改造 ──
-            // 调用方（executeTask）已强制要求 SKU/详情页 上传参考图；这里若仍无 ref 则返回空，让上层提示。
-            if (ecSel.imageType === 'SKU' || ecSel.imageType === '详情页') {
-                if (!hasRef) return [];
-                const isDetail = ecSel.imageType === '详情页';
-                const directive = isDetail
-                    ? '基于参考主图生成 1 张纵向 9:16 详情页：保持产品造型/色彩/材质/logo 与主视觉完全一致，仅调整为 9:16 构图与文案排版（禁止分栏网格、禁止拼图、禁止把多张场景合并成 1 张）。'
-                    : '基于参考主图生成 1 张 SKU 展示图：保持产品造型/色彩/材质/logo 与主视觉完全一致，简化场景突出产品本身（白底或纯色背景，构图干净），便于电商列表展示。';
-                const extras = [];
-                if (ecSel.shortPrompt) extras.push(`附加拍摄指令[${ecSel.shortPrompt}]`);
-                if (userReq)           extras.push(`客户附加要求[${userReq}]`);
-                const extrasLine = extras.length ? `\n${extras.join('；')}。` : '';
-                return [`${lockLine}${directive}${extrasLine}\n${negative}`];
-            }
-
-            // ── 主图分支：完整字段拼装 ──
             const base = [];
             if (ecSel.category && ecSel.category.length) base.push(`品类[${ecSel.category.join('>')}]`);
             const pushField = (key, label) => {
@@ -1980,7 +1950,6 @@
             pushField('style',        '背景风格');
             pushField('material',     '材质/工艺');
             pushField('quality',      '画质');
-            pushField('fontTemplate', '字体模板');
             pushField('shotAngle',    '拍摄角度');
             pushField('placement',    '产品摆放');
             pushField('layout',       '场景布局');
@@ -1991,16 +1960,31 @@
             pushField('shortPrompt',  '附加拍摄指令');
             if (userReq) base.push(`客户附加要求[${userReq}]`);
 
+            const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
+                           || (typeof sessionImagePath !== 'undefined' && !!sessionImagePath);
+            const lockLine = hasRef ? (EC_SUBJECT_LOCK + '\n') : '';
             const intro = '你是一个中国电商资深视觉设计师，请根据以下参数生成一张高清电商主图，突出产品质感与使用场景。';
 
-            // 主图始终只生成 1 张：未选卖点 → 通用基础图；选了卖点 → 取第一个卖点（UI 已强制单选，这里防御性兜底）
-            const sel = (ecSel.sellings && ecSel.sellings[0]) || null;
-            if (!sel) {
-                const paramsText = base.length ? `参数：${base.join('；')}。` : '（用户未指定参数，请按通用电商主图风格发挥。）';
-                return [`${lockLine}${intro}\n${paramsText}\n${negative}`];
+            // 详情页分支：必须有参考图；每张 ref × 同一条共用 prompt → 1 张对应详情页
+            if (ecSel.imageType === '详情页') {
+                const sellingsText = (ecSel.sellings && ecSel.sellings.length)
+                    ? '；突出卖点：' + ecSel.sellings.map(s => s.label).join('、')
+                    : '';
+                const pairIntro = '你是一个中国电商资深视觉设计师。这是详情页配对生成任务：基于给定的参考主图，保留产品造型/色彩/材质与主视觉一致，仅改为纵向 9:16 详情页构图与文案排版（禁止分栏网格、禁止拼图、禁止把多张场景合并成 1 张）。';
+                const paramsText = base.length
+                    ? `参数：${base.join('；')}${sellingsText}。`
+                    : (sellingsText ? `参数：${sellingsText.slice(1)}。` : '');
+                return [`${lockLine}${pairIntro}\n${paramsText}\n${EC_NEGATIVE}`];
             }
-            const params = [...base, `卖点[${sel.prompt}]`, `场景构图[${sel.composition}]`];
-            return [`${lockLine}${intro}\n参数：${params.join('；')}。\n${negative}`];
+
+            if (!ecSel.sellings || ecSel.sellings.length === 0) {
+                const paramsText = base.length ? `参数：${base.join('；')}。` : '（用户未指定参数，请按通用电商主图风格发挥。）';
+                return [`${lockLine}${intro}\n${paramsText}\n${EC_NEGATIVE}`];
+            }
+            return ecSel.sellings.map(s => {
+                const params = [...base, `卖点[${s.prompt}]`, `场景构图[${s.composition}]`];
+                return `${lockLine}${intro}\n参数：${params.join('；')}。\n${EC_NEGATIVE}`;
+            });
         }
 
         // ── 文件选择框（图片 / 文件夹）──
@@ -2220,20 +2204,10 @@
             const statusBadge = document.getElementById('ecStatusBadge');
             const summary = document.getElementById('ecSummaryPreview');
 
-            // SKU/详情页 不依赖卖点，所以判定"已就绪"应看：品类、图片类型、卖点 任一项有值
-            const hasCategory  = ecSel.category && ecSel.category.length > 0;
-            const hasImageType = !!ecSel.imageType;
-            const hasSellings  = ecSel.sellings && ecSel.sellings.length > 0;
-            const ready = hasCategory || hasImageType || hasSellings;
-
-            if (ready) {
+            if (ecSel.sellings.length > 0) {
                 statusBadge.innerHTML = `<span style="color:#10B981">● 已就绪</span>`;
                 summary.style.display = 'block';
-                const parts = [];
-                if (hasCategory)  parts.push(`<b>品类：</b>${ecSel.category.join(' > ')}`);
-                if (hasImageType) parts.push(`<b>图片类型：</b>${ecSel.imageType}`);
-                if (hasSellings)  parts.push(`<b>卖点：</b>${ecSel.sellings.map(s => s.label).join('、')}`);
-                summary.innerHTML = parts.join('<br>');
+                summary.innerHTML = `<b>已选品类：</b>${ecSel.category.join(' > ') || '未选'}<br><b>已选卖点：</b>${ecSel.sellings.map(s => s.label).join('、')}`;
             } else {
                 statusBadge.innerHTML = `<span>未配置</span>`;
                 summary.style.display = 'none';
