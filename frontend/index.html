@@ -2212,7 +2212,7 @@
                 document.getElementById('imagePreviewContainer').style.display = 'flex';
                 appendMessage('ai', `已接收 ${droppedFiles.length} 张图片，正在为您准备自由创作模式...`);
                 const input = document.getElementById('promptInput');
-                if (!input.value) input.value = "结合这些图片生成...";
+                if (!input.value) input.placeholder = "结合这些图片生成...";
                 input.focus();
             }
         }
