@@ -1519,19 +1519,19 @@
         const EC_LS_SELLINGS = 'ec_user_sellings_v1';
 
         function ecLoad(key) {
-            try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { return {}; }
+            try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; }
         }
         function ecSave(key, obj) {
             try { localStorage.setItem(key, JSON.stringify(obj)); } catch (_) {}
         }
         function ecUserOpts(fieldKey) {
-            return ecLoad(EC_LS_OPTS)[fieldKey] || [];
+            return (ecLoad(EC_LS_OPTS) || {})[fieldKey] || [];
         }
         function ecUserSellings(shapeValue) {
-            return ecLoad(EC_LS_SELLINGS)[shapeValue] || [];
+            return (ecLoad(EC_LS_SELLINGS) || {})[shapeValue] || [];
         }
         function ecAddUserOpt(fieldKey, display, value) {
-            const all = ecLoad(EC_LS_OPTS);
+            const all = ecLoad(EC_LS_OPTS) || {};
             const list = all[fieldKey] || [];
             if (list.find(o => o.value === value)) return false;
             list.push({ display, value });
@@ -1598,13 +1598,27 @@
 
             // 品类：列式级联菜单（点击条目右侧 › 向右展开下一级；点击条目本体：叶子即选中、非叶子同向下钻）
             html += `<div class="config-group" style="width:100%;">
-                <label>品类（各级可留空；点击右侧 › 向下钻，点击叶子即选中）</label>
-                <div class="ec-cascader" id="ec-cat-cascader" tabindex="0">
-                    <div class="ec-cascader-trigger" onclick="ecToggleCascader(event)">
-                        <span class="ec-cascader-text" id="ec-cat-text">— 点击选择</span>
-                        ${ecArrow()}
+                <label>品类（各级可留空；点击节点向下钻，点击叶子即选中）</label>
+                <div class="cate-select-modal_selectMainV3__1vNuu">
+                    <div class="always-use-v3">
+                        <div class="always-use-title">最近使用</div>
+                        <div class="always-use-list" id="ec-always-use-list">
+                            <span style="font-size:12px; color:var(--text-dim);">暂无记录</span>
+                        </div>
                     </div>
-                    <div class="ec-cascader-panels" id="ec-cat-panels"></div>
+                    <div class="cate-select-modal_keywordsSearch__2yRKy">
+                        <div class="IPT_inputBlock_5-188-0">
+                            <svg style="width:16px;height:16px;fill:var(--text-dim);margin-right:8px;" viewBox="0 0 1024 1024"><path d="M415.86 64c194.326 0 351.86 157.533 351.86 351.86 0 85.645-30.6 164.144-81.463 225.159l264.374 264.375c12.492 12.492 12.492 32.745 0 45.237-12.492 12.492-32.745 12.492-45.237 0L641.02 686.257c-61.015 50.863-139.514 81.462-225.16 81.462C221.534 767.72 64 610.186 64 415.86 64 221.534 221.533 64 415.86 64z m0 63.974c-158.995 0-287.886 128.891-287.886 287.886 0 158.994 128.891 287.885 287.886 287.885 158.994 0 287.885-128.89 287.885-287.885S574.855 127.974 415.86 127.974z"></path></svg>
+                            <input type="text" class="IPT_input_5-188-0" placeholder="请输入关键词搜索分类" oninput="ecSearchCategory(this.value)">
+                        </div>
+                    </div>
+                    <div class="cate-select-modal_moveWithJumpContainer__17yNb" id="chooseCategory">
+                        <div class="cate-select-modal_moveCateContainer__1TphY">
+                            <div class="cate-select-modal_cateContainer__3wKRL" id="ec-cat-panels">
+                                <!-- 列在此处动态生成 -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>`;
 
@@ -1644,6 +1658,7 @@
 
             container.innerHTML = html;
             ecRenderCascader();
+            ecRenderAlwaysUse();
             for (const f of EC_FIELDS) ecRenderFieldOptions(f);
             ecRefreshCategoryUI();
         }
@@ -1723,16 +1738,109 @@
             const items = (nodes || []).map(n => {
                 const hasChildren = n.children && n.children.length > 0;
                 const isActive    = ecCatPath[level] === n.display;
-                return `<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''} ${isActive ? 'active' : ''}"
-                    onclick="event.stopPropagation();ecPickCascaderItem(${level}, '${ecEscAttr(n.display)}', ${hasChildren})">
-                    <span class="ec-cascader-label">${ecEscAttr(n.display)}</span>
-                    ${hasChildren ? `<span class="ec-cascader-arrow-r" onclick="event.stopPropagation();ecDrillDown(${level}, '${ecEscAttr(n.display)}')">›</span>` : ''}
-                </div>`;
+                const pinyinFirst = n.display.charAt(0) ? n.display.charAt(0).toUpperCase() : ''; 
+                // Normally we'd use a real pinyin library to get the first letter, but here we can just skip it or fake it.
+                // Let's rely on standard logic, if we don't have pinyin, we won't show it or just show the actual string's first char if it's english.
+                let letterHtml = '';
+                // As an approximation, if we want to add letter tags, we'd need to extract it, but let's just match the style structure without letters if not available.
+                
+                return `<li class="content-cat ${isActive ? 'selected' : ''}" onclick="event.stopPropagation();ecPickCascaderItem(${level}, '${ecEscAttr(n.display)}', ${hasChildren})">
+                    <a class="cate">
+                        ${letterHtml}
+                        <div class="c-name" title="${ecEscAttr(n.display)}">${ecEscAttr(n.display)}</div>
+                        ${hasChildren ? `<svg viewBox="0 0 1024 1024" class="c-img" style="margin-left:auto;"><path d="M310.544 185.456c-14.059-14.059-14.059-36.853 0-50.912 13.918-13.918 36.398-14.057 50.487-0.417l0.425 0.417 352 352c13.918 13.917 14.057 36.397 0.417 50.486l-0.417 0.425-352 352c-14.059 14.06-36.853 14.06-50.912 0-13.918-13.917-14.057-36.397-0.417-50.486l0.417-0.425L637.088 512 310.544 185.456z"></path></svg>` : ''}
+                    </a>
+                </li>`;
             }).join('');
-            const clearBtn = level === 0
-                ? `<div class="ec-cascader-item" onclick="event.stopPropagation();ecPickCascader([])" style="color:var(--text-dim);border-bottom:1px dashed var(--border);">— 清空</div>`
-                : '';
-            return `<div class="ec-cascader-panel" data-level="${level}">${clearBtn}${items}</div>`;
+            
+            return `<div class="item-group-container-v4" data-level="${level}">
+                <div class="all-items-container">
+                    <div class="Scrollbar_wrapper_5-188-0">
+                        <ul class="staple-category-ul">${items}</ul>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function ecRenderAlwaysUse() {
+            const listEl = document.getElementById('ec-always-use-list');
+            if (!listEl) return;
+            const history = (ecLoad('ec_category_history_v1') || []);
+            const historyArr = Array.isArray(history) ? history : [];
+            if (historyArr.length === 0) {
+                listEl.innerHTML = `<span style="font-size:12px; color:var(--text-dim);">暂无记录</span>`;
+                return;
+            }
+            listEl.innerHTML = historyArr.slice(0, 5).map(path => {
+                return `<div class="last-choose-category">
+                    <div class="choose-category" title="${ecEscAttr(path.join(' > '))}" onclick="ecPickCascader(${ecEscAttr(JSON.stringify(path))})">${ecEscAttr(path.join(' > '))}</div>
+                </div>`;
+            }).join('') + `<div class="last-choose-category" style="background:transparent;"><a style="color:var(--text-dim); cursor:pointer; text-decoration:none;" onclick="ecClearAlwaysUse()">清空</a></div>`;
+        }
+
+        function ecClearAlwaysUse() {
+            ecSave('ec_category_history_v1', []);
+            ecRenderAlwaysUse();
+        }
+
+        function ecRecordCategoryHistory(path) {
+            let history = ecLoad('ec_category_history_v1') || [];
+            const pathStr = JSON.stringify(path);
+            history = history.filter(p => JSON.stringify(p) !== pathStr);
+            history.unshift(path);
+            if (history.length > 5) history = history.slice(0, 5);
+            ecSave('ec_category_history_v1', history);
+            ecRenderAlwaysUse();
+        }
+
+        function ecSearchCategory(keyword) {
+            // 简单的搜索逻辑：遍历所有节点，包含关键词的展开并高亮，暂时不实现复杂搜索，只筛选第一列
+            // 如果需要全局搜索，可以将所有叶子节点平铺显示，然后选中
+            // 由于树结构复杂，这里简化处理：重绘列，如果没有关键词，则正常显示
+            const keywordTrimmed = keyword.trim().toLowerCase();
+            const panels = document.getElementById('ec-cat-panels');
+            if (!keywordTrimmed) {
+                ecRefreshCascaderColumns();
+                return;
+            }
+            
+            // 搜索所有叶子节点
+            const results = [];
+            function traverse(nodes, path) {
+                for (const n of nodes) {
+                    const currentPath = [...path, n.display];
+                    if (n.display.toLowerCase().includes(keywordTrimmed)) {
+                        results.push({ node: n, path: currentPath });
+                    }
+                    if (n.children && n.children.length > 0) {
+                        traverse(n.children, currentPath);
+                    }
+                }
+            }
+            traverse(EC_CATEGORY_TREE, []);
+            
+            if (results.length === 0) {
+                panels.innerHTML = `<div style="padding: 20px; font-size: 13px; color: var(--text-dim); text-align: center; width: 100%;">未找到相关分类</div>`;
+                return;
+            }
+            
+            // 将搜索结果平铺展示
+            const itemsHtml = results.map(r => {
+                return `<li class="content-cat" onclick="ecPickCascader(${ecEscAttr(JSON.stringify(r.path))})">
+                    <a class="cate" style="flex-direction:column; align-items:flex-start;">
+                        <div class="c-name" style="font-weight:bold; color:var(--primary);">${ecEscAttr(r.node.display)}</div>
+                        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">${ecEscAttr(r.path.join(' > '))}</div>
+                    </a>
+                </li>`;
+            }).join('');
+            
+            panels.innerHTML = `<div class="item-group-container-v4" style="flex: 1 1 100%;">
+                <div class="all-items-container">
+                    <div class="Scrollbar_wrapper_5-188-0">
+                        <ul class="staple-category-ul">${itemsHtml}</ul>
+                    </div>
+                </div>
+            </div>`;
         }
 
         // 切换品类时：清空所有"品类专属字段"的当前选择 + 清空已勾卖点；保留全局字段
@@ -1754,16 +1862,23 @@
             ecCatPath.push(display);
             if (hasChildren) {
                 ecRefreshCascaderColumns();
+                const container = document.getElementById('chooseCategory');
+                if (container) {
+                    setTimeout(() => {
+                        container.scroll({ left: container.scrollWidth, behavior: 'smooth' });
+                    }, 10);
+                }
                 return;
             }
             // 叶子 → 确认选中
             const prevPath = (ecSel.category || []).join('>');
             ecSel.category = [...ecCatPath];
-            const txt = document.getElementById('ec-cat-text');
-            if (txt) txt.textContent = ecSel.category.join(' › ');
-            document.getElementById('ec-cat-cascader').classList.remove('open');
+            // 记录最近使用
+            ecRecordCategoryHistory(ecSel.category);
+            
             if (prevPath !== ecCatPath.join('>')) ecResetCategoryScopedSelections();
             ecRefreshCategoryUI();
+            ecRefreshCascaderColumns(); // 刷新选中状态
         }
 
         // 点击条目右侧 › ：只展开，不作为最终选择
@@ -1776,10 +1891,14 @@
         function ecPickCascader(pathArr) {
             ecSel.category = Array.isArray(pathArr) ? pathArr : [];
             ecCatPath = [...ecSel.category];
-            const txt = document.getElementById('ec-cat-text');
-            if (txt) txt.textContent = ecSel.category.length ? ecSel.category.join(' › ') : '— 点击选择';
+            if (ecSel.category.length > 0) {
+                ecRecordCategoryHistory(ecSel.category);
+            }
+            // 清除搜索框
+            const searchInput = document.querySelector('.IPT_input_5-188-0');
+            if (searchInput) searchInput.value = '';
+            
             ecRefreshCascaderColumns();
-            document.getElementById('ec-cat-cascader').classList.remove('open');
             ecResetCategoryScopedSelections();
             ecRefreshCategoryUI();
         }
