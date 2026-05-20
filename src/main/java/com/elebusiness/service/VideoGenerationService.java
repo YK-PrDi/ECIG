@@ -54,10 +54,14 @@ public class VideoGenerationService {
 
         AppProperties.Proxy proxyCfg = appProperties.getProxy();
         if (proxyCfg.isEnabled()) {
+            // 显式配置代理：强制走该代理
             builder.proxy(new java.net.Proxy(
                     java.net.Proxy.Type.HTTP,
                     new InetSocketAddress(proxyCfg.getHost(), proxyCfg.getPort())));
             log.debug("VideoGen 使用代理 {}:{}", proxyCfg.getHost(), proxyCfg.getPort());
+        } else {
+            // host 留空：跟随 JVM 系统代理（让加速器/系统代理自动生效；OkHttp 默认不读系统代理，必须显式调用）
+            builder.proxySelector(java.net.ProxySelector.getDefault());
         }
         return builder.build();
     }

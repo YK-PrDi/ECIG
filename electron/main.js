@@ -133,6 +133,7 @@ async function startJava() {
         `-Dapp.paths.output-dir=${path.join(dataDir, '生成结果').replace(/\\/g, '/')}`,
         `-Dapp.paths.reference-dir=${path.join(dataDir, '大参考').replace(/\\/g, '/')}`,
         `-Dapp.paths.prompts-dir=${path.join(dataDir, 'prompts').replace(/\\/g, '/')}`,
+        `-Dapp.packaged=${app.isPackaged ? 'true' : 'false'}`,
         '-jar', jarPath
     ];
 
@@ -265,7 +266,11 @@ function createMain() {
     });
 
     mainWindow.webContents.session.clearCache();
-    mainWindow.loadURL(APP_URL);
+    // 打包模式下追加 ?packaged=1，前端据此禁用 xlsx 导入等"开发期专用"功能
+    const urlWithFlag = app.isPackaged
+        ? (APP_URL.includes('?') ? APP_URL + '&packaged=1' : APP_URL + '?packaged=1')
+        : APP_URL;
+    mainWindow.loadURL(urlWithFlag);
 
     mainWindow.once('ready-to-show', () => {
         if (splashWin && !splashWin.isDestroyed()) {

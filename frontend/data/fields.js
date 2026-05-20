@@ -28,6 +28,21 @@ window.EC_FIELDS = [
         { display: '8K', value: '8K' }
       ]
     },
+    { key: 'filterCount', label: '滤芯个数', promptKey: '滤芯个数', global: true,
+      onlyImageTypes: ['SKU'],   // 仅 SKU 类型激活；选了之后会在 prompt 里追加"整齐排列 N 个滤芯..."
+      options: [
+        { display: '1', value: '1' },
+        { display: '2', value: '2' },
+        { display: '3', value: '3' },
+        { display: '4', value: '4' },
+        { display: '5', value: '5' },
+        { display: '6', value: '6' },
+        { display: '7', value: '7' },
+        { display: '8', value: '8' },
+        { display: '9', value: '9' },
+        { display: '10', value: '10' }
+      ]
+    },
     { key: 'style', label: '背景风格', promptKey: '背景风格', global: true,
       options: [
         { display: '轻奢风', value: '轻奢风（深灰大理石哑光纹理墙面，镜面级反光出产品倒影，光影细腻，凸显产品高级质感）' },

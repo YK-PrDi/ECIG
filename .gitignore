@@ -20,6 +20,11 @@ electron/node_modules/
 electron/dist/
 node_modules/
 
+# PyInstaller 中间产物（exe 较大，按需手动构建后再发布）
+tools/build/
+tools/dist/
+tools/import-tool.spec
+
 # IDE
 .idea/
 *.iml

@@ -25,3 +25,22 @@ window.ecCatalogHas = function (path) {
 window.ecCatalogGet = function (path) {
     return window.EC_CATALOG[path] || { fields: {}, sellings: [] };
 };
+
+// 沿品类路径从叶子向根冒泡查找首个含指定字段的注册项。
+// 用例：叶子没写 subjectLock 时自动继承父级/根的；根没写则返回 null（调用方走全局兜底）。
+//   path  : 完整路径字符串，如 '家装主材>卫浴用品>...>卷纸器/纸巾架'
+//   field : 'subjectLock' / 'negative' / 'fields' 等
+window.ecCatalogResolveUp = function (path, field) {
+    if (!path) return null;
+    const segs = path.split('>');
+    for (let i = segs.length; i >= 1; i--) {
+        const cur = segs.slice(0, i).join('>');
+        const node = window.EC_CATALOG[cur];
+        if (node && node[field] != null && node[field] !== '' &&
+            !(Array.isArray(node[field]) && node[field].length === 0) &&
+            !(typeof node[field] === 'object' && !Array.isArray(node[field]) && Object.keys(node[field]).length === 0)) {
+            return node[field];
+        }
+    }
+    return null;
+};

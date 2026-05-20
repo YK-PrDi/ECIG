@@ -465,9 +465,30 @@
     <script src="data/categories.js"></script>
     <script src="data/fields.js"></script>
     <script src="data/catalog.js"></script>
-    <!-- 品类专属数据（每个叶子品类一个文件） -->
+    <!-- 根类目模板（分层兜底：未在叶子单独配置时，沿路径冒泡查找；详见 data/templates/README.md） -->
+    <script src="data/templates/roots/zhu-zhai-jia-ju.js"></script>
+    <script src="data/templates/roots/jia-zhuang-zhu-cai.js"></script>
+    <script src="data/templates/roots/shang-ye-ban-gong-jia-ju.js"></script>
+    <script src="data/templates/roots/deng-shi-guang-yuan-zhao-ming.js"></script>
+    <script src="data/templates/roots/chuang-shang-yong-pin.js"></script>
+    <script src="data/templates/roots/ju-jia-bu-yi.js"></script>
+    <script src="data/templates/roots/jia-ju-shi-pin-decor.js"></script>
+    <script src="data/templates/roots/quan-wu-ding-zhi.js"></script>
+    <script src="data/templates/roots/ji-chu-jian-cai.js"></script>
+    <script src="data/templates/roots/zhuang-xiu-she-ji-shi-gong-jian-li.js"></script>
+    <script src="data/templates/roots/te-se-shou-gong-yi.js"></script>
+    <script src="data/templates/roots/wu-jin-gong-ju.js"></script>
+    <script src="data/templates/roots/dian-zi-dian-gong.js"></script>
+    <script src="data/templates/roots/biao-zhun-jian-ling-bu-jian-gong-ye-hao-cai.js"></script>
+    <script src="data/templates/roots/ji-xie-she-bei.js"></script>
+    <script src="data/templates/roots/ban-yun-cang-chu-wu-liu-she-bei.js"></script>
+    <script src="data/templates/roots/xiang-su-cai-liao-ji-zhi-pin.js"></script>
+    <script src="data/templates/roots/qing-xi-shi-pin-shang-ye-she-bei.js"></script>
+    <!-- 品类专属数据（每个叶子品类一个文件，优先级最高） -->
     <script src="data/categories/juan-zhi-qi-zhi-jin-jia.js"></script>
     <script src="data/categories/wei-yu-zhi-wu-jia.js"></script>
+    <script src="data/categories/guo-gai-jia.js"></script>
+    <script src="data/categories/lin-yu-hua-sa-tao-zhuang.js"></script>
 
     <script>
         function escHtml(str) {
@@ -552,7 +573,10 @@
             event.stopPropagation();
             const wrapper = el.closest('.gf-select');
             const val = el.getAttribute('data-value');
-            const text = el.textContent;
+            // 取第一个文本节点，剔除星标 span
+            const text = el.childNodes[0].nodeType === Node.TEXT_NODE
+                ? el.childNodes[0].textContent.trim()
+                : el.textContent.replace('★', '').trim();
 
             wrapper.querySelector('input').value = val;
             wrapper.querySelector('.gf-select-text').textContent = text;
@@ -991,13 +1015,19 @@
                 if (data && data.length) agents = data;
             } catch (e) { }
 
-            const wrapper = document.getElementById('agentSelectWrapper');
-            wrapper.querySelector('input').value = agents[0].id;
-            wrapper.querySelector('.gf-select-text').textContent = agents[0].name;
+            // 优先选中 gpt-image 系列，降级到列表第一项
+            const preferred = agents.find(a => a.id.startsWith('gpt-image')) || agents[0];
 
-            document.getElementById('agentSelectOptions').innerHTML = agents.map((a, i) =>
-                `<div class="gf-option ${i === 0 ? 'selected' : ''}" data-value="${a.id}" onclick="selectOption(this, event)">${a.name}</div>`
-            ).join('');
+            const wrapper = document.getElementById('agentSelectWrapper');
+            wrapper.querySelector('input').value = preferred.id;
+            wrapper.querySelector('.gf-select-text').textContent = preferred.name;
+
+            document.getElementById('agentSelectOptions').innerHTML = agents.map(a => {
+                const nameHtml = a.id.startsWith('gpt-image')
+                    ? `${a.name} <span style="color:#f59e0b;font-size:0.85rem;">★</span>`
+                    : a.name;
+                return `<div class="gf-option ${a.id === preferred.id ? 'selected' : ''}" data-value="${a.id}" onclick="selectOption(this, event)">${nameHtml}</div>`;
+            }).join('');
 
             updateControlStates();
         }
@@ -1166,12 +1196,14 @@
             } else if (currentMode === 'ecommerce') {
                 apiPath = '/api/custom_generate';
 
-                // 详情页必须带参考图（每张 ref → 1 张对应详情页）
+                // SKU / 详情页 都必须带参考图（每张 ref → 1 张对应输出）
                 const isDetail = ecSel.imageType === '详情页';
+                const isSku    = ecSel.imageType === 'SKU';
                 // 多张优先用 droppedFiles；没有才 fallback 到会话底图（单张）
                 const refCount = droppedFiles.length > 0 ? droppedFiles.length : (sessionImagePath ? 1 : 0);
-                if (isDetail && refCount === 0) {
-                    alert('详情页生成需要至少 1 张参考主图，请先上传或在会话里选中一张主图再试');
+                if ((isDetail || isSku) && refCount === 0) {
+                    const label = isDetail ? '详情页' : 'SKU';
+                    alert(`${label} 生成需要至少 1 张参考主图，请先上传或在会话里选中一张主图再试`);
                     return;
                 }
 
@@ -1519,19 +1551,19 @@
         const EC_LS_SELLINGS = 'ec_user_sellings_v1';
 
         function ecLoad(key) {
-            try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { return {}; }
+            try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; }
         }
         function ecSave(key, obj) {
             try { localStorage.setItem(key, JSON.stringify(obj)); } catch (_) {}
         }
         function ecUserOpts(fieldKey) {
-            return ecLoad(EC_LS_OPTS)[fieldKey] || [];
+            return (ecLoad(EC_LS_OPTS) || {})[fieldKey] || [];
         }
         function ecUserSellings(shapeValue) {
-            return ecLoad(EC_LS_SELLINGS)[shapeValue] || [];
+            return (ecLoad(EC_LS_SELLINGS) || {})[shapeValue] || [];
         }
         function ecAddUserOpt(fieldKey, display, value) {
-            const all = ecLoad(EC_LS_OPTS);
+            const all = ecLoad(EC_LS_OPTS) || {};
             const list = all[fieldKey] || [];
             if (list.find(o => o.value === value)) return false;
             list.push({ display, value });
@@ -1590,9 +1622,42 @@
             return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
 
+        // 上传 xlsx → 调 /api/import/xlsx → 显示脚本输出
+        // 成功后提示用户刷新让新数据生效（需要重新加载 data/categories/*.js）
+        async function ecImportXlsx(event) {
+            const files = event.target.files;
+            if (!files || !files.length) return;
+            const log = document.getElementById('ecImportLog');
+            log.style.display = 'block';
+            log.textContent = `上传 ${files.length} 个文件中…\n`;
+            const formData = new FormData();
+            for (const f of files) formData.append('files', f);
+            try {
+                const resp = await fetch('/api/import/xlsx', { method: 'POST', body: formData });
+                const j = await resp.json();
+                log.textContent += '\n--- 脚本输出 ---\n' + (j.output || '') + '\n';
+                if (j.success) {
+                    log.textContent += '\n✓ 导入成功。请刷新页面或重启应用，新品类才会出现。';
+                } else {
+                    log.textContent += '\n✗ 失败：' + (j.error || ('exitCode=' + j.exitCode));
+                }
+            } catch (e) {
+                log.textContent += '\n✗ 网络错误：' + e.message;
+            }
+            event.target.value = '';
+        }
+
         function initEcommercePanel() {
             if (ecPanelInit) return;
             ecPanelInit = true;
+            // 打包模式下隐藏 xlsx 导入条（开发期专用功能；用户机器不能写 resources/frontend/data/）
+            try {
+                const params = new URLSearchParams(location.search);
+                if (params.get('packaged') === '1') {
+                    const bar = document.getElementById('ecImportBar');
+                    if (bar) bar.style.display = 'none';
+                }
+            } catch (_) {}
             const container = document.getElementById('ecModalFieldsContainer');
             let html = '';
 
@@ -1608,31 +1673,18 @@
                 </div>
             </div>`;
 
-            for (const f of EC_FIELDS) {
-                const groupCls = f.global ? '' : 'ec-cat-scoped';
-                const gateAttr = (f.onlyImageTypes && f.onlyImageTypes.length)
-                    ? ` data-only-image-types="${ecEscAttr(f.onlyImageTypes.join(','))}"` : '';
-                const gateHint = (f.onlyImageTypes && f.onlyImageTypes.length)
-                    ? `<em class="ec-img-type-hint" style="font-style:normal;color:var(--text-dim);font-weight:400;margin-left:6px;">· 仅 ${f.onlyImageTypes.join('/')}</em>` : '';
-                html += `<div class="config-group ${groupCls}" data-field="${f.key}"${gateAttr} style="min-width:140px;flex:1 1 140px;">
-                    <label>${f.label}${f.global ? '' : '<em class="ec-cat-scoped-hint" style="font-style:normal;color:var(--text-dim);font-weight:400;margin-left:6px;">· 品类专属</em>'}${gateHint}（可留空）</label>
-                    <div class="gf-select sm drop-up" tabindex="0" style="min-width:140px;" data-field="${f.key}">
-                        <input type="hidden" id="ec-${f.key}" value="">
-                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                            <span class="gf-select-text" id="ec-${f.key}-text">—</span>${ecArrow()}
-                        </div>
-                        <div class="gf-select-options" id="ec-${f.key}-opts"></div>
-                    </div>
-                </div>`;
-            }
+            // 全局字段区（始终渲染所有 f.global=true 的字段；被品类覆盖的会移到 scoped 区）
+            html += `<div id="ec-global-fields-box" style="display:flex;flex-wrap:wrap;gap:16px;width:100%;"></div>`;
+            // 品类专属字段区（动态渲染：选中品类后才渲染该品类有定义的字段）
+            html += `<div id="ec-scoped-fields-box" style="display:flex;flex-wrap:wrap;gap:16px;width:100%;"></div>`;
 
             html += `<div class="config-group" style="width:100%;">
                 <label style="display:flex;align-items:center;gap:8px;">
-                    卖点（可多选，选 N 个生成 N 张图；为空则生成 1 张基础图）
+                    卖点（单选；不选则生成 1 张通用基础图）
                     <button type="button" onclick="ecPromptAddSelling()" style="font-size:0.7rem;padding:2px 8px;border:1px dashed var(--border);border-radius:6px;background:transparent;cursor:pointer;color:var(--text-muted);">➕ 为当前形态添加卖点</button>
                 </label>
                 <div id="ec-selling-container" style="display:flex;flex-wrap:wrap;gap:6px;">
-                    <span style="font-size:0.75rem;color:var(--text-dim);">请先选择"形态结构"</span>
+                    <span style="font-size:0.75rem;color:var(--text-dim);">请先选择品类（叶子级）</span>
                 </div>
             </div>`;
 
@@ -1644,17 +1696,83 @@
 
             container.innerHTML = html;
             ecRenderCascader();
-            for (const f of EC_FIELDS) ecRenderFieldOptions(f);
+            ecRenderGlobalFields();
+            ecRenderScopedFields();
             ecRefreshCategoryUI();
         }
 
-        // 依据当前品类路径，重新：1) 注入专属字段的 options；2) 置灰/启用专属字段；3) 刷新卖点
-        function ecRefreshCategoryUI() {
+        // 单个字段的 DOM 模板
+        function ecBuildFieldHtml(f) {
+            const groupCls = f.global ? '' : 'ec-cat-scoped';
+            const gateAttr = (f.onlyImageTypes && f.onlyImageTypes.length)
+                ? ` data-only-image-types="${ecEscAttr(f.onlyImageTypes.join(','))}"` : '';
+            const gateHint = (f.onlyImageTypes && f.onlyImageTypes.length)
+                ? `<em class="ec-img-type-hint" style="font-style:normal;color:var(--text-dim);font-weight:400;margin-left:6px;">· 仅 ${f.onlyImageTypes.join('/')}</em>` : '';
+            return `<div class="config-group ${groupCls}" data-field="${f.key}"${gateAttr} style="min-width:140px;flex:1 1 140px;">
+                <label>${f.label}${f.global ? '' : '<em class="ec-cat-scoped-hint" style="font-style:normal;color:var(--text-dim);font-weight:400;margin-left:6px;">· 品类专属</em>'}${gateHint}（可留空）</label>
+                <div class="gf-select sm drop-up" tabindex="0" style="min-width:140px;" data-field="${f.key}">
+                    <input type="hidden" id="ec-${f.key}" value="">
+                    <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                        <span class="gf-select-text" id="ec-${f.key}-text">—</span>${ecArrow()}
+                    </div>
+                    <div class="gf-select-options" id="ec-${f.key}-opts"></div>
+                </div>
+            </div>`;
+        }
+
+        // 全局字段块：渲染所有 f.global=true 的字段，但跳过被当前品类覆盖的（那些由 scoped 区渲染）
+        function ecRenderGlobalFields() {
+            const box = document.getElementById('ec-global-fields-box');
+            if (!box) return;
+            const cat = window.ecCatalogGet(ecCategoryPath());
+            const catFields = cat.fields || {};
+            let html = '';
+            for (const f of EC_FIELDS) {
+                if (!f.global) continue;
+                if (catFields[f.key] && catFields[f.key].length) continue;
+                html += ecBuildFieldHtml(f);
+            }
+            box.innerHTML = html;
+            for (const f of EC_FIELDS) {
+                if (!f.global) continue;
+                if (catFields[f.key] && catFields[f.key].length) continue;
+                ecRenderFieldOptions(f);
+            }
+        }
+
+        // 渲染品类专属字段块：选中品类后渲染品类有定义的字段（含品类覆盖的全局字段）；未选品类时显示占位
+        function ecRenderScopedFields() {
+            const box = document.getElementById('ec-scoped-fields-box');
+            if (!box) return;
             const ready = ecIsCategoryReady();
-            document.querySelectorAll('#ecModalFieldsContainer .config-group.ec-cat-scoped').forEach(group => {
-                group.classList.toggle('ec-field-disabled', !ready);
-            });
-            for (const f of EC_FIELDS) if (!f.global) ecRenderFieldOptions(f);
+            if (!ready) {
+                box.innerHTML = `<div style="width:100%;padding:14px;border:1px dashed var(--border);border-radius:8px;text-align:center;color:var(--text-dim);font-size:0.78rem;">请先选择品类（叶子级），下方将显示该品类专属字段</div>`;
+                return;
+            }
+            const cat = window.ecCatalogGet(ecCategoryPath());
+            const catFields = cat.fields || {};
+            let html = '';
+            for (const f of EC_FIELDS) {
+                const inCat = catFields[f.key] && catFields[f.key].length;
+                if (!inCat) continue;
+                html += ecBuildFieldHtml(f);
+            }
+            if (!html) {
+                box.innerHTML = `<div style="width:100%;padding:14px;border:1px dashed var(--border);border-radius:8px;text-align:center;color:var(--text-dim);font-size:0.78rem;">该品类暂无专属字段；可在 frontend/data/categories/&lt;品类&gt;.js 添加</div>`;
+                return;
+            }
+            box.innerHTML = html;
+            for (const f of EC_FIELDS) {
+                const inCat = catFields[f.key] && catFields[f.key].length;
+                if (!inCat) continue;
+                ecRenderFieldOptions(f);
+            }
+        }
+
+        // 切品类时：重新渲染全局区（移除被覆盖的）+ 专属区（按品类显示） + 刷新卖点 + imageType gate
+        function ecRefreshCategoryUI() {
+            ecRenderGlobalFields();
+            ecRenderScopedFields();
             ecRenderSellings(ecSel.shape || '');
             ecRefreshImageTypeGates();
         }
@@ -1729,10 +1847,88 @@
                     ${hasChildren ? `<span class="ec-cascader-arrow-r" onclick="event.stopPropagation();ecDrillDown(${level}, '${ecEscAttr(n.display)}')">›</span>` : ''}
                 </div>`;
             }).join('');
-            const clearBtn = level === 0
-                ? `<div class="ec-cascader-item" onclick="event.stopPropagation();ecPickCascader([])" style="color:var(--text-dim);border-bottom:1px dashed var(--border);">— 清空</div>`
-                : '';
-            return `<div class="ec-cascader-panel" data-level="${level}">${clearBtn}${items}</div>`;
+            return `<div class="ec-cascader-panel" data-level="${level}">${items}</div>`;
+        }
+
+        function ecRenderAlwaysUse() {
+            const listEl = document.getElementById('ec-always-use-list');
+            if (!listEl) return;
+            const history = (ecLoad('ec_category_history_v1') || []);
+            const historyArr = Array.isArray(history) ? history : [];
+            if (historyArr.length === 0) {
+                listEl.innerHTML = `<span style="font-size:12px; color:var(--text-dim);">暂无记录</span>`;
+                return;
+            }
+            listEl.innerHTML = historyArr.slice(0, 5).map(path => {
+                return `<div class="last-choose-category">
+                    <div class="choose-category" title="${ecEscAttr(path.join(' > '))}" onclick="ecPickCascader(${ecEscAttr(JSON.stringify(path))})">${ecEscAttr(path.join(' > '))}</div>
+                </div>`;
+            }).join('') + `<div class="last-choose-category" style="background:transparent;"><a style="color:var(--text-dim); cursor:pointer; text-decoration:none;" onclick="ecClearAlwaysUse()">清空</a></div>`;
+        }
+
+        function ecClearAlwaysUse() {
+            ecSave('ec_category_history_v1', []);
+            ecRenderAlwaysUse();
+        }
+
+        function ecRecordCategoryHistory(path) {
+            let history = ecLoad('ec_category_history_v1') || [];
+            const pathStr = JSON.stringify(path);
+            history = history.filter(p => JSON.stringify(p) !== pathStr);
+            history.unshift(path);
+            if (history.length > 5) history = history.slice(0, 5);
+            ecSave('ec_category_history_v1', history);
+            ecRenderAlwaysUse();
+        }
+
+        function ecSearchCategory(keyword) {
+            // 简单的搜索逻辑：遍历所有节点，包含关键词的展开并高亮，暂时不实现复杂搜索，只筛选第一列
+            // 如果需要全局搜索，可以将所有叶子节点平铺显示，然后选中
+            // 由于树结构复杂，这里简化处理：重绘列，如果没有关键词，则正常显示
+            const keywordTrimmed = keyword.trim().toLowerCase();
+            const panels = document.getElementById('ec-cat-panels');
+            if (!keywordTrimmed) {
+                ecRefreshCascaderColumns();
+                return;
+            }
+            
+            // 搜索所有叶子节点
+            const results = [];
+            function traverse(nodes, path) {
+                for (const n of nodes) {
+                    const currentPath = [...path, n.display];
+                    if (n.display.toLowerCase().includes(keywordTrimmed)) {
+                        results.push({ node: n, path: currentPath });
+                    }
+                    if (n.children && n.children.length > 0) {
+                        traverse(n.children, currentPath);
+                    }
+                }
+            }
+            traverse(EC_CATEGORY_TREE, []);
+            
+            if (results.length === 0) {
+                panels.innerHTML = `<div style="padding: 20px; font-size: 13px; color: var(--text-dim); text-align: center; width: 100%;">未找到相关分类</div>`;
+                return;
+            }
+            
+            // 将搜索结果平铺展示
+            const itemsHtml = results.map(r => {
+                return `<li class="content-cat" onclick="ecPickCascader(${ecEscAttr(JSON.stringify(r.path))})">
+                    <a class="cate" style="flex-direction:column; align-items:flex-start;">
+                        <div class="c-name" style="font-weight:bold; color:var(--primary);">${ecEscAttr(r.node.display)}</div>
+                        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">${ecEscAttr(r.path.join(' > '))}</div>
+                    </a>
+                </li>`;
+            }).join('');
+            
+            panels.innerHTML = `<div class="item-group-container-v4" style="flex: 1 1 100%;">
+                <div class="all-items-container">
+                    <div class="Scrollbar_wrapper_5-188-0">
+                        <ul class="staple-category-ul">${itemsHtml}</ul>
+                    </div>
+                </div>
+            </div>`;
         }
 
         // 切换品类时：清空所有"品类专属字段"的当前选择 + 清空已勾卖点；保留全局字段
@@ -1754,16 +1950,23 @@
             ecCatPath.push(display);
             if (hasChildren) {
                 ecRefreshCascaderColumns();
+                const container = document.getElementById('chooseCategory');
+                if (container) {
+                    setTimeout(() => {
+                        container.scroll({ left: container.scrollWidth, behavior: 'smooth' });
+                    }, 10);
+                }
                 return;
             }
             // 叶子 → 确认选中
             const prevPath = (ecSel.category || []).join('>');
             ecSel.category = [...ecCatPath];
-            const txt = document.getElementById('ec-cat-text');
-            if (txt) txt.textContent = ecSel.category.join(' › ');
-            document.getElementById('ec-cat-cascader').classList.remove('open');
+            // 记录最近使用
+            ecRecordCategoryHistory(ecSel.category);
+            
             if (prevPath !== ecCatPath.join('>')) ecResetCategoryScopedSelections();
             ecRefreshCategoryUI();
+            ecRefreshCascaderColumns(); // 刷新选中状态
         }
 
         // 点击条目右侧 › ：只展开，不作为最终选择
@@ -1776,10 +1979,14 @@
         function ecPickCascader(pathArr) {
             ecSel.category = Array.isArray(pathArr) ? pathArr : [];
             ecCatPath = [...ecSel.category];
-            const txt = document.getElementById('ec-cat-text');
-            if (txt) txt.textContent = ecSel.category.length ? ecSel.category.join(' › ') : '— 点击选择';
+            if (ecSel.category.length > 0) {
+                ecRecordCategoryHistory(ecSel.category);
+            }
+            // 清除搜索框
+            const searchInput = document.querySelector('.IPT_input_5-188-0');
+            if (searchInput) searchInput.value = '';
+            
             ecRefreshCascaderColumns();
-            document.getElementById('ec-cat-cascader').classList.remove('open');
             ecResetCategoryScopedSelections();
             ecRefreshCategoryUI();
         }
@@ -1789,10 +1996,15 @@
         }
 
         // 字段在当前品类下的可用选项：全局字段直接用自身 options；专属字段从 EC_CATALOG 注入
+        // 字段在当前品类下的可用选项：
+        // - 品类专属字段：仅来自 EC_CATALOG[path].fields[f.key]
+        // - 全局字段：若当前品类在 EC_CATALOG 里有同 key 的覆盖项，优先用品类的（覆盖全局），否则 fallback 到 fields.js 的默认 options
         function ecFieldOptions(f) {
-            if (f.global) return f.options || [];
             const cat = window.ecCatalogGet(ecCategoryPath());
-            return (cat.fields && cat.fields[f.key]) || [];
+            const catOpts = cat.fields && cat.fields[f.key];
+            if (catOpts && catOpts.length) return catOpts;       // 品类有覆盖 → 用品类（不论 global 与否）
+            if (f.global) return f.options || [];                 // 全局兜底
+            return [];                                             // 品类专属字段且品类无定义 → 空
         }
 
         // 渲染单个字段的选项列表（含预设 + 用户自定义 + ➕ 添加项）
@@ -1877,9 +2089,10 @@
                 return;
             }
             const isUser = s => ecUserSellings(shapeValue || '').some(u => u.key === s.key);
+            // 主图：单选（一次只生成 1 张）；详情页：仍按所选卖点列表
             container.innerHTML = list.map(s => `
                 <label style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.75rem;cursor:pointer;">
-                    <input type="checkbox" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}',this.checked)">
+                    <input type="radio" name="ec-selling" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}',this.checked)">
                     ${ecEscAttr(s.label)}${isUser(s) ? '<em style="color:var(--text-dim);font-style:normal;font-size:0.68rem;margin-left:4px;">· 我的</em>' : ''}
                     ${isUser(s) ? `<span onclick="event.preventDefault();event.stopPropagation();ecDeleteUserSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}')" style="color:var(--text-dim);cursor:pointer;margin-left:2px;">✕</span>` : ''}
                 </label>
@@ -1912,8 +2125,10 @@
             const list = ecGetSellings(shapeValue);
             const item = list.find(s => s.key === key);
             if (!item) return;
+            // radio 模式下 onchange 只会在新选中时触发（checked=true）。
+            // 旧选项不会发 uncheck 事件，所以这里采用"替换"语义。
             if (checked) {
-                if (!ecSel.sellings.find(s => s.key === key)) ecSel.sellings.push(item);
+                ecSel.sellings = [item];
             } else {
                 ecSel.sellings = ecSel.sellings.filter(s => s.key !== key);
             }
@@ -1936,6 +2151,32 @@
         const EC_NEGATIVE      = '【禁止】不得增减或改变产品零件数量（如喷孔数、按键数、旋钮数、层数、挂钩数）；不得合并或简化结构；不得改变色彩、材质与 logo；不得出现文字/符号错写或乱码；不得模糊材质或丢失细节；不得把多场景拼在同一张图里（除非模板明确要求）。【禁止穿模 / 物体穿透】严禁出现以下任何穿模现象：手指或手掌穿过产品、产品零件穿过手；产品穿透墙面/桌面/玻璃门/置物架表面；衣袖、毛发、饰品穿过产品；两件物体在接触点出现"融合""共用边""嵌入对方内部"或"轮廓互相吃边"；手指关节弯曲方向违反人体结构（如反折、手指数量错误、手指穿过手指）；产品悬空但无支撑、或部分嵌入背景墙面；阴影方向与光源不一致或缺失接触阴影。所有接触点必须有清晰可见的接触边界与合理的接触阴影/压痕。';
 
         function buildEcommercePrompts(userReq) {
+            const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
+                           || (typeof sessionImagePath !== 'undefined' && !!sessionImagePath);
+            // 品类专属 lock / negative 优先；未配置则回退全局默认
+            const cat        = window.ecCatalogGet ? window.ecCatalogGet(ecCategoryPath()) : null;
+            // 品类专属 lock / negative：沿品类路径从叶子向根冒泡查找首个有定义的，叶子专属优先 → 中间分支 → 根模板 → 全局兜底
+            const path        = ecCategoryPath();
+            const subjectLock = (window.ecCatalogResolveUp && window.ecCatalogResolveUp(path, 'subjectLock')) || EC_SUBJECT_LOCK;
+            const negative    = (window.ecCatalogResolveUp && window.ecCatalogResolveUp(path, 'negative'))    || EC_NEGATIVE;
+            const lockLine   = hasRef ? (subjectLock + '\n') : '';
+
+            // ── SKU / 详情页：不喂全套字段，仅在主图基础上做轻量改造 ──
+            // 调用方（executeTask）已强制要求 SKU/详情页 上传参考图；这里若仍无 ref 则返回空，让上层提示。
+            if (ecSel.imageType === 'SKU' || ecSel.imageType === '详情页') {
+                if (!hasRef) return [];
+                const isDetail = ecSel.imageType === '详情页';
+                const directive = isDetail
+                    ? '基于参考主图生成 1 张纵向 9:16 详情页：保持产品造型/色彩/材质/logo 与主视觉完全一致，仅调整为 9:16 构图与文案排版（禁止分栏网格、禁止拼图、禁止把多张场景合并成 1 张）。'
+                    : '基于参考主图生成 1 张 SKU 展示图：保持产品造型/色彩/材质/logo 与主视觉完全一致，简化场景突出产品本身（白底或纯色背景，构图干净），便于电商列表展示。';
+                const extras = [];
+                if (ecSel.shortPrompt) extras.push(`附加拍摄指令[${ecSel.shortPrompt}]`);
+                if (userReq)           extras.push(`客户附加要求[${userReq}]`);
+                const extrasLine = extras.length ? `\n${extras.join('；')}。` : '';
+                return [`${lockLine}${directive}${extrasLine}\n${negative}`];
+            }
+
+            // ── 主图分支：完整字段拼装 ──
             const base = [];
             if (ecSel.category && ecSel.category.length) base.push(`品类[${ecSel.category.join('>')}]`);
             const pushField = (key, label) => {
@@ -1950,6 +2191,7 @@
             pushField('style',        '背景风格');
             pushField('material',     '材质/工艺');
             pushField('quality',      '画质');
+            pushField('fontTemplate', '字体模板');
             pushField('shotAngle',    '拍摄角度');
             pushField('placement',    '产品摆放');
             pushField('layout',       '场景布局');
@@ -1960,31 +2202,16 @@
             pushField('shortPrompt',  '附加拍摄指令');
             if (userReq) base.push(`客户附加要求[${userReq}]`);
 
-            const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
-                           || (typeof sessionImagePath !== 'undefined' && !!sessionImagePath);
-            const lockLine = hasRef ? (EC_SUBJECT_LOCK + '\n') : '';
             const intro = '你是一个中国电商资深视觉设计师，请根据以下参数生成一张高清电商主图，突出产品质感与使用场景。';
 
-            // 详情页分支：必须有参考图；每张 ref × 同一条共用 prompt → 1 张对应详情页
-            if (ecSel.imageType === '详情页') {
-                const sellingsText = (ecSel.sellings && ecSel.sellings.length)
-                    ? '；突出卖点：' + ecSel.sellings.map(s => s.label).join('、')
-                    : '';
-                const pairIntro = '你是一个中国电商资深视觉设计师。这是详情页配对生成任务：基于给定的参考主图，保留产品造型/色彩/材质与主视觉一致，仅改为纵向 9:16 详情页构图与文案排版（禁止分栏网格、禁止拼图、禁止把多张场景合并成 1 张）。';
-                const paramsText = base.length
-                    ? `参数：${base.join('；')}${sellingsText}。`
-                    : (sellingsText ? `参数：${sellingsText.slice(1)}。` : '');
-                return [`${lockLine}${pairIntro}\n${paramsText}\n${EC_NEGATIVE}`];
-            }
-
-            if (!ecSel.sellings || ecSel.sellings.length === 0) {
+            // 主图始终只生成 1 张：未选卖点 → 通用基础图；选了卖点 → 取第一个卖点（UI 已强制单选，这里防御性兜底）
+            const sel = (ecSel.sellings && ecSel.sellings[0]) || null;
+            if (!sel) {
                 const paramsText = base.length ? `参数：${base.join('；')}。` : '（用户未指定参数，请按通用电商主图风格发挥。）';
-                return [`${lockLine}${intro}\n${paramsText}\n${EC_NEGATIVE}`];
+                return [`${lockLine}${intro}\n${paramsText}\n${negative}`];
             }
-            return ecSel.sellings.map(s => {
-                const params = [...base, `卖点[${s.prompt}]`, `场景构图[${s.composition}]`];
-                return `${lockLine}${intro}\n参数：${params.join('；')}。\n${EC_NEGATIVE}`;
-            });
+            const params = [...base, `卖点[${sel.prompt}]`, `场景构图[${sel.composition}]`];
+            return [`${lockLine}${intro}\n参数：${params.join('；')}。\n${negative}`];
         }
 
         // ── 文件选择框（图片 / 文件夹）──
@@ -2082,7 +2309,7 @@
                 document.getElementById('imagePreviewContainer').style.display = 'flex';
                 appendMessage('ai', `已接收 ${droppedFiles.length} 张图片，正在为您准备自由创作模式...`);
                 const input = document.getElementById('promptInput');
-                if (!input.value) input.value = "结合这些图片生成...";
+                if (!input.value) input.placeholder = "结合这些图片生成...";
                 input.focus();
             }
         }
@@ -2204,10 +2431,20 @@
             const statusBadge = document.getElementById('ecStatusBadge');
             const summary = document.getElementById('ecSummaryPreview');
 
-            if (ecSel.sellings.length > 0) {
+            // SKU/详情页 不依赖卖点，所以判定"已就绪"应看：品类、图片类型、卖点 任一项有值
+            const hasCategory  = ecSel.category && ecSel.category.length > 0;
+            const hasImageType = !!ecSel.imageType;
+            const hasSellings  = ecSel.sellings && ecSel.sellings.length > 0;
+            const ready = hasCategory || hasImageType || hasSellings;
+
+            if (ready) {
                 statusBadge.innerHTML = `<span style="color:#10B981">● 已就绪</span>`;
                 summary.style.display = 'block';
-                summary.innerHTML = `<b>已选品类：</b>${ecSel.category.join(' > ') || '未选'}<br><b>已选卖点：</b>${ecSel.sellings.map(s => s.label).join('、')}`;
+                const parts = [];
+                if (hasCategory)  parts.push(`<b>品类：</b>${ecSel.category.join(' > ')}`);
+                if (hasImageType) parts.push(`<b>图片类型：</b>${ecSel.imageType}`);
+                if (hasSellings)  parts.push(`<b>卖点：</b>${ecSel.sellings.map(s => s.label).join('、')}`);
+                summary.innerHTML = parts.join('<br>');
             } else {
                 statusBadge.innerHTML = `<span>未配置</span>`;
                 summary.style.display = 'none';
@@ -3193,6 +3430,17 @@
             </div>
 
             <div class="modal-body-scroller">
+                <div id="ecImportBar" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:var(--surface-alt,#F8FAFC);border:1px dashed var(--border);border-radius:6px;margin-bottom:14px;">
+                    <span style="font-size:0.78rem;color:var(--text-dim);">从 xlsx 批量导入新品类（可同时选多个 .xlsx；脚本会做文件层增量合并，不删除已有数据）</span>
+                    <span>
+                        <input type="file" id="ecXlsxFile" accept=".xlsx" multiple style="display:none;" onchange="ecImportXlsx(event)">
+                        <button type="button" onclick="document.getElementById('ecXlsxFile').click()"
+                            style="font-size:0.75rem;padding:6px 12px;border:1px solid var(--primary,#3b82f6);border-radius:6px;background:var(--primary,#3b82f6);color:#fff;cursor:pointer;">
+                            📤 选择 xlsx 文件导入
+                        </button>
+                    </span>
+                </div>
+                <div id="ecImportLog" style="display:none;margin-bottom:14px;padding:10px 12px;background:#0f172a;color:#e2e8f0;border-radius:6px;font-size:0.7rem;font-family:monospace;white-space:pre-wrap;max-height:240px;overflow:auto;"></div>
                 <div id="ecModalFieldsContainer" style="display:flex; flex-wrap:wrap; gap:16px; position:relative;"></div>
             </div>
 

@@ -750,4 +750,72 @@ public class ApiController {
             return ResponseEntity.ok(Map.of("success", false, "error", e.getMessage()));
         }
     }
+
+    /** 把上传的 xlsx 落盘到项目根，调用 import-tool.exe（或 python tools/import_category_xlsx.py），返回脚本 stdout。 */
+    @PostMapping("/api/import/xlsx")
+    public ResponseEntity<Map<String, Object>> importXlsx(@RequestParam("files") List<MultipartFile> files) {
+        // 打包态下直接拒绝：用户机器上 frontend/data 在 resources/ 是只读的，导入功能仅供开发期
+        if ("true".equalsIgnoreCase(System.getProperty("app.packaged", "false"))) {
+            return ResponseEntity.ok(Map.of("success", false,
+                    "error", "导入功能仅供开发环境使用；打包后无法写入只读的 frontend/data 目录。"));
+        }
+        File projectRoot = new File(System.getProperty("user.dir"));
+        // 优先级：1) 项目根/import-tool.exe（打包发布场景） 2) tools/dist/import-tool.exe（开发场景）
+        //         3) python tools/import_category_xlsx.py（用户机器需自带 Python）
+        File exeProd = new File(projectRoot, "import-tool.exe");
+        File exeDev  = new File(projectRoot, "tools/dist/import-tool.exe");
+        File pyScript = new File(projectRoot, "tools/import_category_xlsx.py");
+        File runner;
+        boolean useExe = true;
+        if (exeProd.exists())      runner = exeProd;
+        else if (exeDev.exists())  runner = exeDev;
+        else if (pyScript.exists()){ runner = pyScript; useExe = false; }
+        else {
+            return ResponseEntity.ok(Map.of("success", false,
+                    "error", "找不到 import-tool.exe（应在项目根或 tools/dist/）；也找不到 tools/import_category_xlsx.py。"));
+        }
+        // 落盘到项目根
+        List<String> savedPaths = new java.util.ArrayList<>();
+        try {
+            for (MultipartFile mf : files) {
+                String original = mf.getOriginalFilename();
+                if (original == null || original.isBlank()) original = "upload.xlsx";
+                File target = new File(projectRoot, original);
+                mf.transferTo(target);
+                savedPaths.add(target.getName());
+            }
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("success", false, "error", "保存上传文件失败：" + e.getMessage()));
+        }
+        // 组装命令
+        List<String> cmd = new java.util.ArrayList<>();
+        if (useExe) {
+            cmd.add(runner.getAbsolutePath());
+        } else {
+            cmd.add(System.getenv().getOrDefault("PYTHON", "python"));
+            cmd.add("tools/import_category_xlsx.py");
+        }
+        cmd.addAll(savedPaths);
+        try {
+            ProcessBuilder pb = new ProcessBuilder(cmd)
+                    .directory(projectRoot)
+                    .redirectErrorStream(true);
+            pb.environment().put("PYTHONIOENCODING", "utf-8");
+            Process proc = pb.start();
+            String output = new String(proc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            boolean done = proc.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
+            int exit = done ? proc.exitValue() : -1;
+            if (!done) proc.destroyForcibly();
+            return ResponseEntity.ok(Map.of(
+                    "success", exit == 0,
+                    "exitCode", exit,
+                    "runner", runner.getName(),
+                    "output", output,
+                    "savedFiles", savedPaths
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("success", false, "error",
+                    "执行 import 失败：" + e.getMessage()));
+        }
+    }
 }
