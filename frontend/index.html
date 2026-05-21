@@ -2697,7 +2697,7 @@
                     }
                     const mc = document.createElement('canvas');
                     mc.width = w; mc.height = h;
-                    this.nodes.push({ id: 'n' + Date.now(), img, src, file: file || null, x, y, w, h, maskCanvas: mc });
+                    this.nodes.push({ id: 'n' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), img, src, file: file || null, x, y, w, h, maskCanvas: mc });
                     document.getElementById('boardEmptyState').style.display = 'none';
                     this._updateSidePanel();
                 };
