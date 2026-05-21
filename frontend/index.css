@@ -1150,6 +1150,8 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 /* ── 修正欢迎页偏上问题：脱离文档流绝对居中 ── */
 .chat-messages {
     position: relative !important;
+    overflow: hidden;       /* 防止 emptyState 绝对定位溢出到下方配置抽屉/输入区 */
+    isolation: isolate;     /* 创建独立堆叠上下文，把 emptyState 的 z-index:2000 限制在本容器内 */
 }
 
 .empty-state {
@@ -1159,7 +1161,10 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     transform: translate(-50%, -50%) !important;
     margin: 0 !important;
     width: 100%;
+    pointer-events: none;   /* 视觉装饰，不拦截事件；suggestion-card 单独恢复 */
 }
+.empty-state .suggestion-card,
+.empty-state .glow-icon { pointer-events: auto; }
 
 /* 点赞点踩 */
 .result-image-wrap { display: flex; flex-direction: row; align-items: center; gap: 4px; position: relative; }
