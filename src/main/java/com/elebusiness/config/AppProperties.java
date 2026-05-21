@@ -9,6 +9,7 @@ public class AppProperties {
 
     private Gemini gemini = new Gemini();
     private Veo veo = new Veo();
+    private Volcengine volcengine = new Volcengine();
     private DingTalk dingtalk = new DingTalk();
     private GptImage gptImage = new GptImage();
     private Paths paths = new Paths();
@@ -19,6 +20,8 @@ public class AppProperties {
     public void setGemini(Gemini gemini) { this.gemini = gemini; }
     public Veo getVeo() { return veo; }
     public void setVeo(Veo veo) { this.veo = veo; }
+    public Volcengine getVolcengine() { return volcengine; }
+    public void setVolcengine(Volcengine volcengine) { this.volcengine = volcengine; }
     public DingTalk getDingtalk() { return dingtalk; }
     public void setDingtalk(DingTalk dingtalk) { this.dingtalk = dingtalk; }
     public GptImage getGptImage() { return gptImage; }
@@ -54,6 +57,19 @@ public class AppProperties {
         public void setResolution(String resolution) { this.resolution = resolution; }
         public boolean isGenerateAudio() { return generateAudio; }
         public void setGenerateAudio(boolean generateAudio) { this.generateAudio = generateAudio; }
+    }
+
+    public static class Volcengine {
+        private String apiKey;
+        private String baseUrl = "https://ark.cn-beijing.volces.com/api/v3";
+        private String model = "doubao-seedance-2-0-260128";
+
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public String getModel() { return model; }
+        public void setModel(String model) { this.model = model; }
     }
 
     public static class DingTalk {

@@ -348,6 +348,7 @@
                                     <div class="gf-select-options">
                                         <div class="gf-option" data-value="5" onclick="selectOption(this, event)">5 秒</div>
                                         <div class="gf-option selected" data-value="8" onclick="selectOption(this, event)">8 秒</div>
+                                        <div class="gf-option" data-value="11" onclick="selectOption(this, event)">11 秒</div>
                                     </div>
                                 </div>
                             </div>
@@ -1038,7 +1039,8 @@
 
         function loadVideoAgents() {
             const agents = [
-                { id: 'veo-3.1-generate-preview', name: 'Veo 3.1' }
+                { id: 'veo-3.1-generate-preview', name: 'Veo 3.1' },
+                { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0（火山方舟）' }
             ];
             const wrapper = document.getElementById('agentSelectWrapper');
             wrapper.querySelector('input').value = agents[0].id;
@@ -1301,23 +1303,33 @@
                 const aspectRatio     = document.getElementById('videoAspectRatio')?.value || '16:9';
                 const durationSeconds = parseInt(document.getElementById('videoDurationSec')?.value || '8');
 
-                const videoPayload = { prompt: payload.prompt, aspectRatio, durationSeconds };
-                appendMessage('user', `[视频模式] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s${payload.prompt ? '\n提示词: ' + payload.prompt : ''}`);
+                const refImgCount = (typeof droppedFiles !== 'undefined' && droppedFiles) ? droppedFiles.length : 0;
+                const summary = `[视频模式] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s` +
+                    (refImgCount ? `  参考图: ${refImgCount} 张` : '') +
+                    (payload.prompt ? '\n提示词: ' + payload.prompt : '');
+                appendMessage('user', summary);
 
                 try {
-                    
                     promptInput.value = '';
+
+                    const fd = new FormData();
+                    fd.append('model', agentId);
+                    fd.append('prompt', payload.prompt || '');
+                    fd.append('aspectRatio', aspectRatio);
+                    fd.append('durationSeconds', String(durationSeconds));
+                    if (refImgCount) {
+                        droppedFiles.forEach(f => fd.append('images', f));
+                    }
 
                     const resp = await fetch('/api/video/generate', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(videoPayload)
+                        body: fd
                     });
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.message || data.error || '提交失败');
+                    clearFiles();
                     startPolling(data.taskId);
                 } catch (e) {
-                    
                     appendMessage('ai', '启动失败：' + e.message);
                 }
             }
