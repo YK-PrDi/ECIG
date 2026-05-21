@@ -889,6 +889,48 @@
         let mediaClickCount = 0;
         let mediaClickTimer = null;
 
+        // ── 多选图片集合 ──
+        const selectedResultImgs = new Set();
+
+        function onResultImgClick(event, url, filename) {
+            event.stopPropagation();
+            if (event.ctrlKey || event.metaKey) {
+                // Ctrl/Cmd + 点击：切换选中
+                const wrap = event.currentTarget.closest('.result-image-wrap');
+                if (selectedResultImgs.has(url)) {
+                    selectedResultImgs.delete(url);
+                    wrap && wrap.classList.remove('img-selected');
+                } else {
+                    selectedResultImgs.add(url);
+                    wrap && wrap.classList.add('img-selected');
+                }
+            } else {
+                // 普通点击：清除其他选中，走原有预览/下载逻辑
+                clearImgSelection();
+                handleMediaClick('image', url, filename, event);
+            }
+        }
+
+        function onResultImgDragStart(event, url) {
+            if (selectedResultImgs.size > 1 && selectedResultImgs.has(url)) {
+                // 多选拖拽：把所有选中 URL 用换行拼接传递
+                event.dataTransfer.setData('text/plain', [...selectedResultImgs].join('\n'));
+                event.dataTransfer.setData('application/x-multi-img', '1');
+            } else {
+                event.dataTransfer.setData('text/plain', url);
+            }
+        }
+
+        function clearImgSelection() {
+            selectedResultImgs.clear();
+            document.querySelectorAll('.result-image-wrap.img-selected').forEach(el => el.classList.remove('img-selected'));
+        }
+
+        // 点击空白处清除选中
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.result-image-wrap')) clearImgSelection();
+        });
+
         // 🌟 2. 智能点击分发：单点预览，三连点下载
         function handleMediaClick(type, url, filename, event) {
             if (event) event.stopPropagation();
@@ -1418,8 +1460,8 @@
                             const safeName = escHtml(result.name);
                             const safePrompt = (result.prompt || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                             const safePath = img.path.replace(/'/g, "\\'");
-                            htmlContent += `<div class="result-image-wrap">`;
-                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="单点预览，三连点直接下载，拖到左侧可编辑" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image', '${imgUrl}', '${safeName}.png', event)">`;
+                            htmlContent += `<div class="result-image-wrap" data-img-url="${imgUrl}">`;
+                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="单点预览，三连点下载；Ctrl+点击多选，拖入输入框" ondragstart="onResultImgDragStart(event,'${imgUrl}')" onclick="onResultImgClick(event,'${imgUrl}','${safeName}.png')">`;
                             htmlContent += `<div class="feedback-bar">
                                 <button class="feedback-btn" onclick="sendFeedback(this,'like','${safePrompt}','${safePath}')" title="满意">
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
@@ -2268,9 +2310,18 @@
 
             // URL drop from canvas board → append as reference (no clearSession)
             const url = e.dataTransfer.getData('text/plain');
+            const isMulti = e.dataTransfer.getData('application/x-multi-img') === '1';
             if (url && e.dataTransfer.files.length === 0) {
+                if (isMulti) {
+                    // 多选图片拖入：逐个 fetch 后追加
+                    const urls = url.split('\n').filter(Boolean);
+                    Promise.all(urls.map((u, i) =>
+                        fetch(u).then(r => r.blob()).then(blob => new File([blob], `ref-${i + 1}.png`, { type: blob.type || 'image/png' }))
+                    )).then(files => handleImageDropAppend(files));
+                    clearImgSelection();
+                    return;
+                }
                 if (url.startsWith('blob:') || url.startsWith('/api/image') || url.startsWith('http')) {
-                    // 优先用 board.sendSelectedToChat 导出正方形 pad 图片 + mask，保证尺寸一致
                     if (typeof board !== 'undefined' && board && (board.editId || board.selectedId)) {
                         board.sendSelectedToChat();
                     } else {
@@ -2597,6 +2648,7 @@
                 this.cam = { x: 0, y: 0 };
                 this.scale = 1;
                 this.selectedId = null;
+                this.selectedIds = new Set(); // 多选集合
                 this.editId = null;
                 this.tool = 'brush'; // 'brush' | 'eraser' | 'lasso'
                 this.drawing = false;
@@ -2813,12 +2865,12 @@
                     if (n.id !== this.editId) {
                         ctx.drawImage(n.maskCanvas, n.x, n.y, n.w, n.h);
                     }
-                    if (n.id === this.selectedId || n.id === this.editId) {
+                    if (n.id === this.selectedId || n.id === this.editId || this.selectedIds.has(n.id)) {
                         ctx.save();
                         ctx.strokeStyle = n.id === this.editId ? '#f59e0b' : '#6366f1';
                         ctx.lineWidth = 2 / this.scale;
                         ctx.strokeRect(n.x - 1, n.y - 1, n.w + 2, n.h + 2);
-                        if (n.id === this.selectedId && n.id !== this.editId) {
+                        if ((n.id === this.selectedId || this.selectedIds.has(n.id)) && n.id !== this.editId) {
                             ctx.fillStyle = '#6366f1';
                             ctx.beginPath();
                             ctx.roundRect(n.x + n.w - 22, n.y + 2, 20, 20, 4);
@@ -2865,16 +2917,46 @@
                             return;
                         }
                         this.lastClick = { id: hit.id, t: now };
-                        this.selectedId = hit.id;
-                        this.panStart = null; // 确保不残留 panStart
+
+                        if (e.ctrlKey || e.metaKey) {
+                            // Ctrl+点击：切换多选
+                            if (this.selectedIds.has(hit.id)) {
+                                this.selectedIds.delete(hit.id);
+                                this.selectedId = this.selectedIds.size > 0 ? [...this.selectedIds].at(-1) : null;
+                            } else {
+                                this.selectedIds.add(hit.id);
+                                if (this.selectedId) this.selectedIds.add(this.selectedId);
+                                this.selectedId = hit.id;
+                            }
+                            this._pendingClearMulti = false;
+                        } else if (this.selectedIds.size > 1 && this.selectedIds.has(hit.id)) {
+                            // 点击已多选节点：先不清除，等 mouseup 判断是否真的只是点击（非拖动）
+                            this.selectedId = hit.id;
+                            this._pendingClearMulti = true; // mouseup 时若未移动则清除多选
+                        } else {
+                            // 普通点击：清除多选，单选
+                            this.selectedIds.clear();
+                            this.selectedId = hit.id;
+                            this.selectedIds.add(hit.id);
+                            this._pendingClearMulti = false;
+                        }
+                        // 设置拖动状态（无论哪种情况都允许拖动）
                         this.dragNode = hit;
                         this.dragOffset = { x: wp.x - hit.x, y: wp.y - hit.y };
                         this._dragStartPos = { x: e.clientX, y: e.clientY };
                         this._dragOrigin = { x: hit.x, y: hit.y };
+                        // 记录所有选中节点的起始位置
+                        this._dragOriginsAll = {};
+                        this.selectedIds.forEach(id => {
+                            const sn = this._node(id);
+                            if (sn) this._dragOriginsAll[id] = { x: sn.x, y: sn.y };
+                        });
+                        this.panStart = null;
                         this._updateSidePanel();
                     } else {
                         this.selectedId = null;
-                        this.dragNode = null; // 确保不残留 dragNode
+                        this.selectedIds.clear();
+                        this.dragNode = null;
                         this.panStart = { mx: e.clientX, my: e.clientY, cx: this.cam.x, cy: this.cam.y };
                         this._updateSidePanel();
                     }
@@ -2887,8 +2969,21 @@
                     if (this.dragNode) {
                         const rect = c.getBoundingClientRect();
                         const wp = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-                        this.dragNode.x = wp.x - this.dragOffset.x;
-                        this.dragNode.y = wp.y - this.dragOffset.y;
+                        const newX = wp.x - this.dragOffset.x;
+                        const newY = wp.y - this.dragOffset.y;
+                        const dx = newX - this.dragNode.x;
+                        const dy = newY - this.dragNode.y;
+                        this.dragNode.x = newX;
+                        this.dragNode.y = newY;
+                        // 多选时同步移动其他选中节点
+                        if (this.selectedIds.size > 1) {
+                            this.nodes.forEach(n => {
+                                if (n.id !== this.dragNode.id && this.selectedIds.has(n.id)) {
+                                    n.x += dx;
+                                    n.y += dy;
+                                }
+                            });
+                        }
                     } else if (this.panStart) {
                         this.cam.x = this.panStart.cx + (e.clientX - this.panStart.mx);
                         this.cam.y = this.panStart.cy + (e.clientY - this.panStart.my);
@@ -2905,8 +3000,15 @@
                         const dx = e.clientX - this._dragStartPos.x;
                         const dy = e.clientY - this._dragStartPos.y;
                         const moved = Math.sqrt(dx * dx + dy * dy) > 8;
-                        const startPos = this._dragStartPos;
                         this._dragStartPos = null;
+
+                        if (!moved && this._pendingClearMulti) {
+                            // 纯点击（未拖动）已多选节点 → 清除多选，切换为单选
+                            this.selectedIds.clear();
+                            this.selectedIds.add(node.id);
+                            this._updateSidePanel();
+                        }
+                        this._pendingClearMulti = false;
 
                         if (moved) {
                             const chatPanel = document.getElementById('chatPanel');
@@ -2915,18 +3017,27 @@
                                 const inChat = e.clientX >= cr.left && e.clientX <= cr.right &&
                                                e.clientY >= cr.top  && e.clientY <= cr.bottom;
                                 if (inChat) {
-                                    // 还原节点到拖动起点
-                                    node.x = this._dragOrigin.x;
-                                    node.y = this._dragOrigin.y;
+                                    // 还原所有选中节点到拖动起点
+                                    const origins = this._dragOriginsAll || {};
+                                    this.nodes.forEach(n => {
+                                        if (origins[n.id]) { n.x = origins[n.id].x; n.y = origins[n.id].y; }
+                                    });
 
-                                    // 用 canvas 绘制确保拿到像素数据
-                                    const off = document.createElement('canvas');
-                                    off.width  = node.img.naturalWidth  || node.w;
-                                    off.height = node.img.naturalHeight || node.h;
-                                    off.getContext('2d').drawImage(node.img, 0, 0, off.width, off.height);
-                                    off.toBlob(b => {
-                                        if (b) handleImageDropAppend([new File([b], 'canvas-ref.png', { type: 'image/png' })]);
-                                    }, 'image/png');
+                                    // 多选时发送所有选中节点，单选只发当前节点
+                                    const nodesToSend = this.selectedIds.size > 1
+                                        ? this.nodes.filter(n => this.selectedIds.has(n.id))
+                                        : [node];
+
+                                    Promise.all(nodesToSend.map((n, i) => new Promise(resolve => {
+                                        const off = document.createElement('canvas');
+                                        off.width  = n.img.naturalWidth  || n.w;
+                                        off.height = n.img.naturalHeight || n.h;
+                                        off.getContext('2d').drawImage(n.img, 0, 0, off.width, off.height);
+                                        off.toBlob(b => resolve(b ? new File([b], `canvas-ref-${i + 1}.png`, { type: 'image/png' }) : null), 'image/png');
+                                    }))).then(files => {
+                                        const valid = files.filter(Boolean);
+                                        if (valid.length) handleImageDropAppend(valid);
+                                    });
                                 }
                             }
                         }

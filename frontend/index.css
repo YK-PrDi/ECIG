@@ -1162,7 +1162,9 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 }
 
 /* 点赞点踩 */
-.result-image-wrap { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+.result-image-wrap { display: flex; flex-direction: row; align-items: center; gap: 4px; position: relative; }
+.result-image-wrap.img-selected > img { outline: 2px solid #3b82f6; border-radius: 6px; box-shadow: 0 0 0 4px rgba(59,130,246,0.25); }
+.result-image-wrap.img-selected::after { content: '✓'; position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; background: #3b82f6; color: #fff; border-radius: 50%; font-size: 11px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .feedback-bar { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .feedback-bar-text { font-size: 0.6rem; color: rgba(255,255,255,0.6); line-height: 1; }
 .feedback-btn { background: none; border: none; padding: 2px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.45; transition: opacity 0.15s; line-height: 0; }
