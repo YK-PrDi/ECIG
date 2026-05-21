@@ -64,12 +64,23 @@ EXCEL_ERRORS = {'#NAME?', '#REF!', '#VALUE!', '#DIV/0!', '#N/A', '#NULL!', '#NUM
 # 占位符 / 无意义值：xlsx 编辑期会写"自定义""—""无""无说明""TBD"等占位，不应进入下拉选项
 PLACEHOLDER_VALUES = {'自定义', '—', '-', '无', '无说明', '待补', 'TBD', '/', 'N/A', 'na', 'null'}
 
+# 卖点列里偶尔出现的"工作备注式文字"——不是真卖点，要过滤掉
+_SELLING_NOTE_KEYWORDS = ('我建议', '我觉得', '建议在', '可以选择', '注：', '备注：', '注意：', 'TODO', 'todo', 'sku制作', 'SKU制作', '可以同时', '同时选择')
+
 
 def _is_placeholder(s: str) -> bool:
     if not s:
         return True
     s = s.strip()
     return s in PLACEHOLDER_VALUES or _is_excel_error(s)
+
+
+def _looks_like_note(s: str) -> bool:
+    """识别明显是工作备注/批注而非真正卖点的文本（会出现在 xlsx 卖点列里的人工说明）"""
+    if not s:
+        return True
+    s = s.strip()
+    return any(s.startswith(k) or k in s[:6] for k in _SELLING_NOTE_KEYWORDS)
 
 
 def _is_excel_error(s: str) -> bool:
@@ -107,13 +118,18 @@ def _split_selling(text: str) -> tuple[str, str]:
     if m and len(m.group(1).strip()) <= 30:
         return m.group(1).strip(), m.group(2).strip()
 
-    # 形式 3：短文本直接用
-    if len(text) <= 30:
+    # 短文本直接用——但若含明显"已被截断/装饰说明"特征（…/未配对引号/分号+副标题），仍走启发式重洗
+    looks_dirty = (
+        '…' in text or '...' in text
+        or text.count('"') == 1 or text.count('"') % 2 == 1
+        or '副标题' in text or '主标题' in text or '作主标题' in text
+    )
+    if len(text) <= 30 and not looks_dirty:
         return text, ''
 
     # 长文本启发式：优先用最具结构性的信号
     # 2a) 引号内的标语（中英文双引号，2-30 字内）—— 用户常用引号包裹标语
-    qm = re.search(r'["“]([^"”]{2,30})["”]', text)
+    qm = re.search(r'["“”]([^"“”]{2,30})["“”]', text)
     if qm:
         label = qm.group(1).strip()
         rest = (text[:qm.start()] + ' ' + text[qm.end():]).strip()
@@ -203,7 +219,7 @@ def parse_xlsx(path: Path) -> dict:
 
         # 2) 卖点：当前行有 '卖点' 值才算一个卖点
         selling = cells[selling_col] if 0 <= selling_col < len(cells) else ''
-        if selling and not _is_placeholder(selling):
+        if selling and not _is_placeholder(selling) and not _looks_like_note(selling):
             label, layout_note = _split_selling(selling)
             comp_parts = []
             # 主 composition

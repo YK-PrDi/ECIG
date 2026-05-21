@@ -164,7 +164,32 @@ def merge_data(existing: dict, auto_fields: dict, auto_sellings: list) -> tuple[
             'prompt': s['prompt'],
             'composition': s['composition'],
         })
-    merged_sellings = list(auto_obj) + [s for s in existing_sellings if s.get('label') not in seen_auto_labels]
+
+    # existing 卖点：早期工具版本可能写入了未精简的长 label，这里二次清洗
+    # 触发清洗条件（任一即可）：
+    #   1) label 长度 > 30 字
+    #   2) label 含未配对引号 / 省略号 / 分号 / "副标题" 等装饰说明特征
+    cleaned_existing = []
+    seen_existing_labels = set()
+    DIRTY_HINTS = ('"', '“', '”', '…', '；', '副标题', '主标题', '作主标题', '作副标题')
+    for s in (existing_sellings or []):
+        lbl = (s.get('label') or '').strip()
+        needs_clean = len(lbl) > 30 or any(h in lbl for h in DIRTY_HINTS)
+        if needs_clean:
+            try:
+                from _xlsx_parse import _split_selling
+                short, _ = _split_selling(lbl)
+                if short and short != lbl:
+                    lbl = _short_display(short, 24)
+            except Exception:
+                pass
+        # 与 auto 重复去重；自身重复也去（防止旧文件里同 label 多条）
+        if lbl in seen_auto_labels or lbl in seen_existing_labels:
+            continue
+        seen_existing_labels.add(lbl)
+        cleaned_existing.append({**s, 'label': lbl})
+
+    merged_sellings = list(auto_obj) + cleaned_existing
 
     # 附加：subjectLock / negative 优先用 existing 的（xlsx 不带这两列）
     extras: dict = {}

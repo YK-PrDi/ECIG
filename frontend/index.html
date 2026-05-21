@@ -490,6 +490,7 @@
     <script src="data/categories/wei-yu-zhi-wu-jia.js"></script>
     <script src="data/categories/guo-gai-jia.js"></script>
     <script src="data/categories/lin-yu-hua-sa-tao-zhuang.js"></script>
+    <script src="data/categories/hua-sa-pen-tou.js"></script>
 
     <script>
         function escHtml(str) {
@@ -1717,7 +1718,7 @@
 
             // 品类：列式级联菜单（点击条目右侧 › 向右展开下一级；点击条目本体：叶子即选中、非叶子同向下钻）
             html += `<div class="config-group" style="width:100%;">
-                <label>品类（各级可留空；点击右侧 › 向下钻，点击叶子即选中）</label>
+                <label>品类（点击任意层级即选中并实时显示；点击右侧 › 仅展开下一级；可在任意级别停留）</label>
                 <div class="ec-cascader" id="ec-cat-cascader" tabindex="0">
                     <div class="ec-cascader-trigger" onclick="ecToggleCascader(event)">
                         <span class="ec-cascader-text" id="ec-cat-text">— 点击选择</span>
@@ -1901,7 +1902,14 @@
                     ${hasChildren ? `<span class="ec-cascader-arrow-r" onclick="event.stopPropagation();ecDrillDown(${level}, '${ecEscAttr(n.display)}')">›</span>` : ''}
                 </div>`;
             }).join('');
-            return `<div class="ec-cascader-panel" data-level="${level}">${items}</div>`;
+            // 第 0 列额外添加"清空选择"快捷项
+            const clearItem = level === 0
+                ? `<div class="ec-cascader-item" style="color:var(--text-dim);border-bottom:1px dashed var(--border);"
+                    onclick="event.stopPropagation();ecPickCascader([])">
+                    <span class="ec-cascader-label">— 清空选择</span>
+                </div>`
+                : '';
+            return `<div class="ec-cascader-panel" data-level="${level}">${clearItem}${items}</div>`;
         }
 
         function ecRenderAlwaysUse() {
@@ -1998,32 +2006,36 @@
             ecSel.sellings = [];
         }
 
-        // 点击条目本体：如果是叶子 → 选中并关闭；如果有子级 → 同 drill-down，展开下一级但不立即确认
+        // 点击条目本体：任意级别都立即"选中"——更新 ecSel.category + 触发器文字 + 字段/卖点联动
+        // 行为分两种：
+        //   - 叶子 → 选中后保持面板打开（用户可改主意继续选其他）
+        //   - 非叶子 → 同时展开下一级供继续向下选；用户停在某一级直接关面板即可
         function ecPickCascaderItem(level, display, hasChildren) {
             ecCatPath = ecCatPath.slice(0, level);
             ecCatPath.push(display);
+
+            // 实时写入选中并刷新所有依赖品类的 UI（触发器文字、字段下拉、卖点列表）
+            const prevPath = (ecSel.category || []).join('>');
+            ecSel.category = [...ecCatPath];
+            const txt = document.getElementById('ec-cat-text');
+            if (txt) txt.textContent = ecSel.category.join(' › ');
+            ecRecordCategoryHistory(ecSel.category);
+            if (prevPath !== ecCatPath.join('>')) ecResetCategoryScopedSelections();
+            ecRefreshCategoryUI();
+            ecRefreshCascaderColumns();
+
+            // 非叶子：继续展开下一级（用户可停可继续）
             if (hasChildren) {
-                ecRefreshCascaderColumns();
                 const container = document.getElementById('chooseCategory');
                 if (container) {
                     setTimeout(() => {
                         container.scroll({ left: container.scrollWidth, behavior: 'smooth' });
                     }, 10);
                 }
-                return;
             }
-            // 叶子 → 确认选中
-            const prevPath = (ecSel.category || []).join('>');
-            ecSel.category = [...ecCatPath];
-            // 记录最近使用
-            ecRecordCategoryHistory(ecSel.category);
-            
-            if (prevPath !== ecCatPath.join('>')) ecResetCategoryScopedSelections();
-            ecRefreshCategoryUI();
-            ecRefreshCascaderColumns(); // 刷新选中状态
         }
 
-        // 点击条目右侧 › ：只展开，不作为最终选择
+        // 点击条目右侧 › ：只展开下一级，不修改当前选中（用于"只想看看下一级有什么"）
         function ecDrillDown(level, display) {
             ecCatPath = ecCatPath.slice(0, level);
             ecCatPath.push(display);
@@ -2201,8 +2213,10 @@
         // 生图一致性约束：前置"主体锁定"段 + 尾部"负向清单"段
         // - 只在"有参考图"的前提下强调"严格以参考图产品为准"（没图时放这句反而会让模型空想）
         // - 负向段用自然语言而非 stable-diffusion 风格 tag；GPT-Image 吃这种
-        const EC_SUBJECT_LOCK = '【主体一致性-最高优先级】画面主体必须严格以参考图中的产品为准：形状轮廓、零件数量与位置（如喷孔/按键/旋钮/螺纹/接口）、配色、材质质感、logo 与标识位置 一律保持不变；如给出多张参考图，视作同一款产品的不同视角/细节，综合理解后再按下方要求重绘场景与文案排版。所有物体之间必须遵守真实物理规则：手部抓握、产品与墙面/桌面/置物架的接触均为表面贴合，不可相互穿透；前后遮挡关系必须清晰一致（前面的物体完整遮挡后面的物体，不得边缘混淆）。';
-        const EC_NEGATIVE      = '【禁止】不得增减或改变产品零件数量（如喷孔数、按键数、旋钮数、层数、挂钩数）；不得合并或简化结构；不得改变色彩、材质与 logo；不得出现文字/符号错写或乱码；不得模糊材质或丢失细节；不得把多场景拼在同一张图里（除非模板明确要求）。【禁止穿模 / 物体穿透】严禁出现以下任何穿模现象：手指或手掌穿过产品、产品零件穿过手；产品穿透墙面/桌面/玻璃门/置物架表面；衣袖、毛发、饰品穿过产品；两件物体在接触点出现"融合""共用边""嵌入对方内部"或"轮廓互相吃边"；手指关节弯曲方向违反人体结构（如反折、手指数量错误、手指穿过手指）；产品悬空但无支撑、或部分嵌入背景墙面；阴影方向与光源不一致或缺失接触阴影。所有接触点必须有清晰可见的接触边界与合理的接触阴影/压痕。';
+        // 全局约束（数据来源：羽刃电商模式-约束提示词.xlsx）
+        // 中文方括号标注的段落由 PromptCondenser 一字不动保留；末尾英文 tag 是业内标准负向词补强
+        const EC_SUBJECT_LOCK = '【主体一致性·全局-最高优先级】画面主体严格以参考图中的产品为准：形状轮廓、零件数量与位置（喷孔/按键/旋钮/螺纹/接口/层数/挂钩等）、配色与拼色、材质质感、logo 与标识位置 一律保持不变；多张参考图视作同款不同视角/细节，综合理解后再按下方要求重绘场景与文案。【画质与镜头·公共】采用专业影棚布光（studio lighting, soft shadows, high key lighting, well-lit），消除杂乱阴影；模拟真实相机的景深与锐度（shot on Sony A7R IV, 85mm f/1.8, sharp focus, bokeh），避免 AI 塑料感；居中构图、三分法、商业级取景，留白适中便于后期加文案。【产品真实性】结构稳定（structurally stable, realistic proportions, symmetrical），物理基础渲染让金属像金属、布料像布料（physically based rendering, realistic texture, tactile）；体现"给人用的工具"功能性而非纯装饰（functional object, practical design, human-centric design）。【物理合理性】手部抓握、产品与墙面/桌面/地面/玻璃的接触均为表面贴合不可穿透；前后遮挡关系清晰一致（前面物体完整遮挡后面物体不得边缘混淆）。【电商规范】白底或干净背景（clean background, isolated product），除非模板明确要求否则去除文字、人、UI 元素，避免侵权与干扰购买决策。';
+        const EC_NEGATIVE = '【禁止·结构与零件】不得增减或改变产品零件数量（喷孔/按键/旋钮/层数/挂钩等）；不得合并或简化结构；不得改变色彩/材质/logo；deformed, distorted, disfigured, bad anatomy, missing limbs, extra fingers。【禁止·穿模/物体穿透】手指或手掌穿过产品、产品零件穿过手；产品穿透墙面/桌面/玻璃门/置物架；衣袖/毛发/饰品穿过产品；两件物体在接触点出现融合/共用边/嵌入对方内部/轮廓互相吃边；手指关节反折/手指数量错误/手指穿过手指；产品悬空无支撑或部分嵌入背景墙面；阴影方向与光源不一致或缺失接触阴影。所有接触点必须有清晰可见接触边界与合理接触阴影/压痕。【禁止·画质与材质】worst quality, low quality, blurry, jpeg artifacts, noise, pixelated；plastic texture, floating, unnatural, uncanny valley；不得模糊材质或丢失细节。【禁止·光影】overexposed, underexposed, harsh lighting, heavy shadows, vignette；金属反光不得糊成一团白丢失表面细节。【禁止·电商合规】watermark, text, signature, logo, username, copyright；不得出现产品上的莫名字母或假洋牌 logo、莫名 measurement markings、UI 元素；不得把多场景拼在同一张图里（除非模板明确要求）。';
 
         function buildEcommercePrompts(userReq) {
             const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
