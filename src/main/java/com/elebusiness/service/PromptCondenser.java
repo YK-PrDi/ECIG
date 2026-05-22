@@ -31,12 +31,14 @@ public class PromptCondenser {
     private static final int MAX_INPUT_LEN = 1200; // 小于此长度直接跳过压缩；GPT-Image 实测能稳定吃 ~1500 字
 
     private static final String SYSTEM_RULE = """
-        你是电商主图生图提示词的压缩专家。请把用户给的长提示词压缩到 500 字以内，同时严格遵守：
+        你是电商主图生图提示词的压缩专家。请把用户给的长提示词压缩到 2000 字以内（GPT-Image 实测稳定吃 ~2000-3000 字，超过 3000 字注意力会衰减、关键约束被淹没），同时严格遵守：
         1. 必须保留：主体产品形态、安装结构、材质与颜色、文字/卖点标语及其位置、画面分区/构图（如"右上角两行""2×2 网格"等）、特效（蓝色发光、箭头、对比勾叉等）、背景元素（墙面材质、配饰、光影调性）。
-        2. 【最高优先级·禁止压缩或改写】涉及"产品主体一致性"与"物理穿模约束"的描述必须一字不动地保留：包括"主体一致性""禁止改变零件数量/形状/色彩/材质""不要增减喷孔/按键/旋钮/层数/挂钩"，以及所有关于"穿模/物体穿透/接触贴合/前后遮挡/手指穿过/穿透墙面或桌面/手指反折/接触阴影/悬空无支撑"的语句。任何带【...】或【主体一致性-最高优先级】【禁止】【禁止穿模 / 物体穿透】等方括号标注的段落整段照抄到输出中（不计入 500 字限制）。
-        3. 可以删除或合并：冗余的修饰性形容词、重复描述、明显的解释性括号、"画面焦点为绝对视觉中心"这类模板话术。
-        4. 禁止：换一种说法、添加原文没有的元素、翻译成英文、输出 JSON 或任何结构化格式。
-        5. 输出：直接输出压缩后的中文提示词，不要加任何前缀、引号或解释。
+        2. 【最高优先级·禁止压缩或改写】凡用【...】方括号包裹的段落（如【主体一致性·xx-最高优先级】【禁止·xx】等），整段照抄到输出，禁止改写、合并、删字。这部分已计入 2000 字预算，请把"非方括号正文"控制在剩余预算内。
+        3. 必须删除或合并的冗余：(a) 重复的修饰性形容词（"细腻""通透""自然柔和""清晰可见"叠用 3 次以上的留 1 次）；(b) 把同一意思用不同字眼说两遍的句子（"主次层级清晰"和"层级分明"留一句）；(c) "画面焦点为绝对视觉中心""所有元素无遮挡核心主体""空间层级分明"这类模板话术；(d) 解释性括号里的同义重复；(e) 把"拍摄角度：xxx；产品摆放：xxx；场景布局：xxx"这种字段标签拼成自然段，不要保留"xxx：xxx"的 K-V 重复。
+        4. 禁止：换一种说法改写非【】段、添加原文没有的元素、翻译成英文、输出 JSON 或任何结构化格式。
+        5. 输出必须是完整、闭合、可直接送给图像模型的中文段落 —— 禁止以未完成的列表编号（如"3)"）、省略号、半句话或冒号收尾；如果剩余预算不够写完一段，就把这段砍掉重新组织，确保整体闭合。
+        6. 如果原文已经在 2200 字以内，无需强行压缩，原样返回即可（保留所有【】并把字段标签拼成自然段就够了），避免为了凑数硬删导致信息丢失。
+        7. 直接输出压缩后的中文提示词，不要加任何前缀、引号、解释或元注释。第一行就是正文。
         """;
 
     private final AppProperties appProperties;
@@ -79,16 +81,20 @@ public class PromptCondenser {
 
         try {
             ObjectNode root = objectMapper.createObjectNode();
+            // systemInstruction 字段比把规则塞进 user content 服从度更高（Gemini 官方推荐做法）
+            ObjectNode sysInst = root.putObject("systemInstruction");
+            sysInst.putArray("parts").addObject().put("text", SYSTEM_RULE);
             ArrayNode contents = root.putArray("contents");
             ObjectNode content = contents.addObject();
             content.put("role", "user");
-            ArrayNode parts = content.putArray("parts");
-            parts.addObject().put("text", SYSTEM_RULE + "\n\n原提示词：\n" + prompt);
+            content.putArray("parts").addObject().put("text", "原提示词：\n" + prompt);
             ObjectNode genCfg = root.putObject("generationConfig");
             genCfg.put("temperature", 0.2);
-            genCfg.put("maxOutputTokens", 2000);
-            // 打开 Gemini 2.5 思考过程
-            genCfg.putObject("thinkingConfig").put("includeThoughts", true);
+            // 上一版 2000 + thinking 开启 → thinking 吃掉 ~1000 tokens，正文被截在 "3)" 处。
+            // 现在关 thinking、加大预算到 4000，1500 中文字 ≈ 2500 tokens，留足缓冲。
+            genCfg.put("maxOutputTokens", 4000);
+            // thinkingBudget=0：Gemini 2.5 Flash 完全关闭思考，所有 token 都用于正文输出
+            genCfg.putObject("thinkingConfig").put("thinkingBudget", 0);
 
             Request req = new Request.Builder()
                     .url(BASE_URL + MODEL + ":generateContent?key=" + apiKey)

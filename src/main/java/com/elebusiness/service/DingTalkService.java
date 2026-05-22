@@ -70,7 +70,10 @@ public class DingTalkService {
 
         Request request = new Request.Builder().url(url).get().build();
         try (Response response = httpClient.newCall(request).execute()) {
-            String body = response.body().string();
+            // OkHttp Response.body() 在异常路径上可能返回 null，直接 .string() 会 NPE（B 阶段审查 #6）
+            okhttp3.ResponseBody rb = response.body();
+            if (rb == null) throw new RuntimeException("获取钉钉 Token 失败: 响应为空");
+            String body = rb.string();
             JsonNode node = objectMapper.readTree(body);
             int errcode = node.path("errcode").asInt(-1);
             if (errcode != 0) {

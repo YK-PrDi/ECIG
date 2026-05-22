@@ -58,7 +58,7 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
 }
 
 /* ── 导航 ── */
-.topnav { height: 64px; display: flex; align-items: center; padding: 0 24px; background: var(--bg-panel); border-bottom: 1px solid var(--border); z-index: 2000; flex-shrink: 0; position: relative; }
+.topnav { height: 64px; display: flex; align-items: center; padding: 0 24px; background: var(--bg-panel); border-bottom: 1px solid var(--border); z-index: 2000; flex-shrink: 0; position: sticky; top: 0; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; color: var(--text-main); font-size: 1rem; }
 .brand-icon { width: 32px; height: 32px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; }
 .brand-icon.rainbow-logo { background: linear-gradient(135deg, #f43f5e, #f97316, #3b82f6, #22c55e, #f43f5e); background-size: 400% 400%; animation: rainbowBg 12s ease infinite; }
@@ -438,8 +438,11 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 14px 16px;
-    margin: 4px 0;
+    margin: 8px 0;
     align-self: stretch;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
 }
 .progress-card-header {
     display: flex;
@@ -1150,7 +1153,10 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 /* ── 修正欢迎页偏上问题：脱离文档流绝对居中 ── */
 .chat-messages {
     position: relative !important;
-    overflow: hidden;       /* 防止 emptyState 绝对定位溢出到下方配置抽屉/输入区 */
+    /* 这里之前写过 `overflow: hidden` 来防 emptyState 溢出，但它会把 line 253 的 overflow-y:auto
+       一起干掉 → 消息超过可视区时不滚动而是被硬切，顶部气泡看起来"顶进导航栏"、底部"顶进输入框"。
+       改回 overflow-y:auto；emptyState 自己用 absolute + 父级 isolate 限制层叠，不需要靠 hidden 兜。 */
+    overflow-y: auto;
     isolation: isolate;     /* 创建独立堆叠上下文，把 emptyState 的 z-index:2000 限制在本容器内 */
 }
 

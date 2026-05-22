@@ -66,7 +66,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
                     ? generateWithImages(prompt, imageFiles, outputPath, apiKey, baseUrl, size)
                     : generateTextOnly(prompt, outputPath, apiKey, baseUrl, size);
             if (ok) return true;
-            log.warn("GPT-Image key 尾号[{}] 失败，尝试下一个", apiKey.length() > 6 ? apiKey.substring(apiKey.length() - 6) : apiKey);
+            log.warn("GPT-Image key 尾号[{}] 失败，尝试下一个", apiKey.length() > 4 ? apiKey.substring(0, 4) + "***" : "***");
         }
         log.error("GPT-Image 所有 key 均失败");
         return false;
@@ -120,9 +120,13 @@ public class GptImageAgent implements ImageGeneratorAgent {
             }
 
             int status = conn.getResponseCode();
-            InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            conn.disconnect();
+            String respBody;
+            // try-with-resources 关 stream，conn.disconnect() 不保证关闭内部流（B 阶段审查 #4）
+            try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
+                respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            } finally {
+                conn.disconnect();
+            }
 
             if (status < 200 || status >= 300) {
                 log.error("GPT-Image edits 失败 ({}): {}", status, respBody);
@@ -147,7 +151,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
         for (String apiKey : orderedKeys()) {
             boolean ok = doGenerateWithMask(prompt, imageFile, maskFile, outputPath, apiKey, baseUrl);
             if (ok) return true;
-            log.warn("GPT-Image inpaint key 尾号[{}] 失败，尝试下一个", apiKey.length() > 6 ? apiKey.substring(apiKey.length() - 6) : apiKey);
+            log.warn("GPT-Image inpaint key 尾号[{}] 失败，尝试下一个", apiKey.length() > 4 ? apiKey.substring(0, 4) + "***" : "***");
         }
         log.error("GPT-Image inpaint 所有 key 均失败");
         return false;
@@ -178,9 +182,13 @@ public class GptImageAgent implements ImageGeneratorAgent {
             }
 
             int status = conn.getResponseCode();
-            InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            conn.disconnect();
+            String respBody;
+            // try-with-resources 关 stream，conn.disconnect() 不保证关闭内部流（B 阶段审查 #4）
+            try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
+                respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            } finally {
+                conn.disconnect();
+            }
 
             if (status < 200 || status >= 300) {
                 log.error("GPT-Image inpaint 失败 ({}): {}", status, respBody);
@@ -219,9 +227,13 @@ public class GptImageAgent implements ImageGeneratorAgent {
             }
 
             int status = conn.getResponseCode();
-            InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            conn.disconnect();
+            String respBody;
+            // try-with-resources 关 stream，conn.disconnect() 不保证关闭内部流（B 阶段审查 #4）
+            try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
+                respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            } finally {
+                conn.disconnect();
+            }
 
             if (status < 200 || status >= 300) {
                 log.error("GPT-Image generations 失败 ({}): {}", status, respBody);

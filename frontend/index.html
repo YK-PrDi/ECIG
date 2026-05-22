@@ -171,7 +171,7 @@
         <main class="workspace chat-panel" id="chatPanel">
             <div class="chat-messages" id="chatMessages">
                 <div class="empty-state" id="emptyState">
-                    <div class="glow-icon" onclick="switchTheme()">
+                    <div class="glow-icon rainbow-logo" onclick="switchTheme()">
                         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 1L14.7 8.3L22 11L14.7 13.7L12 21L9.3 13.7L2 11L9.3 8.3L12 1Z" />
                             <path
@@ -1133,6 +1133,21 @@
         }
 
         async function executeTask() {
+            // 阻止双击 / 连发：上一次提交还没拿到 taskId（或还在 inpaint 同步出图）就直接忽略
+            // 修这次"按了 20 次按钮 → 后台堆 20 条任务"的 bug
+            if (window.__taskSubmitting) return;
+            window.__taskSubmitting = true;
+            const sendBtn = document.getElementById('generateBtn');
+            if (sendBtn) sendBtn.disabled = true;
+            try {
+                await __executeTaskInner();
+            } finally {
+                window.__taskSubmitting = false;
+                if (sendBtn) sendBtn.disabled = false;
+            }
+        }
+
+        async function __executeTaskInner() {
             const promptInput = document.getElementById('promptInput');
             const prompt = promptInput.value.trim();
 
@@ -1263,9 +1278,10 @@
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
                     clearFiles();
+                    insertProgressCard(data.taskId);
                     startPolling(data.taskId);
                 } catch (e) {
-                    
+
                     appendMessage('ai', '生成失败：' + e.message);
                 }
 
@@ -1309,6 +1325,15 @@
                 formData.append('agentId', agentId);
                 if (isDetail) formData.append('aspect', '9:16');
 
+                // 诊断日志（v2026-05-22-r2）：前端实际发出的 prompt 数 / 图片数 / 是否 pair 模式
+                console.log('[ecommerce submit]', {
+                    promptCount: promptsToSend.length,
+                    imageCount: droppedFiles.length || (sessionImagePath ? 1 : 0),
+                    pairImages: usePair,
+                    imageType: ecSel.imageType,
+                    sellingsCount: ecSel.sellings.length,
+                });
+
                 const sellingLabels = ecSel.sellings.length
                     ? ecSel.sellings.map(s => s.label).join('、')
                     : '（未选卖点·基础图）';
@@ -1325,9 +1350,10 @@
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
                     clearFiles();
+                    insertProgressCard(data.taskId);
                     startPolling(data.taskId);
                 } catch (e) {
-                    
+
                     appendMessage('ai', '生成失败：' + e.message);
                 }
 
@@ -1364,6 +1390,7 @@
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
                     clearFiles();
+                    insertProgressCard(data.taskId);
                     startPolling(data.taskId);
                 } catch (e) {
                     appendMessage('ai', '启动失败：' + e.message);
@@ -1397,6 +1424,7 @@
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.message || data.error || '提交失败');
                     clearFiles();
+                    insertProgressCard(data.taskId);
                     startPolling(data.taskId);
                 } catch (e) {
                     appendMessage('ai', '启动失败：' + e.message);
@@ -1414,21 +1442,41 @@
 
         let elapsedTimer = null;
         function startPolling(taskId) {
-
-
             clearInterval(pollTimer);
+            clearInterval(elapsedTimer);
             const startTime = Date.now();
+
+            // 已用时秒级独立刷新（不依赖 2s 轮询节奏）
+            elapsedTimer = setInterval(() => {
+                const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
+                if (!card) return;
+                const el = card.querySelector('[data-role="elapsed"]');
+                if (el) el.textContent = fmtSec((Date.now() - startTime) / 1000);
+            }, 1000);
+
             pollTimer = setInterval(async () => {
                 try {
                     const res = await fetch(`/api/task/${taskId}`);
                     const data = await res.json();
-                    const pct = Math.round(((data.progress || 0) / (data.total || 1)) * 100);
-                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                    updateProgressCard(taskId, pct, `${data.progress || 0}/${data.total || 1}`, elapsed);
+                    const progress = data.progress || 0;
+                    const total = data.total || 1;
+                    const pct = Math.round((progress / total) * 100);
+                    const elapsedSec = (Date.now() - startTime) / 1000;
+                    // 预计剩余 = 已用 / 已完成 × 剩余张数
+                    let etaText = '估算中…';
+                    if (progress > 0 && progress < total) {
+                        etaText = fmtSec((elapsedSec / progress) * (total - progress));
+                    } else if (progress >= total) {
+                        etaText = '收尾中…';
+                    }
+                    const cur = data.currentProduct || '';
+                    const curText = cur
+                        ? `正在处理：${cur}`
+                        : (progress < total ? `正在生成第 ${progress + 1} 张…` : '');
+                    updateProgressCard(taskId, pct, `${progress}/${total}`, etaText, curText);
                     if (data.status !== 'running' && data.status !== 'pending') {
                         clearInterval(pollTimer);
                         clearInterval(elapsedTimer);
-                        
                         finalizeProgressCard(taskId, data);
                     }
                 } catch (e) { /* polling error */ }
@@ -1447,18 +1495,27 @@
                     <div class="progress-card-bar-wrap">
                         <div class="progress-card-bar-fill" data-role="bar" style="width:0%"></div>
                     </div>
-                    <div class="progress-card-meta">已用时 <span data-role="elapsed">0</span>s</div>
+                    <div class="progress-card-meta">
+                        已用时 <span data-role="elapsed">0:00</span>
+                        <span style="margin:0 8px;color:var(--text-dim);">·</span>
+                        预计剩余 <span data-role="eta">估算中…</span>
+                    </div>
+                    <div class="progress-card-meta" data-role="current" style="color:var(--text-dim);font-size:0.7rem;margin-top:4px;"></div>
                 </div>`);
             const inputH = (document.querySelector('.input-area-wrapper') || {}).offsetHeight || 0;
             msgs.scrollTop = msgs.scrollHeight + inputH + 40;
         }
 
-        function updateProgressCard(taskId, pct, countText, elapsed) {
+        function updateProgressCard(taskId, pct, countText, etaText, curText) {
             const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
             if (!card) return;
             card.querySelector('[data-role="bar"]').style.width = pct + '%';
             card.querySelector('[data-role="count"]').textContent = countText;
-            card.querySelector('[data-role="elapsed"]').textContent = elapsed;
+            const eta = card.querySelector('[data-role="eta"]');
+            if (eta && etaText !== undefined) eta.textContent = etaText;
+            const cur = card.querySelector('[data-role="current"]');
+            if (cur && curText !== undefined) cur.textContent = curText;
+            // 已用时由 elapsedTimer 秒级独立刷新，这里不动
         }
 
         function finalizeProgressCard(taskId, data) {
@@ -1735,7 +1792,11 @@
                 if (!shapeValue) return false;                  // 已声明 shapes 但用户未选形态：不展示
                 return s.shapes.includes(shapeValue);
             });
-            return [...presets, ...ecUserSellings(shapeValue || '')];
+            // 品类预设卖点的对象结构是 {label, prompt, composition}，没有 key 字段；
+            // 但渲染 / 选中 / 兜底全链路都靠 s.key 串起来 —— 没 key 时回落用 label 当 key。
+            // 用户自定义卖点已带 key，不动；这里只给 preset 兜底。
+            const presetsKeyed = presets.map(s => s.key ? s : Object.assign({ key: s.label }, s));
+            return [...presetsKeyed, ...ecUserSellings(shapeValue || '')];
         }
 
         let ecSel = { category: [], sellings: [], shortPrompt: '' };
@@ -2209,6 +2270,12 @@
         // 按"品类 + 形态结构"渲染卖点：未选品类禁用；选了品类未选形态时仍展示无 shapes 限定的预设
         function ecRenderSellings(shapeValue) {
             const container = document.getElementById('ec-selling-container');
+            // 已选卖点 key 走 window 全局兜底 —— ecRefreshConfigModal 会 innerHTML 替换整个 ecModalFieldsContainer，
+            // 连带 #ec-selling-container 本身都会被销毁重建，写在 dataset / ecSel.sellings 上都救不回来。
+            // window.__ecSelectedSellingKey 是脱离 DOM 与组件状态的最外层兜底，重建后从这里还原打勾。
+            const prevKey = (ecSel.sellings && ecSel.sellings[0] && ecSel.sellings[0].key)
+                         || (typeof window !== 'undefined' && window.__ecSelectedSellingKey)
+                         || '';
             ecSel.sellings = [];
             ecRefreshCompositionPreview();
             if (!ecIsCategoryReady()) {
@@ -2223,10 +2290,15 @@
                 return;
             }
             const isUser = s => ecUserSellings(shapeValue || '').some(u => u.key === s.key);
+            const restored = prevKey ? list.find(s => s.key === prevKey) : null;
+            if (restored) {
+                ecSel.sellings = [restored];
+                ecRefreshCompositionPreview();
+            }
             // 主图：单选（一次只生成 1 张）；详情页：仍按所选卖点列表
             container.innerHTML = list.map(s => `
                 <label style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.75rem;cursor:pointer;">
-                    <input type="radio" name="ec-selling" data-selling-key="${ecEscAttr(s.key)}" onchange="ecToggleSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}',this.checked)">
+                    <input type="radio" name="ec-selling" data-selling-key="${ecEscAttr(s.key)}"${restored && s.key === restored.key ? ' checked' : ''} onchange="ecToggleSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}',this.checked)">
                     ${ecEscAttr(s.label)}${isUser(s) ? '<em style="color:var(--text-dim);font-style:normal;font-size:0.68rem;margin-left:4px;">· 我的</em>' : ''}
                     ${isUser(s) ? `<span onclick="event.preventDefault();event.stopPropagation();ecDeleteUserSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}')" style="color:var(--text-dim);cursor:pointer;margin-left:2px;">✕</span>` : ''}
                 </label>
@@ -2263,8 +2335,13 @@
             // 旧选项不会发 uncheck 事件，所以这里采用"替换"语义。
             if (checked) {
                 ecSel.sellings = [item];
+                // 同步落到 window 全局：ecRefreshConfigModal 会 innerHTML 替换整个 ecModalFieldsContainer，
+                // 把 #ec-selling-container 自身销毁，写在 ecSel.sellings 上的状态会被新一轮 ecRenderSellings
+                // 的 `ecSel.sellings = []` 清掉。window 全局是脱离 DOM/组件状态的最外层兜底。
+                window.__ecSelectedSellingKey = key;
             } else {
                 ecSel.sellings = ecSel.sellings.filter(s => s.key !== key);
+                if (window.__ecSelectedSellingKey === key) window.__ecSelectedSellingKey = '';
             }
             ecRefreshCompositionPreview();
         }
@@ -2283,8 +2360,8 @@
         // - 负向段用自然语言而非 stable-diffusion 风格 tag；GPT-Image 吃这种
         // 全局约束（数据来源：羽刃电商模式-约束提示词.xlsx）
         // 中文方括号标注的段落由 PromptCondenser 一字不动保留；末尾英文 tag 是业内标准负向词补强
-        const EC_SUBJECT_LOCK = '【主体一致性·全局-最高优先级】画面主体严格以参考图中的产品为准：形状轮廓、零件数量与位置（喷孔/按键/旋钮/螺纹/接口/层数/挂钩等）、配色与拼色、材质质感、logo 与标识位置 一律保持不变；多张参考图视作同款不同视角/细节，综合理解后再按下方要求重绘场景与文案。【画质与镜头·公共】采用专业影棚布光（studio lighting, soft shadows, high key lighting, well-lit），消除杂乱阴影；模拟真实相机的景深与锐度（shot on Sony A7R IV, 85mm f/1.8, sharp focus, bokeh），避免 AI 塑料感；居中构图、三分法、商业级取景，留白适中便于后期加文案。【产品真实性】结构稳定（structurally stable, realistic proportions, symmetrical），物理基础渲染让金属像金属、布料像布料（physically based rendering, realistic texture, tactile）；体现"给人用的工具"功能性而非纯装饰（functional object, practical design, human-centric design）。【物理合理性】手部抓握、产品与墙面/桌面/地面/玻璃的接触均为表面贴合不可穿透；前后遮挡关系清晰一致（前面物体完整遮挡后面物体不得边缘混淆）。【电商规范】白底或干净背景（clean background, isolated product），除非模板明确要求否则去除文字、人、UI 元素，避免侵权与干扰购买决策。';
-        const EC_NEGATIVE = '【禁止·结构与零件】不得增减或改变产品零件数量（喷孔/按键/旋钮/层数/挂钩等）；不得合并或简化结构；不得改变色彩/材质/logo；deformed, distorted, disfigured, bad anatomy, missing limbs, extra fingers。【禁止·穿模/物体穿透】手指或手掌穿过产品、产品零件穿过手；产品穿透墙面/桌面/玻璃门/置物架；衣袖/毛发/饰品穿过产品；两件物体在接触点出现融合/共用边/嵌入对方内部/轮廓互相吃边；手指关节反折/手指数量错误/手指穿过手指；产品悬空无支撑或部分嵌入背景墙面；阴影方向与光源不一致或缺失接触阴影。所有接触点必须有清晰可见接触边界与合理接触阴影/压痕。【禁止·画质与材质】worst quality, low quality, blurry, jpeg artifacts, noise, pixelated；plastic texture, floating, unnatural, uncanny valley；不得模糊材质或丢失细节。【禁止·光影】overexposed, underexposed, harsh lighting, heavy shadows, vignette；金属反光不得糊成一团白丢失表面细节。【禁止·电商合规】watermark, text, signature, logo, username, copyright；不得出现产品上的莫名字母或假洋牌 logo、莫名 measurement markings、UI 元素；不得把多场景拼在同一张图里（除非模板明确要求）。';
+        const EC_SUBJECT_LOCK = '【主体一致性·全局-最高优先级】严格以参考图为准：产品形状轮廓、零件数量与位置（喷孔/按键/旋钮/螺纹/接口/层数/挂钩）、配色、材质、logo 与标识位置一律不变；多张参考图视作同款不同视角，综合理解后重绘场景。【画质·公共】专业影棚布光（studio lighting, soft shadows）、Sony A7R IV 85mm f/1.8 级真实景深与锐度，避免 AI 塑料感；居中或三分法商业级取景，留白便于后期加文案。【物理合理性】手部抓握、产品与墙/桌/地/玻璃接触均为表面贴合不穿透；前后遮挡关系清晰；阴影方向与光源一致，接触点必有可见接触阴影。【电商规范】白底或干净背景，无文字/人/UI 元素（除非模板明确要求）。';
+        const EC_NEGATIVE = '【禁止·结构】产品零件数量/形状/色彩/材质/logo 改变、合并简化结构、deformed、bad anatomy、extra fingers。【禁止·穿模】手指穿过产品、产品穿透墙/桌/玻璃/置物架、衣袖/毛发穿过产品、接触点融合/共用边/嵌入对方、产品悬空无支撑或部分嵌入背景。【禁止·画质】worst quality、low quality、blurry、noise、pixelated、plastic texture、uncanny valley、模糊材质、丢失细节。【禁止·光影】overexposed、underexposed、harsh lighting、heavy shadows、金属反光糊成白片丢失细节、阴影方向与光源不一致。【禁止·合规】watermark、text、signature、产品上出现假 logo / measurement markings / UI 元素、把多场景拼成一张图（除非模板明确要求）。';
 
         function buildEcommercePrompts(userReq) {
             const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
@@ -2341,7 +2418,20 @@
             const intro = '你是一个中国电商资深视觉设计师，请根据以下参数生成一张高清电商主图，突出产品质感与使用场景。';
 
             // 主图始终只生成 1 张：未选卖点 → 通用基础图；选了卖点 → 取第一个卖点（UI 已强制单选，这里防御性兜底）
-            const sel = (ecSel.sellings && ecSel.sellings[0]) || null;
+            // 兜底：状态丢失时从 DOM radio 实时读一次 —— 用户报"明明选了卖点却说未选"基本都是 ecSel.sellings 被某次重渲清空
+            let sel = (ecSel.sellings && ecSel.sellings[0]) || null;
+            if (!sel) {
+                const checkedRadio = document.querySelector('input[name="ec-selling"]:checked');
+                if (checkedRadio) {
+                    const key = checkedRadio.dataset.sellingKey;
+                    const list = (typeof ecGetSellings === 'function') ? ecGetSellings(ecSel.shape || '') : [];
+                    sel = list.find(s => s.key === key) || null;
+                    if (sel) {
+                        ecSel.sellings = [sel];
+                        console.log('[ecommerce submit] 卖点状态丢失，已从 DOM 还原:', sel.key);
+                    }
+                }
+            }
             if (!sel) {
                 const paramsText = base.length ? `参数：${base.join('；')}。` : '（用户未指定参数，请按通用电商主图风格发挥。）';
                 return [`${lockLine}${intro}\n${paramsText}\n${negative}`];
