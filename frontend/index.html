@@ -73,6 +73,12 @@
                         <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
                         代理设置
                     </div>
+                    <!-- 生成完自动加到画布的开关（视频模式不参与） -->
+                    <div class="user-menu-item" onclick="event.stopPropagation();toggleAutoBoard()">
+                        <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span style="flex:1;">自动加到画布</span>
+                        <span id="autoBoardSwitch" style="margin-left:auto;font-size:0.72rem;color:var(--primary);">开</span>
+                    </div>
                     <div style="height: 1px; background: var(--border); margin: 8px -20px 0;"></div>
                     <div class="user-menu-item" style="color: #EF4444;" onclick="document.getElementById('loginOverlay').style.display='flex'">退出登录</div>
                 </div>
@@ -373,27 +379,41 @@
                         <div id="kaipinConfig" class="panel-view">
                             <div class="config-group" style="width:100%; align-items:flex-start; gap:12px;">
                                 <div style="font-size:0.78rem;color:var(--text-dim);line-height:1.5;padding:8px 10px;background:var(--primary-light);border-radius:6px;">
-                                    🚀 跨界开品设计师：用产品 A 的<b>功能内核</b>套产品 B 的<b>造型语言</b>，生成新概念产品图。请上传两张参考图（顺序：先 A，再 B）；或在下方分别填关键词。
+                                    🚀 跨界开品设计师：用产品 A 的<b>功能内核</b>套产品 B 的<b>造型语言</b>，生成新概念产品的<b>使用场景图</b>（产品在真实使用环境中）。可在下方为 A/B 各上传一张参考图。
                                 </div>
                                 <label style="margin-top:4px;">产品 A · 功能本体</label>
-                                <input type="text" id="kpProductA" placeholder="如：手持挂烫机；痛点：水箱小要频繁加水、底板易刮花衣服" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
+                                <div style="display:flex;gap:6px;width:100%;align-items:stretch;">
+                                    <input type="text" id="kpProductA" placeholder="如：手持挂烫机；痛点：水箱小要频繁加水、底板易刮花衣服" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
+                                    <input type="file" id="kpFileA" accept="image/*" style="display:none;" onchange="kpHandleFile('A', this)">
+                                    <button type="button" onclick="document.getElementById('kpFileA').click()" style="padding:0 10px;border:1px dashed var(--border);border-radius:6px;font-size:0.78rem;cursor:pointer;background:transparent;color:var(--text-dim);" title="上传产品 A 参考图">📎</button>
+                                </div>
+                                <div id="kpThumbA" style="display:none;"></div>
                                 <label>产品 B · 造型灵感</label>
-                                <input type="text" id="kpProductB" placeholder="如：特斯拉 CyberTruck；不锈钢外骨骼、几何折痕、硬核工业风" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
-                                <label>核心卖点 / 一句广告语（可留空）</label>
-                                <input type="text" id="kpSelling" placeholder="如：像艺术品一样省电的空调；目标人群：科技极客 + 颜值党" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
+                                <div style="display:flex;gap:6px;width:100%;align-items:stretch;">
+                                    <input type="text" id="kpProductB" placeholder="如：特斯拉 CyberTruck；不锈钢外骨骼、几何折痕、硬核工业风" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
+                                    <input type="file" id="kpFileB" accept="image/*" style="display:none;" onchange="kpHandleFile('B', this)">
+                                    <button type="button" onclick="document.getElementById('kpFileB').click()" style="padding:0 10px;border:1px dashed var(--border);border-radius:6px;font-size:0.78rem;cursor:pointer;background:transparent;color:var(--text-dim);" title="上传产品 B 参考图">📎</button>
+                                </div>
+                                <div id="kpThumbB" style="display:none;"></div>
+                                <label>核心卖点 / 一句广告语 <span style="color:#dc2626;">*</span></label>
+                                <input type="text" id="kpSelling" required placeholder="必填，如：像艺术品一样省电的空调；目标人群：科技极客 + 颜值党" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
                                 <label>方案侧重</label>
                                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
                                     <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:6px;">
-                                        <input type="radio" name="kpFocus" value="cost" checked> 成本与量产
+                                        <input type="radio" name="kpFocus" value="cost" checked onchange="kpToggleCustomFocus()"> 成本与量产
                                     </label>
                                     <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:6px;">
-                                        <input type="radio" name="kpFocus" value="premium"> 颜值与溢价
+                                        <input type="radio" name="kpFocus" value="premium" onchange="kpToggleCustomFocus()"> 颜值与溢价
                                     </label>
                                     <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:6px;">
-                                        <input type="radio" name="kpFocus" value="disruptive"> 颠覆性创新
+                                        <input type="radio" name="kpFocus" value="disruptive" onchange="kpToggleCustomFocus()"> 颠覆性创新
+                                    </label>
+                                    <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:6px;">
+                                        <input type="radio" name="kpFocus" value="custom" onchange="kpToggleCustomFocus()"> 自定义
                                     </label>
                                 </div>
-                                <div style="font-size:0.7rem;color:var(--text-dim);line-height:1.4;margin-top:4px;">提示：在主输入框可以拖拽 / 选择 2 张图片（第 1 张 = 产品 A 功能本体，第 2 张 = 产品 B 造型灵感）。也可以只填上方关键词不传图。</div>
+                                <input type="text" id="kpFocusCustom" placeholder="自定义方案侧重，如：极简北欧风、可上墙安装、目标用户 Z 世代…（留空则不指定）" style="display:none;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
+                                <div style="font-size:0.7rem;color:var(--text-dim);line-height:1.4;margin-top:4px;">提示：A/B 输入框旁的 📎 各传一张参考图，也可只填文字。生成结果会自动放到左侧画布（顶栏开关可关闭）。</div>
                             </div>
                         </div>
                     </div>
@@ -1358,32 +1378,39 @@
                 }
 
             } else if (currentMode === 'kaipin') {
-                // 开品模式：跨界开品设计师角色，把产品 A 的功能套产品 B 的造型 → 新概念产品图
+                // 开品模式：跨界开品设计师角色，把产品 A 的功能套产品 B 的造型 → 新概念产品场景图
                 apiPath = '/api/custom_generate';
                 const a = (document.getElementById('kpProductA')?.value || '').trim();
                 const b = (document.getElementById('kpProductB')?.value || '').trim();
                 const sel = (document.getElementById('kpSelling')?.value || '').trim();
                 const focus = document.querySelector('input[name="kpFocus"]:checked')?.value || 'cost';
-                if (!a || !b) {
-                    alert('开品模式需要同时填写"产品 A · 功能本体"与"产品 B · 造型灵感"，至少给出关键词描述');
+                // A/B 文字框可选 —— 用户传图也能表达；只要"A 那一边（文字 or 图）+ B 那一边（文字 or 图）"都不空就行
+                const hasA = !!a || !!window.kpRefA;
+                const hasB = !!b || !!window.kpRefB;
+                if (!hasA || !hasB) {
+                    alert('开品模式需要给 A 和 B 各提供材料：每边可以填文字、传图片、或两者都给，至少不能两边都空');
                     return;
                 }
-                const refCount = droppedFiles.length;
-                if (refCount > 0 && refCount < 2) {
-                    alert('开品模式建议同时上传 2 张参考图（第 1 张 = 产品 A，第 2 张 = 产品 B）；或者不传图仅靠文本描述');
+                if (!sel) {
+                    alert('开品模式需要填写"核心卖点 / 一句广告语"（必填，用来驱动场景与文案）');
                     return;
                 }
+                // 改用 A/B 各自的图片上传位（kpRefA / kpRefB），替代旧的 droppedFiles 顺序判断
+                const refs = [];
+                if (window.kpRefA) refs.push(window.kpRefA);
+                if (window.kpRefB) refs.push(window.kpRefB);
                 const kpPrompt = buildKaiPinPrompt(a, b, sel, focus, payload.prompt);
                 const formData = new FormData();
-                droppedFiles.forEach(f => formData.append('images', f));
+                refs.forEach(f => formData.append('images', f));
                 formData.append('prompt', kpPrompt);
                 formData.append('count', '1');
                 formData.append('agentId', agentId);
+                const focusLabel = {cost:'成本与量产', premium:'颜值与溢价', disruptive:'颠覆性创新', custom:'自定义'}[focus];
                 appendMessage('user',
                     `[开品模式] 模型: ${agentId}\n产品 A: ${a}\n产品 B: ${b}` +
-                    (sel ? `\n卖点: ${sel}` : '') +
-                    `\n方案侧重: ${ {cost:'成本与量产', premium:'颜值与溢价', disruptive:'颠覆性创新'}[focus] }` +
-                    (refCount ? `\n参考图: ${refCount} 张` : '（仅文本，无参考图）'));
+                    `\n卖点: ${sel}` +
+                    `\n方案侧重: ${focusLabel}` +
+                    (refs.length ? `\n参考图: A=${window.kpRefA ? '有' : '无'} / B=${window.kpRefB ? '有' : '无'}` : '（仅文本，无参考图）'));
                 try {
                     promptInput.value = '';
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
@@ -1551,6 +1578,46 @@
                 renderGeneratedImages(successList);
                 appendThoughts(thoughts);
             }
+            // 全模式自动塞画布（视频模式跳过 — 视频不是图片）
+            if (data.mode !== 'video' && successList.length > 0) {
+                autoAddToBoard(successList);
+            }
+        }
+
+        // ── 自动加到画布的全局开关（默认开），localStorage 持久化 ──
+        window.__autoBoard = (function() {
+            try { return localStorage.getItem('autoBoard') !== '0'; } catch (e) { return true; }
+        })();
+        function toggleAutoBoard() {
+            window.__autoBoard = !window.__autoBoard;
+            try { localStorage.setItem('autoBoard', window.__autoBoard ? '1' : '0'); } catch (e) {}
+            const sw = document.getElementById('autoBoardSwitch');
+            if (sw) {
+                sw.textContent = window.__autoBoard ? '开' : '关';
+                sw.style.color = window.__autoBoard ? 'var(--primary)' : 'var(--text-dim)';
+            }
+        }
+        // 启动时同步开关 UI（HTML 默认显示"开"，关掉时立即更新）
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!window.__autoBoard) {
+                const sw = document.getElementById('autoBoardSwitch');
+                if (sw) { sw.textContent = '关'; sw.style.color = 'var(--text-dim)'; }
+            }
+        });
+
+        // 把成功生成的图加到左侧画布。视频模式由调用方排除；ResourceController 的 /api/image
+        // 路由会按绝对路径返回图片字节，board.addImage 给 img.src 赋这个 URL 即可。
+        function autoAddToBoard(successList) {
+            if (!window.__autoBoard) return;
+            if (typeof board === 'undefined' || !board) return;
+            successList.forEach(r => {
+                const path = r.output;
+                if (!path) return;
+                // 仅图片：常见 jpg/png/webp（视频已在调用方过滤，这里再防御一下）
+                const lower = String(path).toLowerCase();
+                if (!/\.(jpe?g|png|webp|gif|bmp)$/.test(lower)) return;
+                board.addImage('/api/image?path=' + encodeURIComponent(path), null);
+            });
         }
 
         // ── AI 思考过程折叠块（灰字，点击展开） ──
@@ -2446,20 +2513,68 @@
             const focusMap = {
                 cost: '【方案侧重·成本与量产】CMF 与结构在不牺牲核心功能的前提下尽量降低成本与开模难度；优先采用注塑/钣金等成熟工艺；颜色与材质走简洁实用风。',
                 premium: '【方案侧重·颜值与溢价】放大造型语言的高端感；CMF 选择高级材质（拉丝金属/真皮/木纹/陶瓷釉面）；表面工艺精致；体现"摆在客厅当艺术品也不违和"的格调。',
-                disruptive: '【方案侧重·颠覆性创新】允许突破常规结构去拥抱产品 B 的造型；可加入隐藏机构、模块化、可拆解、智能化等新颖设计语言；视觉冲击优先。'
+                disruptive: '【方案侧重·颠覆性创新】允许突破常规结构去拥抱产品 B 的造型；可加入隐藏机构、模块化、可拆解、智能化等新颖设计语言；视觉冲击优先。',
+                custom: '' // custom 分支由 buildKaiPinPrompt 调用方动态拼接 kpFocusCustom 文本，留空字符串即可
             };
             const role = '【角色】跨界开品设计师 (Hybrid Product Designer)：15 年硬件产品开品经验，擅长"借壳上市"——保留成熟市场的功能内核（产品 A），套用另一个流行领域的造型语言（产品 B），创造既有销量保障又有视觉新鲜感的爆款新品。坚信最好的创新不是从零创造，而是跨界基因重组；所有创意基于供应链可实现、成本可控的前提；造型改变必须服务于功能体验或情感价值。';
-            const refHint = '如给出 2 张参考图：第 1 张是产品 A（功能本体，提供产品类目/结构/接口/操作逻辑），第 2 张是产品 B（造型灵感，仅提供造型语言/线条比例/CMF/风格氛围）。请综合理解后生成新概念产品的高清正面图。';
-            const taskGuide = '【生成任务】请输出 1 张高清电商主图风格的新品渲染图：保留产品 A 的核心功能与结构（散热孔/接口/按键/电源线等可正常工作的工程必需品），同时把产品 B 的造型语言（轮廓比例/几何切割/CMF/表面纹理/颜色搭配）应用到 A 的整体形态上。结构必须供应链可实现、用户可正常使用，不强行缝合（若 B 的造型完全无法承载 A 的功能，请合理简化造型保留功能）。';
-            const lock  = '【主体合理性·开品-最高优先级】1) 产品 A 的功能必须可见且可用：原有的操作面板/按键/接口/出风口/出水口等核心交互不可被造型遮蔽或省略；2) 产品 B 的造型语言要"神似"而非"形似"，避免直接抄袭品牌设计；3) 工业设计 product industrial design / clean studio render / 3 4 view, hero shot / professional product photography / clean background / sharp focus, high detail, physically based rendering；4) 比例真实可制造，结构稳定。';
-            const neg   = '【禁止·开品】worst quality, blurry, jpeg artifacts；deformed, distorted, asymmetrical, bad anatomy；plastic toy look, uncanny valley；direct copy of branded design, brand logo, watermark, text；non-functional design, physics defying, floating parts, broken connections；harsh lighting, overexposed, heavy shadows；不要把产品 A 与产品 B 简单拼贴并列展示，必须是融合后的"新产品"单体。';
-            const parts = [role, taskGuide, focusMap[focus] || focusMap.cost, refHint, lock,
+            const refHint = '如给出 2 张参考图：第 1 张是产品 A（功能本体，提供产品类目/结构/接口/操作逻辑），第 2 张是产品 B（造型灵感，仅提供造型语言/线条比例/CMF/风格氛围）。请综合理解后生成新概念产品在真实使用场景中的高清渲染图。';
+            // 改 #3：从"高清电商主图"改为"使用场景图"，强制产品在真实使用环境中而非孤立白底
+            const taskGuide = '【生成任务】请输出 1 张高清产品使用场景图：把新概念产品放在符合其使用场景的真实环境中（如挂烫机放在客厅有衣物熨烫场景、智能音箱放在卧室床头柜、户外水壶放在登山徒步场景、空调挂在客厅墙面有人坐在沙发上）。环境真实合理，光影自然，构图突出产品但不是孤立白底。新产品要保留产品 A 的核心功能与结构（散热孔/接口/按键/电源线等可正常工作的工程必需品），同时把产品 B 的造型语言（轮廓比例/几何切割/CMF/表面纹理/颜色搭配）应用到 A 的整体形态上。结构必须供应链可实现、用户可正常使用，不强行缝合（若 B 的造型完全无法承载 A 的功能，请合理简化造型保留功能）。';
+            // 改强：在 lock 段强化"融合不是拼贴" + "必须有真实场景"
+            const lock  = '【主体合理性·开品-最高优先级】1) 输出必须是一个融合后的全新单体产品，绝不是把 A 与 B 简单并列拼贴；2) 必须有真实使用场景与环境光影，禁止白底/影棚孤立背景；3) 产品 A 的功能必须可见且可用：原有的操作面板/按键/接口/出风口/出水口等核心交互不可被造型遮蔽或省略；4) 产品 B 的造型语言要"神似"而非"形似"，避免直接抄袭品牌设计；5) 工业设计 product industrial design / professional product photography / sharp focus, high detail, physically based rendering / lifestyle scene context；6) 比例真实可制造，结构稳定。';
+            // 改强：negative 段加"无白底""无并列拼贴"
+            const neg   = '【禁止·开品】worst quality, blurry, jpeg artifacts；deformed, distorted, asymmetrical, bad anatomy；plastic toy look, uncanny valley；direct copy of branded design, brand logo, watermark, text；non-functional design, physics defying, floating parts, broken connections；harsh lighting, overexposed, heavy shadows；no isolated white background, no studio backdrop, no plain seamless background, no e-commerce style isolated render, no product catalog photo；do not place product A and product B side by side or as a composite collage; the output must be ONE single new product that organically merges A function with B form language；不要把产品 A 与产品 B 简单拼贴并列展示，必须是融合后的"新产品"单体。';
+            // custom 分支：把用户填写的自定义文案直接作为方案侧重（留空则不加这段）
+            let focusText = focusMap[focus] || focusMap.cost;
+            if (focus === 'custom') {
+                const customText = (document.getElementById('kpFocusCustom')?.value || '').trim();
+                focusText = customText ? `【方案侧重·自定义】${customText}` : '';
+            }
+            const parts = [role, taskGuide];
+            if (focusText) parts.push(focusText);
+            parts.push(refHint, lock,
                 `【产品 A · 功能本体】${productA}`,
-                `【产品 B · 造型灵感】${productB}`];
+                `【产品 B · 造型灵感】${productB}`);
             if (selling) parts.push(`【核心卖点 / 广告语】${selling}`);
             if (userReq) parts.push(`【客户附加要求】${userReq}`);
             parts.push(neg);
             return parts.join('\n');
+        }
+
+        // ── 开品模式：A/B 各自的图片上传与缩略图渲染 ──
+        // window 全局存 File 对象，重渲不丢；走 URL.createObjectURL 显示缩略图
+        window.kpRefA = null;
+        window.kpRefB = null;
+        function kpHandleFile(slot, input) {
+            const f = input.files && input.files[0];
+            input.value = ''; // 允许重复选同一文件
+            if (!f) return;
+            if (slot === 'A') window.kpRefA = f; else window.kpRefB = f;
+            kpRenderThumb(slot);
+        }
+        function kpRenderThumb(slot) {
+            const file = slot === 'A' ? window.kpRefA : window.kpRefB;
+            const div = document.getElementById('kpThumb' + slot);
+            if (!div) return;
+            if (!file) { div.style.display = 'none'; div.innerHTML = ''; return; }
+            const url = URL.createObjectURL(file);
+            div.innerHTML = `
+                <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);">
+                    <img src="${url}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" alt="${slot}">
+                    <span style="font-size:0.72rem;color:var(--text-dim);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${file.name}</span>
+                    <span onclick="kpClearFile('${slot}')" style="cursor:pointer;color:var(--text-dim);padding:0 4px;font-size:0.85rem;" title="移除">✕</span>
+                </div>
+            `;
+            div.style.display = 'block';
+        }
+        function kpClearFile(slot) {
+            if (slot === 'A') window.kpRefA = null; else window.kpRefB = null;
+            kpRenderThumb(slot);
+        }
+        function kpToggleCustomFocus() {
+            const focus = document.querySelector('input[name="kpFocus"]:checked')?.value || 'cost';
+            const inp = document.getElementById('kpFocusCustom');
+            if (inp) inp.style.display = (focus === 'custom') ? 'block' : 'none';
         }
 
         // ── 文件选择框（图片 / 文件夹）──
