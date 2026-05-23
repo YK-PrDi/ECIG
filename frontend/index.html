@@ -413,6 +413,8 @@
                                     </label>
                                 </div>
                                 <input type="text" id="kpFocusCustom" placeholder="自定义方案侧重，如：极简北欧风、可上墙安装、目标用户 Z 世代…（留空则不指定）" style="display:none;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
+                                <label>生成张数（默认 1，有需要自己改）</label>
+                                <input type="number" id="kpCount" value="1" min="1" max="50" step="1" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.78rem;">
                                 <div style="font-size:0.7rem;color:var(--text-dim);line-height:1.4;margin-top:4px;">提示：A/B 输入框旁的 📎 各传一张参考图，也可只填文字。生成结果会自动放到左侧画布（顶栏开关可关闭）。</div>
                             </div>
                         </div>
@@ -1152,6 +1154,77 @@
             if (el) el.textContent = document.querySelectorAll('input[type="checkbox"]:checked').length;
         }
 
+        // Electron 打包应用里 window.alert() 弹原生 OS dialog，关闭后 webContents 焦点
+        // 跑到 body / null（known issue），导致用户报"alert 关掉后输入框无法继续输入"。
+        // 用这个 wrapper：alert 后用 setTimeout 把焦点强制还给指定 input 或就近的输入元素。
+        // 浏览器开发期 alert 焦点恢复良好不复现，所以只在打包应用里有问题。
+        function alertSafe(msg, focusElId) {
+            alert(msg);
+            // setTimeout 0 让 alert 完全关闭后再操作焦点；直接同步调 .focus() 在 Electron 里无效
+            setTimeout(() => {
+                let el = focusElId ? document.getElementById(focusElId) : null;
+                if (!el || el.disabled) {
+                    // 兜底：找当前可见 panel 里第一个可输入元素
+                    el = document.querySelector('.panel-view:not([style*="display: none"]) input[type="text"], .panel-view:not([style*="display: none"]) textarea')
+                      || document.getElementById('promptInput');
+                }
+                if (el && typeof el.focus === 'function') {
+                    try { el.focus(); } catch (e) {}
+                }
+            }, 0);
+        }
+
+        // 重新生成功能（standard / custom / ecommerce / kaipin 4 模式，video 跳过）：
+        // 每次提交前抓拍 apiPath + body 快照；图片右下角 🔄 调 regenerateLastGen 复用快照重发，
+        // 不需要重新配置面板和上传图片。FormData 通过 entries 数组保存（含 File 引用），
+        // 重生时新建 FormData 注入避免共用同一对象的潜在 stream 状态。
+        window.__lastGenSnapshot = null;
+        function captureLastGen(apiPath, payload, bubbleText) {
+            if (payload instanceof FormData) {
+                window.__lastGenSnapshot = {
+                    kind: 'multipart', apiPath, bubbleText,
+                    entries: Array.from(payload.entries())
+                };
+            } else {
+                window.__lastGenSnapshot = {
+                    kind: 'json', apiPath, bubbleText,
+                    payload: JSON.parse(JSON.stringify(payload))  // 深拷贝防外部 mutate
+                };
+            }
+        }
+        async function regenerateLastGen() {
+            const snap = window.__lastGenSnapshot;
+            if (!snap) { alertSafe('没有可重新生成的记录，请先正常生成一次'); return; }
+            if (window.__taskSubmitting) return;
+            window.__taskSubmitting = true;
+            const sendBtn = document.getElementById('generateBtn');
+            if (sendBtn) sendBtn.disabled = true;
+            try {
+                appendMessage('user', '🔄 重新生成 — ' + (snap.bubbleText || '上次的参数'));
+                let resp;
+                if (snap.kind === 'json') {
+                    resp = await fetch(snap.apiPath, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(snap.payload)
+                    });
+                } else {
+                    const fd = new FormData();
+                    for (const [k, v] of snap.entries) fd.append(k, v);
+                    resp = await fetch(snap.apiPath, { method: 'POST', body: fd });
+                }
+                const data = await resp.json();
+                if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
+                insertProgressCard(data.taskId);
+                startPolling(data.taskId);
+            } catch (e) {
+                appendMessage('ai', '重新生成失败：' + (e.message || e));
+            } finally {
+                window.__taskSubmitting = false;
+                if (sendBtn) sendBtn.disabled = false;
+            }
+        }
+
         async function executeTask() {
             // 阻止双击 / 连发：上一次提交还没拿到 taskId（或还在 inpaint 同步出图）就直接忽略
             // 修这次"按了 20 次按钮 → 后台堆 20 条任务"的 bug
@@ -1228,9 +1301,10 @@
                 appendMessage('user', `[生图任务] 模型: ${agentId}\n提示词: ${payload.prompt}`);
 
                 try {
-                    
+
                     promptInput.value = '';
 
+                    captureLastGen(apiPath, payload, `[标准模式] 模型 ${agentId}，${ids.length} 个产品`);
                     const resp = await fetch(apiPath, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1291,9 +1365,10 @@
                 }
 
                 try {
-                    
+
                     promptInput.value = '';
 
+                    captureLastGen(apiPath, formData, `[${taskLabel}] 模型 ${agentId}`);
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
@@ -1363,9 +1438,10 @@
                 appendMessage('user', headline);
 
                 try {
-                    
+
                     promptInput.value = '';
 
+                    captureLastGen(apiPath, formData, `[电商模式] 模型 ${agentId}，${promptsToSend.length} 张`);
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
@@ -1388,11 +1464,11 @@
                 const hasA = !!a || !!window.kpRefA;
                 const hasB = !!b || !!window.kpRefB;
                 if (!hasA || !hasB) {
-                    alert('开品模式需要给 A 和 B 各提供材料：每边可以填文字、传图片、或两者都给，至少不能两边都空');
+                    alertSafe('开品模式需要给 A 和 B 各提供材料：每边可以填文字、传图片、或两者都给，至少不能两边都空', 'kpProductA');
                     return;
                 }
                 if (!sel) {
-                    alert('开品模式需要填写"核心卖点 / 一句广告语"（必填，用来驱动场景与文案）');
+                    alertSafe('开品模式需要填写"核心卖点 / 一句广告语"（必填，用来驱动场景与文案）', 'kpSelling');
                     return;
                 }
                 // 改用 A/B 各自的图片上传位（kpRefA / kpRefB），替代旧的 droppedFiles 顺序判断
@@ -1403,7 +1479,10 @@
                 const formData = new FormData();
                 refs.forEach(f => formData.append('images', f));
                 formData.append('prompt', kpPrompt);
-                formData.append('count', '1');
+                // 生成张数：用户在 #kpCount 输入框填的，默认 1；非数字 / 越界全兜底为 1
+                const kpCountRaw = parseInt(document.getElementById('kpCount')?.value, 10);
+                const kpCount = (Number.isFinite(kpCountRaw) && kpCountRaw >= 1 && kpCountRaw <= 50) ? kpCountRaw : 1;
+                formData.append('count', String(kpCount));
                 formData.append('agentId', agentId);
                 const focusLabel = {cost:'成本与量产', premium:'颜值与溢价', disruptive:'颠覆性创新', custom:'自定义'}[focus];
                 appendMessage('user',
@@ -1413,6 +1492,7 @@
                     (refs.length ? `\n参考图: A=${window.kpRefA ? '有' : '无'} / B=${window.kpRefB ? '有' : '无'}` : '（仅文本，无参考图）'));
                 try {
                     promptInput.value = '';
+                    captureLastGen(apiPath, formData, `[开品模式] 模型 ${agentId}，A: ${a || '(图)'} × B: ${b || '(图)'}`);
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
@@ -1674,6 +1754,9 @@
                                 <button class="feedback-btn" onclick="sendFeedback(this,'dislike','${safePrompt}','${safePath}')" title="不满意">
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
                                 </button>
+                                <button class="feedback-btn" onclick="event.stopPropagation();regenerateLastGen()" title="用上次的参数重新生成（不用重新配置面板和上传图片）" style="margin-left:auto;">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                </button>
                               </div>`;
                             htmlContent += `</div>`;
                         }
@@ -1930,10 +2013,14 @@
             html += `<div id="ec-scoped-fields-box" style="display:flex;flex-wrap:wrap;gap:16px;width:100%;"></div>`;
 
             html += `<div class="config-group" style="width:100%;">
-                <label style="display:flex;align-items:center;gap:8px;">
+                <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     卖点（单选；不选则生成 1 张通用基础图）
                     <button type="button" onclick="ecPromptAddSelling()" style="font-size:0.7rem;padding:2px 8px;border:1px dashed var(--border);border-radius:6px;background:transparent;cursor:pointer;color:var(--text-muted);">➕ 为当前形态添加卖点</button>
                 </label>
+                <input type="text" id="ec-selling-search" placeholder="🔎 搜索卖点（按 label / prompt 模糊匹配）"
+                       value="${(window.__ecSellingSearch || '').replace(/"/g, '&quot;')}"
+                       oninput="ecOnSellingSearch(this.value)"
+                       style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.75rem;margin-bottom:6px;">
                 <div id="ec-selling-container" style="display:flex;flex-wrap:wrap;gap:6px;">
                     <span style="font-size:0.75rem;color:var(--text-dim);">请先选择品类（叶子级）</span>
                 </div>
@@ -2349,11 +2436,21 @@
                 container.innerHTML = '<span style="font-size:0.75rem;color:var(--text-dim);">请先选择品类（叶子级）</span>';
                 return;
             }
-            const list = ecGetSellings(shapeValue);
-            if (list.length === 0) {
+            const fullList = ecGetSellings(shapeValue);
+            if (fullList.length === 0) {
                 container.innerHTML = shapeValue
                     ? `<span style="font-size:0.75rem;color:var(--text-dim);">当前品类+形态暂无预设卖点，可点上方"➕ 为当前形态添加卖点"</span>`
                     : `<span style="font-size:0.75rem;color:var(--text-dim);">该品类的卖点按"形态结构"区分，请先选形态；或直接添加自定义卖点</span>`;
+                return;
+            }
+            // 搜索过滤（label / prompt 不区分大小写模糊匹配）。空搜索词 = 不过滤
+            const q = (window.__ecSellingSearch || '').trim().toLowerCase();
+            const list = q ? fullList.filter(s =>
+                (s.label || '').toLowerCase().includes(q) ||
+                (s.prompt || '').toLowerCase().includes(q)
+            ) : fullList;
+            if (list.length === 0) {
+                container.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);">没有匹配 "${ecEscAttr(q)}" 的卖点（${fullList.length} 个全部不匹配）</span>`;
                 return;
             }
             const isUser = s => ecUserSellings(shapeValue || '').some(u => u.key === s.key);
@@ -2370,6 +2467,14 @@
                     ${isUser(s) ? `<span onclick="event.preventDefault();event.stopPropagation();ecDeleteUserSelling('${ecEscAttr(shapeValue || '')}','${ecEscAttr(s.key)}')" style="color:var(--text-dim);cursor:pointer;margin-left:2px;">✕</span>` : ''}
                 </label>
             `).join('');
+        }
+
+        // 卖点搜索：仅重渲 #ec-selling-container 内部 chip，input 自身不动 —— 输入时不会失焦
+        // window 全局存搜索词，ecRefreshConfigModal 重建整个面板时 input 的 value 属性会用它回填
+        window.__ecSellingSearch = window.__ecSellingSearch || '';
+        function ecOnSellingSearch(val) {
+            window.__ecSellingSearch = val || '';
+            ecRenderSellings(ecSel.shape || '');
         }
 
         function ecPromptAddSelling() {

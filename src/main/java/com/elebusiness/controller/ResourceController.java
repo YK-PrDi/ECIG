@@ -1,0 +1,323 @@
+package com.elebusiness.controller;
+
+import com.elebusiness.config.AppProperties;
+import com.elebusiness.model.DingTalkRecord;
+import com.elebusiness.model.ProductInfo;
+import com.elebusiness.service.DingTalkService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+/**
+ * 静态资源 / 产品列表 / 画廊 / 反馈 / xlsx 导入相关接口。
+ * 从 ApiController 拆出（A.1 重构），业务逻辑零变动。
+ */
+@RestController
+public class ResourceController {
+
+    private static final Logger log = LoggerFactory.getLogger(ResourceController.class);
+
+    private final DingTalkService dingTalkService;
+    private final AppProperties appProperties;
+
+    public ResourceController(DingTalkService dingTalkService, AppProperties appProperties) {
+        this.dingTalkService = dingTalkService;
+        this.appProperties = appProperties;
+    }
+
+    @GetMapping("/api/products")
+    public ResponseEntity<Map<String, Object>> getProducts() {
+        try {
+            List<DingTalkRecord> records = dingTalkService.getAllRecords();
+            List<Map<String, Object>> products = new ArrayList<>();
+            for (DingTalkRecord record : records) {
+                ProductInfo info = dingTalkService.parseProductInfo(record);
+                if (!info.isHas123()) continue;
+                Map<String, Object> product = new LinkedHashMap<>();
+                product.put("id", record.getId());
+                product.put("name", info.getName());
+                product.put("category", info.getCategory());
+                product.put("main_count", info.getMain().size());
+                product.put("sku_count", info.getSku().size());
+                products.add(product);
+            }
+            return ResponseEntity.ok(Map.of("products", products));
+        } catch (Exception e) {
+            log.error("获取产品列表失败: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "获取数据失败: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/api/image")
+    public ResponseEntity<FileSystemResource> getImage(@RequestParam String path) {
+        File file = new File(path);
+        if (!file.exists() || !file.isFile()) return ResponseEntity.notFound().build();
+        String mimeType = path.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(mimeType))
+                .body(new FileSystemResource(file));
+    }
+
+    @GetMapping("/api/download")
+    public ResponseEntity<FileSystemResource> downloadImage(@RequestParam String path) {
+        File file = new File(path);
+        if (!file.exists() || !file.isFile()) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + file.getName() + "\"")
+                .body(new FileSystemResource(file));
+    }
+
+    // ── 画廊：列出目录 ──────────────────────────────────────────────────
+
+    @GetMapping("/api/gallery")
+    public ResponseEntity<Map<String, Object>> listGallery(
+            @RequestParam(required = false) String path) {
+        try {
+            File rootDir = new File(appProperties.getPaths().getOutputDir()).getCanonicalFile();
+            File target = (path == null || path.isBlank())
+                    ? rootDir
+                    : new File(path).getCanonicalFile();
+
+            // 安全检查：目标必须在 outputDir 内
+            if (!target.getAbsolutePath().startsWith(rootDir.getAbsolutePath())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "非法路径"));
+            }
+            if (!target.exists()) {
+                return ResponseEntity.ok(Map.of("path", target.getAbsolutePath(), "items", List.of()));
+            }
+
+            File[] children = target.listFiles();
+            List<Map<String, Object>> items = new ArrayList<>();
+            if (children != null) {
+                Arrays.sort(children, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+                for (File child : children) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name", child.getName());
+                    item.put("path", child.getAbsolutePath());
+                    item.put("modified", child.lastModified());
+                    if (child.isDirectory()) {
+                        item.put("type", "folder");
+                        item.put("count", ControllerHelpers.countImages(child));
+                        String thumb = findFirstImage(child);
+                        if (thumb != null) item.put("thumbnail", thumb);
+                    } else {
+                        String lname = child.getName().toLowerCase();
+                        if (lname.endsWith(".jpg") || lname.endsWith(".jpeg") || lname.endsWith(".png")) {
+                            item.put("type", "image");
+                        } else {
+                            continue; // 跳过非图片文件
+                        }
+                    }
+                    items.add(item);
+                }
+            }
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("path", target.getAbsolutePath());
+            resp.put("root", rootDir.getAbsolutePath());
+            resp.put("items", items);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            log.error("listGallery error: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/api/gallery")
+    public ResponseEntity<Map<String, Object>> deleteGalleryItem(@RequestParam String path) {
+        try {
+            File rootDir = new File(appProperties.getPaths().getOutputDir()).getCanonicalFile();
+            File target = new File(path).getCanonicalFile();
+            if (!target.getAbsolutePath().startsWith(rootDir.getAbsolutePath())) {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "非法路径"));
+            }
+            if (!target.exists()) {
+                return ResponseEntity.ok(Map.of("success", false, "error", "文件不存在"));
+            }
+            deleteRecursively(target);
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            log.error("deleteGalleryItem error: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/api/feedback")
+    public ResponseEntity<Map<String, Object>> saveFeedback(@RequestBody Map<String, Object> body) {
+        try {
+            String prompt    = String.valueOf(body.getOrDefault("prompt", ""));
+            String imagePath = String.valueOf(body.getOrDefault("imagePath", ""));
+            String rating    = String.valueOf(body.getOrDefault("rating", ""));
+            String time      = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+            String line = String.format("[%s] %s | 图片: %s | Prompt: %s%n", time, rating, imagePath, prompt);
+
+            File dir = new File(appProperties.getPaths().getOutputDir());
+            dir.mkdirs();
+            File feedbackFile = new File(dir, "feedback.txt");
+            java.nio.file.Files.writeString(feedbackFile.toPath(), line,
+                    StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND);
+
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    /** 把上传的 xlsx 落盘到项目根，调用 import-tool.exe（或 python tools/import_category_xlsx.py），返回脚本 stdout。 */
+    @PostMapping("/api/import/xlsx")
+    public ResponseEntity<Map<String, Object>> importXlsx(@RequestParam("files") List<MultipartFile> files) {
+        // 打包态下直接拒绝：用户机器上 frontend/data 在 resources/ 是只读的，导入功能仅供开发期
+        if ("true".equalsIgnoreCase(System.getProperty("app.packaged", "false"))) {
+            return ResponseEntity.ok(Map.of("success", false,
+                    "error", "导入功能仅供开发环境使用；打包后无法写入只读的 frontend/data 目录。"));
+        }
+        File projectRoot = new File(System.getProperty("user.dir"));
+        File pyScript = new File(projectRoot, "tools/import_category_xlsx.py");
+        File exeProd = new File(projectRoot, "import-tool.exe");
+        File exeDev  = new File(projectRoot, "tools/dist/import-tool.exe");
+        File runner;
+        boolean useExe = true;
+        // 优先级：python 脚本 > 项目根 exe > tools/dist exe
+        // 开发期 _xlsx_parse.py / _writer.py 改动很频繁（如分隔符归一化、卖点合并顺序），
+        // python 脚本能立刻反映改动；exe 是 PyInstaller 打包的旧版，不重新打包就不会带上新逻辑。
+        // 只有用户彻底没装 python 的环境才退回 exe。
+        if (pyScript.exists() && hasPython())  { runner = pyScript; useExe = false; }
+        else if (exeProd.exists())             runner = exeProd;
+        else if (exeDev.exists())              runner = exeDev;
+        else if (pyScript.exists()){ runner = pyScript; useExe = false; }
+        else {
+            return ResponseEntity.ok(Map.of("success", false,
+                    "error", "找不到 import-tool.exe（应在项目根或 tools/dist/）；也找不到 tools/import_category_xlsx.py。"));
+        }
+        List<String> savedPaths = new ArrayList<>();
+        // 上传文件落到 .uploads/{时间戳}_{原名}，绝不跟项目根的同名文件冲突。
+        // 之前直接保存到项目根（覆盖原文件）时，只要任何进程（Excel 预览窗格、杀软、
+        // OneDrive、Windows Search Indexer）持有 15.xlsx 的句柄就会 FileSystemException。
+        File uploadDir = new File(projectRoot, ".uploads");
+        uploadDir.mkdirs();
+        String ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        try {
+            int idx = 0;
+            for (MultipartFile mf : files) {
+                String original = mf.getOriginalFilename();
+                if (original == null || original.isBlank()) original = "upload.xlsx";
+                // 用时间戳 + 序号前缀，同一秒内多文件也不会重名
+                String safeName = ts + "_" + (idx++) + "_" + original;
+                File target = new File(uploadDir, safeName);
+                // 不用 mf.transferTo —— Tomcat 内部 commons-fileupload 会走 part.write，
+                // 当 storeLocation 为 null 时会抛 "Cannot write uploaded file to disk"。
+                // Files.copy(InputStream) 直接流式落盘，绕过这条路径。
+                try (java.io.InputStream is = mf.getInputStream()) {
+                    java.nio.file.Files.copy(is, target.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+                // 给 import 脚本的是 ".uploads/xxx.xlsx" 相对路径（脚本以 projectRoot 为 cwd）
+                savedPaths.add(".uploads/" + safeName);
+            }
+        } catch (java.nio.file.FileSystemException e) {
+            // 改用 .uploads 子目录后这条几乎不会再触发，留作兜底（极端情况：磁盘只读 / 杀软拦写入）
+            log.warn("xlsx 上传时目标文件被占用: {}", e.getFile());
+            String fname = new java.io.File(e.getFile() == null ? "" : e.getFile()).getName();
+            return ResponseEntity.ok(Map.of("success", false, "error",
+                    "文件 " + fname + " 写入被拒（可能磁盘只读 / 杀软拦截）。请检查 .uploads 目录权限后重试。"));
+        } catch (Exception e) {
+            log.error("xlsx 上传保存失败: {}", e.getMessage(), e);
+            return ResponseEntity.ok(Map.of("success", false, "error", "保存上传文件失败：" + e.getMessage()));
+        }
+        List<String> cmd = new ArrayList<>();
+        if (useExe) {
+            cmd.add(runner.getAbsolutePath());
+        } else {
+            cmd.add(System.getenv().getOrDefault("PYTHON", "python"));
+            cmd.add("tools/import_category_xlsx.py");
+        }
+        cmd.addAll(savedPaths);
+        try {
+            ProcessBuilder pb = new ProcessBuilder(cmd)
+                    .directory(projectRoot)
+                    .redirectErrorStream(true);
+            pb.environment().put("PYTHONIOENCODING", "utf-8");
+            Process proc = pb.start();
+            // try-with-resources 关 stdout 流；Process.destroyForcibly 不保证关闭关联 stream（B 阶段审查 #3）
+            String output;
+            try (java.io.InputStream is = proc.getInputStream()) {
+                output = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            boolean done = proc.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
+            int exit = done ? proc.exitValue() : -1;
+            if (!done) proc.destroyForcibly();
+            return ResponseEntity.ok(Map.of(
+                    "success", exit == 0,
+                    "exitCode", exit,
+                    "runner", runner.getName(),
+                    "output", output,
+                    "savedFiles", savedPaths
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("success", false, "error",
+                    "执行 import 失败：" + e.getMessage()));
+        }
+    }
+
+    // ── 私有辅助方法（首图查找、递归删除）；countImages 已抽到 ControllerHelpers（B 阶段审查 #10） ──
+
+    /** 检测系统是否有可用的 python 解释器。优先 PYTHON 环境变量，再退回 python --version。 */
+    private boolean hasPython() {
+        String envPy = System.getenv("PYTHON");
+        String cmd = (envPy != null && !envPy.isBlank()) ? envPy : "python";
+        try {
+            Process p = new ProcessBuilder(cmd, "--version").redirectErrorStream(true).start();
+            // 5 秒够检测 python --version 是否能跑（超时也算没装）
+            boolean done = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (!done) { p.destroyForcibly(); return false; }
+            return p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String findFirstImage(File dir) {
+        File[] children = dir.listFiles();
+        if (children == null) return null;
+        Arrays.sort(children);
+        for (File child : children) {
+            if (child.isFile()) {
+                String n = child.getName().toLowerCase();
+                if (n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png")) {
+                    return child.getAbsolutePath();
+                }
+            }
+        }
+        for (File child : children) {
+            if (child.isDirectory()) {
+                String found = findFirstImage(child);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private void deleteRecursively(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) for (File child : children) deleteRecursively(child);
+        }
+        file.delete();
+    }
+}

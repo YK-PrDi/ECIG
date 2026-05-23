@@ -200,8 +200,11 @@ def parse_xlsx(path: Path) -> dict:
             last_cat = cat
         if not last_cat:
             continue
-        # 用 ">" 标准化分隔符
-        cat_path = re.sub(r'\s*>\s*|\s*&gt;\s*|\s*->\s*', '>', last_cat).strip()
+        # 用 ">" 标准化分隔符：xlsx 里有的写 "A>B"，有的写 "A——B"（中文双破折号），
+        # 还有 "A&gt;B"（HTML 实体）/ "A->B"。catalog.js 的 ecCatalogResolveUp 只用 ">"
+        # 拆/拼，所以这里必须把所有别名都归一成 ">"，否则会生成跟前端查找路径不匹配的
+        # EC_CATALOG key —— 数据写进去了但前端永远找不到。
+        cat_path = re.sub(r'\s*>\s*|\s*&gt;\s*|\s*->\s*|\s*——\s*|\s*——\s*|\s*-\s*', '>', last_cat).strip()
         bucket = out.setdefault(cat_path, {'fields': {}, 'sellings': []})
 
         # 1) 把每列值塞到 fields 池
