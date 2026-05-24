@@ -1283,6 +1283,7 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     padding-bottom: 4px;
 }
 .ec-cascader.open .ec-cascader-panels { display: flex; }
+.ec-cascader.drop-up .ec-cascader-panels { top: auto; bottom: calc(100% + 4px); }
 
 .ec-cascader-panel {
     background: var(--bg-panel);

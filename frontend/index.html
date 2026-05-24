@@ -282,28 +282,12 @@
                         <div id="customConfig" class="panel-view">
                             <div class="config-group" style="flex-direction:column; gap:4px;" id="grp-category">
                                 <label>产品类目</label>
-                                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                                    <div class="gf-select sm drop-up" tabindex="0" id="catSelect1">
-                                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                            <span class="gf-select-text" id="catText1">全部类目</span>
-                                            <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                        </div>
-                                        <div class="gf-select-options" id="catOptions1"></div>
+                                <div class="ec-cascader drop-up" id="cust-cat-cascader" tabindex="0" style="position:relative;">
+                                    <div class="ec-cascader-trigger" onclick="custToggleCascader(event)">
+                                        <span class="ec-cascader-text" id="cust-cat-text">— 点击选择</span>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
-                                    <div class="gf-select sm drop-up" tabindex="0" id="catSelect2" style="display:none">
-                                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                            <span class="gf-select-text" id="catText2">选择子类</span>
-                                            <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                        </div>
-                                        <div class="gf-select-options" id="catOptions2"></div>
-                                    </div>
-                                    <div class="gf-select sm drop-up" tabindex="0" id="catSelect3" style="display:none">
-                                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                            <span class="gf-select-text" id="catText3">选择品类</span>
-                                            <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                        </div>
-                                        <div class="gf-select-options" id="catOptions3"></div>
-                                    </div>
+                                    <div class="ec-cascader-panels" id="cust-cat-panels"></div>
                                 </div>
                             </div>
                             <div class="config-group" style="min-width:150px;" id="grp-custom-aspect">
@@ -322,7 +306,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="config-group" style="max-width:140px;" id="grp-denoising">
+                            <div class="config-group" style="max-width:140px; display:none;" id="grp-denoising">
                                 <label>重绘幅度 (0-1)</label>
                                 <input type="number" id="customDenoising" class="input-field" placeholder="0.5" step="0.1" min="0" max="1" value="0.5">
                             </div>
@@ -644,56 +628,75 @@
             }
         }
 
-        // ── 产品类目多级选择器 ──
-        async function loadCategories() {
-            try {
-                const data = await fetch('/api/prompts').then(r => r.json());
-                promptTree = Array.isArray(data) ? data : [];
-                renderCatLevel(0, promptTree);
-            } catch (_) {}
+        // ── 自定义模式产品类目（独立，不共享电商模式提示词）──
+        let custCatPath = [];
+        function loadCategories() { custCatPath = []; custRefreshCascaderColumns(); }
+
+        function custToggleCascader(e) {
+            e && e.stopPropagation();
+            const el = document.getElementById('cust-cat-cascader');
+            if (!el) return;
+            const wasOpen = el.classList.contains('open');
+            document.querySelectorAll('.ec-cascader.open').forEach(c => c.classList.remove('open'));
+            if (!wasOpen) { custRefreshCascaderColumns(); el.classList.add('open'); }
         }
 
-        function renderCatLevel(level, nodes) {
-            const optEl = document.getElementById(`catOptions${level + 1}`);
-            const selEl = document.getElementById(`catSelect${level + 1}`);
-            if (!optEl || !selEl) return;
-            catNodes[level] = nodes;
-            optEl.innerHTML = nodes.map((n, i) =>
-                `<div class="gf-option" data-idx="${i}" onclick="selectCat(${level},${i},event)">${n.label}</div>`
-            ).join('');
-            selEl.style.display = nodes.length ? '' : 'none';
-            // 重置更深层级
-            for (let l = level + 1; l < 3; l++) {
-                const el = document.getElementById(`catSelect${l + 1}`);
-                if (el) el.style.display = 'none';
-                catNodes[l] = [];
+        function custRefreshCascaderColumns() {
+            const tree = window.EC_CATEGORY_TREE;
+            if (!tree) return;
+            const panels = document.getElementById('cust-cat-panels');
+            if (!panels) return;
+            const cols = [custBuildColumn(tree, 0)];
+            let nodes = tree;
+            for (let i = 0; i < custCatPath.length; i++) {
+                const found = nodes.find(n => n.display === custCatPath[i]);
+                if (!found || !found.children) break;
+                nodes = found.children;
+                cols.push(custBuildColumn(nodes, i + 1));
             }
-            selectedPrompt = { prompt: '', negativePrompt: '' };
+            panels.innerHTML = cols.join('');
         }
 
-        function selectCat(level, idx, e) {
-            if (e) e.stopPropagation();
-            const node = catNodes[level][idx];
-            if (!node) return;
-            // 更新显示文字 + 高亮
-            document.getElementById(`catText${level + 1}`).textContent = node.label;
-            const optEl = document.getElementById(`catOptions${level + 1}`);
-            optEl.querySelectorAll('.gf-option').forEach(o => o.classList.remove('selected'));
-            optEl.querySelector(`[data-idx="${idx}"]`)?.classList.add('selected');
-            document.getElementById(`catSelect${level + 1}`).classList.remove('open');
-            // 重置更深层级
-            for (let l = level + 1; l < 3; l++) {
-                const el = document.getElementById(`catSelect${l + 1}`);
-                if (el) el.style.display = 'none';
-                catNodes[l] = [];
-            }
-            selectedPrompt = { prompt: '', negativePrompt: '' };
-            if (node.children && node.children.length) {
-                renderCatLevel(level + 1, node.children);
+        function custBuildColumn(nodes, level) {
+            const items = nodes.map(n => {
+                const hasChildren = !!(n.children && n.children.length);
+                const isActive = custCatPath[level] === n.display;
+                return `<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''} ${isActive ? 'active' : ''}"
+                    onclick="custPickItem(${level}, '${ecEscAttr(n.display)}', ${hasChildren})">
+                    <span class="ec-cascader-label">${n.display}</span>
+                    ${hasChildren ? `<span class="ec-cascader-arrow-r">›</span>` : ''}
+                </div>`;
+            }).join('');
+            const clearItem = level === 0
+                ? `<div class="ec-cascader-item" style="color:var(--text-dim);border-bottom:1px dashed var(--border);"
+                    onclick="custPickCascader([])">
+                    <span class="ec-cascader-label">— 清空选择</span>
+                </div>` : '';
+            return `<div class="ec-cascader-panel" data-level="${level}">${clearItem}${items}</div>`;
+        }
+
+        function custPickItem(level, display, hasChildren) {
+            custCatPath = custCatPath.slice(0, level);
+            custCatPath[level] = display;
+            if (!hasChildren) {
+                selectedPrompt = { prompt: display, negativePrompt: '' };
+                document.getElementById('cust-cat-text').textContent = custCatPath.join(' > ');
+                document.getElementById('cust-cat-cascader')?.classList.remove('open');
             } else {
-                selectedPrompt = { prompt: node.prompt || '', negativePrompt: node.negativePrompt || '' };
+                selectedPrompt = { prompt: '', negativePrompt: '' };
+                custRefreshCascaderColumns();
             }
         }
+
+        function custPickCascader(path) {
+            custCatPath = path || [];
+            selectedPrompt = { prompt: '', negativePrompt: '' };
+            document.getElementById('cust-cat-text').textContent = '— 点击选择';
+            custRefreshCascaderColumns();
+        }
+
+        function renderCatLevel() {}
+        function selectCat() {}
 
         function updateControlStates() {
             const agentSelect = document.getElementById('agentSelect');
