@@ -40,3 +40,30 @@ src/main/resources/application-prod.yml
 # Logs
 *.log
 src/main/resources/application.yml
+
+# Phase 1 临时归档：用户生图后 2h 内可点 💾 保存到永久画廊；TaskService.evictExpiredTempOutput 自动清
+.temp-output/
+# Phase 2 历史归档：参考图按 generationId 分目录；DELETE /api/history/generations/{id} 时联动清
+.history-refs/
+# Spring multipart 落盘临时目录（application.yml multipart.location）
+.multipart-temp/
+# xlsx 导入上传文件落盘点（避免与项目根 15.xlsx 冲突）
+.uploads/
+
+# SQLite 本体 + WAL —— 用户隐私 + 体积，绝不提交
+app.db
+app.db-journal
+app.db-shm
+app.db-wal
+
+# 用户偏好（含 customOutputDir 自选路径）
+user-prefs.json
+
+# 中文运行期目录（旧版残留）
+大参考/
+
+# Python 缓存
+tools/__pycache__/
+
+# Build cleanup helper
+.multipart-temp.lock

@@ -4,6 +4,8 @@ import com.elebusiness.config.AppProperties;
 import com.elebusiness.model.DingTalkRecord;
 import com.elebusiness.model.ProductInfo;
 import com.elebusiness.service.DingTalkService;
+import com.elebusiness.service.HistoryService;
+import com.elebusiness.service.UserPrefsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
@@ -30,10 +32,15 @@ public class ResourceController {
 
     private final DingTalkService dingTalkService;
     private final AppProperties appProperties;
+    private final UserPrefsService userPrefsService;
+    private final HistoryService historyService;
 
-    public ResourceController(DingTalkService dingTalkService, AppProperties appProperties) {
+    public ResourceController(DingTalkService dingTalkService, AppProperties appProperties,
+                              UserPrefsService userPrefsService, HistoryService historyService) {
         this.dingTalkService = dingTalkService;
         this.appProperties = appProperties;
+        this.userPrefsService = userPrefsService;
+        this.historyService = historyService;
     }
 
     @GetMapping("/api/products")
@@ -152,6 +159,76 @@ public class ResourceController {
         } catch (Exception e) {
             log.error("deleteGalleryItem error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Phase 1：用户在前端点 💾 时调用，把临时归档里的图/视频 copy 到永久 outputDir。
+     * 不删原文件 —— 让 cleaner 在 2h TTL 时自然清理；这样用户多次点 💾 也安全。
+     * body: { tempPath: 临时绝对路径, subDir?: 永久目录下的子目录名（默认按日期 yyyyMMdd） }
+     */
+    @PostMapping("/api/save-to-gallery")
+    public ResponseEntity<Map<String, Object>> saveToGallery(@RequestBody Map<String, String> body) {
+        String tempPath = body == null ? null : body.get("tempPath");
+        if (tempPath == null || tempPath.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "缺少 tempPath"));
+        }
+        try {
+            // 用 Path.normalize().toAbsolutePath() 替代 File.getCanonicalFile() —— 后者在 Windows 上
+            // 走 native WinNTFileSystem.canonicalize0，对 "./" + 中文路径 + 正斜杠 的组合偶发抛
+            // IOException("文件名、目录名或卷标语法不正确")。Path.normalize 是纯字符串规范化，跨平台稳定。
+            // 前端把 \\ 替换成 / 后路径形如 D:/code/ele-business-java/./.temp-output/自定义模式生成/.../1.jpg，
+            // normalize 会把 ./ 抹掉，得到干净的绝对路径。
+            java.nio.file.Path tempRoot = java.nio.file.Paths.get(appProperties.getPaths().getTempOutputDir())
+                    .toAbsolutePath().normalize();
+            java.nio.file.Path source = java.nio.file.Paths.get(tempPath)
+                    .toAbsolutePath().normalize();
+            // 安全检查：source 必须在 tempOutputDir 内，防路径穿越
+            if (!source.startsWith(tempRoot)) {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "非法路径：必须在临时归档目录内"));
+            }
+            if (!java.nio.file.Files.exists(source) || !java.nio.file.Files.isRegularFile(source)) {
+                return ResponseEntity.ok(Map.of("success", false, "error", "源文件不存在或已被清理"));
+            }
+            String subDir = body.get("subDir");
+            if (subDir == null || subDir.isBlank()) {
+                subDir = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            }
+            // 用户在 ⚙️ 设置 里自选的保存位置；空 / 不可写时 resolveOutputDir 自动 fallback 到默认 output-dir (A2)
+            File baseDir = userPrefsService.resolveOutputDir(appProperties.getPaths().getOutputDir());
+            File targetDir = new File(baseDir, subDir);
+            targetDir.mkdirs();
+            // 同名冲突时加 _1 / _2 后缀，绝不覆盖
+            String name = source.getFileName().toString();
+            File target = new File(targetDir, name);
+            int dotIdx = name.lastIndexOf('.');
+            String base = (dotIdx > 0) ? name.substring(0, dotIdx) : name;
+            String ext  = (dotIdx > 0) ? name.substring(dotIdx)    : "";
+            int suffix = 1;
+            while (target.exists()) {
+                target = new File(targetDir, base + "_" + suffix + ext);
+                suffix++;
+            }
+            java.nio.file.Files.copy(source, target.toPath());
+            log.info("save-to-gallery: {} -> {}", source, target.getAbsolutePath());
+            // Phase 2：回填 savedPath 到对应历史条目（按批次目录匹配；outputPath 存的是批次目录）
+            try {
+                java.nio.file.Path batchDir = source.getParent();
+                if (batchDir != null) {
+                    historyService.markSaved(batchDir.toString(), target.getAbsolutePath());
+                }
+            } catch (Exception markErr) {
+                log.warn("markSaved 失败（不影响保存主流程）: {}", markErr.getMessage());
+            }
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "savedPath", target.getAbsolutePath(),
+                    "savedName", target.getName()
+            ));
+        } catch (Exception e) {
+            log.error("save-to-gallery 失败: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("success", false, "error", e.getMessage()));
         }
     }
 

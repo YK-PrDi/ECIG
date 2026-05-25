@@ -1,11 +1,13 @@
 package com.elebusiness.service;
 
+import com.elebusiness.config.AppProperties;
 import com.elebusiness.model.GenerationTask;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
@@ -25,6 +27,12 @@ public class TaskService {
     // 之后清理掉，避免 tasks Map 无限累积导致 OOM（B 阶段审查发现）
     private static final long DONE_TASK_TTL_MS = 60 * 60 * 1000L;
 
+    // Phase 1：临时归档目录子文件夹的保留时长 = 2 小时，过期自动删
+    // 用户在前端点 💾 才 copy 到永久 outputDir；不点就当成"看完即扔"
+    private static final long TEMP_OUTPUT_TTL_MS = 2 * 60 * 60 * 1000L;
+
+    private final AppProperties appProperties;
+
     // 最多同时跑 10 个生成任务
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private final Map<String, GenerationTask> tasks = new ConcurrentHashMap<>();
@@ -37,10 +45,16 @@ public class TaskService {
                 return t;
             });
 
+    public TaskService(AppProperties appProperties) {
+        this.appProperties = appProperties;
+    }
+
     @PostConstruct
     void start() {
         // 每 5 分钟扫一次过期任务
         cleaner.scheduleAtFixedRate(this::evictExpired, 5, 5, TimeUnit.MINUTES);
+        // 每 30 分钟扫一次临时归档目录，删超过 2h 的子文件夹
+        cleaner.scheduleAtFixedRate(this::evictExpiredTempOutput, 1, 30, TimeUnit.MINUTES);
     }
 
     public GenerationTask createTask(int total) {
@@ -91,6 +105,52 @@ public class TaskService {
             }
         }
         if (removed > 0) log.debug("TaskService 清理过期任务: {} 条", removed);
+    }
+
+    /**
+     * Phase 1 临时归档清理：扫 .temp-output/，删 mtime > 2h 的子文件夹。
+     * 用户在前端点 💾 时会把图 copy 到永久 outputDir；没点的就自然过期被删。
+     * 仅删第一层子目录（如 自定义模式生成/{timestamp}、{category}/{product}_N、视频）的内层。
+     * 顶层目录本身（自定义模式生成 / 视频 等）保留，避免反复创建。
+     */
+    private void evictExpiredTempOutput() {
+        try {
+            File root = new File(appProperties.getPaths().getTempOutputDir());
+            if (!root.isDirectory()) return;
+            long cutoff = System.currentTimeMillis() - TEMP_OUTPUT_TTL_MS;
+            int removed = 0;
+            File[] topLevel = root.listFiles(File::isDirectory);
+            if (topLevel == null) return;
+            for (File top : topLevel) {
+                File[] subDirs = top.listFiles(File::isDirectory);
+                if (subDirs == null) continue;
+                for (File sub : subDirs) {
+                    if (sub.lastModified() < cutoff) {
+                        if (deleteRecursively(sub)) removed++;
+                    }
+                }
+                // 视频模式直接落在 视频/ 下，没有 timestamp 子目录 — 单独处理 .mp4 文件
+                File[] files = top.listFiles(File::isFile);
+                if (files != null) {
+                    for (File f : files) {
+                        if (f.lastModified() < cutoff && f.delete()) removed++;
+                    }
+                }
+            }
+            if (removed > 0) log.info("临时归档清理: 删了 {} 个过期目录/文件", removed);
+        } catch (Exception e) {
+            log.warn("临时归档清理失败: {}", e.getMessage());
+        }
+    }
+
+    /** 递归删除文件或目录，返回是否成功（局部失败也尽力而为）。 */
+    private boolean deleteRecursively(File file) {
+        if (file == null || !file.exists()) return false;
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) for (File c : children) deleteRecursively(c);
+        }
+        return file.delete();
     }
 }
 

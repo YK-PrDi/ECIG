@@ -65,6 +65,24 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Phase 2：SQLite 历史记录（生图 + 对话）。
+             - JPA starter：BOM 管理版本，自带 Hibernate 6.5.x（Spring Boot 3.3.5）
+             - sqlite-jdbc：单文件 db，零运维，electron 打包友好
+             - hibernate-community-dialects：Hibernate 6 把 SQLiteDialect 拆到了 community-dialects jar -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.46.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-community-dialects</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>

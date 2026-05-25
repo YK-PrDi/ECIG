@@ -6,6 +6,7 @@ import com.elebusiness.model.GenerateRequest;
 import com.elebusiness.model.GenerationTask;
 import com.elebusiness.model.ProductInfo;
 import com.elebusiness.service.DingTalkService;
+import com.elebusiness.service.HistoryService;
 import com.elebusiness.service.ImageGenerationService;
 import com.elebusiness.service.PromptCondenser;
 import com.elebusiness.service.TaskService;
@@ -43,17 +44,20 @@ public class GenerateController {
     private final TaskService taskService;
     private final GptImageAgent gptImageAgent;
     private final PromptCondenser promptCondenser;
+    private final HistoryService historyService;
 
     public GenerateController(DingTalkService dingTalkService,
                               ImageGenerationService imageGenerationService,
                               AppProperties appProperties, TaskService taskService,
-                              GptImageAgent gptImageAgent, PromptCondenser promptCondenser) {
+                              GptImageAgent gptImageAgent, PromptCondenser promptCondenser,
+                              HistoryService historyService) {
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
         this.appProperties = appProperties;
         this.taskService = taskService;
         this.gptImageAgent = gptImageAgent;
         this.promptCondenser = promptCondenser;
+        this.historyService = historyService;
     }
 
     /** 异步提交生成任务，立即返回 taskId，前端轮询 /api/task/{taskId} 获取进度 */
@@ -66,6 +70,7 @@ public class GenerateController {
 
         String agentId = request.getAgentId();
         String userPrompt = request.getPrompt();
+        String sessionId = request.getSessionId() == null ? "default" : request.getSessionId();
         GenerationTask task = taskService.createTask(selectedIds.size());
 
         taskService.submit(task, () -> {
@@ -128,7 +133,8 @@ public class GenerateController {
 
                 File refPath = refFolders[new Random().nextInt(refFolders.length)];
                 String cleanName = productName.replaceAll("（.+?）", "");
-                String categoryOutputDir = new File(appProperties.getPaths().getOutputDir(), category).getAbsolutePath();
+                // Phase 1：先落到临时归档，2 小时后自动清理；用户在前端点 💾 才 copy 到永久 outputDir
+                String categoryOutputDir = new File(appProperties.getPaths().getTempOutputDir(), category).getAbsolutePath();
                 int nextNum = imageGenerationService.getNextOutputNumber(categoryOutputDir, cleanName);
                 String outputFolder = new File(categoryOutputDir, cleanName + "_" + nextNum).getAbsolutePath();
                 new File(outputFolder).mkdirs();
@@ -157,6 +163,18 @@ public class GenerateController {
                     task.addResult(ControllerHelpers.result(productName, "error", "所有图片生成失败，请检查 API Key 或网络", outputFolder));
                 } else {
                     task.addResult(ControllerHelpers.result(productName, "success", null, outputFolder));
+                    // Phase 2：标准模式无用户上传 ref（参考图来自 categoryDir，不归档）；只记元信息
+                    try {
+                        String configJson = "{\"productId\":\"" + recordId + "\",\"productName\":\""
+                                + productName.replace("\"", "\\\"") + "\",\"category\":\""
+                                + (category == null ? "" : category.replace("\"", "\\\"")) + "\"}";
+                        historyService.recordGeneration(sessionId, "standard",
+                                userPrompt == null ? "" : userPrompt,
+                                agentId, java.util.Collections.emptyList(),
+                                outputFolder, configJson);
+                    } catch (Exception e) {
+                        log.warn("standard 模式写历史失败: {}", e.getMessage());
+                    }
                 }
                 task.incrementProgress();
             }
@@ -179,6 +197,9 @@ public class GenerateController {
             @RequestParam(value = "agentId", defaultValue = "gemini") String agentId,
             @RequestParam(value = "pairImages", defaultValue = "false") boolean pairImages,
             @RequestParam(value = "aspect", required = false) String aspect,
+            @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
+            @RequestParam(value = "mode", defaultValue = "custom") String mode,
+            @RequestParam(value = "configJson", required = false) String configJson,
             MultipartHttpServletRequest request) {
 
         // 不能用 @RequestParam List<String> prompts —— Spring 会按英文逗号自动拆分
@@ -238,7 +259,8 @@ public class GenerateController {
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String outputDir = new File(appProperties.getPaths().getOutputDir(),
+        // Phase 1：先落到临时归档，2 小时后自动清理；用户在前端点 💾 才 copy 到永久 outputDir
+        String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
                 "自定义模式生成/" + timestamp).getAbsolutePath();
         new File(outputDir).mkdirs();
 
@@ -367,6 +389,24 @@ public class GenerateController {
             for (File pr : pairRefsFinal) pr.delete();
         });
 
+        // Phase 2：写一条 GenerationHistory（per-batch；outputPath = 批次目录）。
+        // 异步任务还没跑完没关系，记录的是"提交了这次生图请求"的元信息；
+        // 用户后续点 💾 保存其中一张时，ResourceController.saveToGallery 会按 parent dir 匹配回填 savedPath。
+        try {
+            // 归档参考图（pair / ref+white / no images 三种入参形态都覆盖）
+            List<File> refsForArchive = new ArrayList<>();
+            if (refTempFile != null) refsForArchive.add(refTempFile);
+            for (File wf : whiteTempFiles) refsForArchive.add(wf);
+            for (File pr : pairRefs)       refsForArchive.add(pr);
+            // 注意：这里 archiveRefFiles 是同步 copy 一次，跟 lambda 里之后的 .delete() 无竞争
+            HistoryService.ArchiveResult archive = historyService.archiveRefFiles(refsForArchive);
+            String promptJoined = String.join(" || ", promptList);
+            historyService.recordGeneration(sessionId, mode, promptJoined, agentId,
+                    archive.refPaths, outputDir, configJson);
+        } catch (Exception e) {
+            log.warn("写历史记录失败（不影响生图）: {}", e.getMessage());
+        }
+
         return ResponseEntity.ok(Map.of("taskId", task.getId(), "output_dir", outputDir));
     }
 
@@ -374,7 +414,8 @@ public class GenerateController {
     public ResponseEntity<Map<String, Object>> inpaint(
             @RequestParam("image")  MultipartFile image,
             @RequestParam("mask")   MultipartFile mask,
-            @RequestParam("prompt") String prompt) {
+            @RequestParam("prompt") String prompt,
+            @RequestParam(value = "sessionId", defaultValue = "default") String sessionId) {
 
         if (image == null || image.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "缺少原图"));
@@ -387,7 +428,8 @@ public class GenerateController {
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String outputDir = new File(appProperties.getPaths().getOutputDir(),
+        // Phase 1：先落到临时归档，2 小时后自动清理；用户在前端点 💾 才 copy 到永久 outputDir
+        String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
                 "局部编辑/" + timestamp).getAbsolutePath();
         new File(outputDir).mkdirs();
         String outputPath = new File(outputDir, "1.png").getAbsolutePath();
@@ -406,6 +448,15 @@ public class GenerateController {
             if (!ok) {
                 return ResponseEntity.internalServerError()
                         .body(Map.of("error", "GPT-Image 局部重绘失败，请检查 API Key 或网络"));
+            }
+            // Phase 2：归档原图 + mask 作为 ref；写历史记录
+            try {
+                HistoryService.ArchiveResult archive = historyService.archiveRefFiles(
+                        java.util.List.of(imageTmp, maskTmp));
+                historyService.recordGeneration(sessionId, "inpaint", prompt, "gpt-image",
+                        archive.refPaths, outputDir, null);
+            } catch (Exception e) {
+                log.warn("inpaint 写历史失败: {}", e.getMessage());
             }
             return ResponseEntity.ok(Map.of(
                 "results", List.of(outputPath),

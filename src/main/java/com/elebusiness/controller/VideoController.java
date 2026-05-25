@@ -1,6 +1,8 @@
 package com.elebusiness.controller;
 
+import com.elebusiness.config.AppProperties;
 import com.elebusiness.model.GenerationTask;
+import com.elebusiness.service.HistoryService;
 import com.elebusiness.service.SeedanceVideoService;
 import com.elebusiness.service.TaskService;
 import com.elebusiness.service.VideoGenerationService;
@@ -26,18 +28,23 @@ import java.util.Map;
 public class VideoController {
 
     private static final Logger log = LoggerFactory.getLogger(VideoController.class);
-    private static final String OUTPUT_DIR = "./生成结果/视频";
 
     private final VideoGenerationService videoGenerationService;
     private final SeedanceVideoService seedanceVideoService;
     private final TaskService taskService;
+    private final AppProperties appProperties;
+    private final HistoryService historyService;
 
     public VideoController(VideoGenerationService videoGenerationService,
                            SeedanceVideoService seedanceVideoService,
-                           TaskService taskService) {
+                           TaskService taskService,
+                           AppProperties appProperties,
+                           HistoryService historyService) {
         this.videoGenerationService = videoGenerationService;
         this.seedanceVideoService = seedanceVideoService;
         this.taskService = taskService;
+        this.appProperties = appProperties;
+        this.historyService = historyService;
     }
 
     @PostMapping(value = "/generate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -49,7 +56,8 @@ public class VideoController {
             @RequestParam(value = "durationSeconds", defaultValue = "8") int durationSeconds,
             @RequestParam(value = "videoUrl", required = false) String videoUrl,
             @RequestParam(value = "audioUrl", required = false) String audioUrl,
-            @RequestParam(value = "generateAudio", defaultValue = "true") boolean generateAudio) {
+            @RequestParam(value = "generateAudio", defaultValue = "true") boolean generateAudio,
+            @RequestParam(value = "sessionId", defaultValue = "default") String sessionId) {
 
         String prompt = promptParam == null ? "" : promptParam.trim();
         if (prompt.isEmpty()) {
@@ -58,7 +66,10 @@ public class VideoController {
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String outputPath = OUTPUT_DIR + "/video_" + timestamp + ".mp4";
+        // Phase 1：先落到临时归档 .temp-output/视频/，2 小时后自动清理；用户在前端点 💾 才 copy 到永久 outputDir
+        File videoTempDir = new File(appProperties.getPaths().getTempOutputDir(), "视频");
+        videoTempDir.mkdirs();
+        String outputPath = new File(videoTempDir, "video_" + timestamp + ".mp4").getAbsolutePath();
 
         GenerationTask task = taskService.createTask(1);
         final int dur = durationSeconds;
@@ -89,6 +100,26 @@ public class VideoController {
                 String filename = new File(savedPath).getName();
                 task.addResult(Map.of("type", "video", "filename", filename, "status", "success"));
                 task.incrementProgress();
+                // Phase 2：归档参考图（如果有）+ 写历史
+                try {
+                    java.util.List<java.io.File> refs = new java.util.ArrayList<>();
+                    if (images != null) {
+                        for (MultipartFile mf : images) {
+                            if (mf == null || mf.isEmpty()) continue;
+                            java.io.File t = java.io.File.createTempFile("video_ref_", ".jpg");
+                            mf.transferTo(t);
+                            refs.add(t);
+                        }
+                    }
+                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(refs);
+                    String configJson = "{\"model\":\"" + model + "\",\"aspectRatio\":\"" + aspectRatio
+                            + "\",\"durationSeconds\":" + dur + "}";
+                    historyService.recordGeneration(sessionId, "video", prompt, model,
+                            archive.refPaths, savedPath, configJson);
+                    for (java.io.File r : refs) r.delete();
+                } catch (Exception he) {
+                    log.warn("video 写历史失败: {}", he.getMessage());
+                }
             } catch (Exception e) {
                 log.error("视频模式失败: {}", e.getMessage(), e);
                 task.addResult(Map.of("type", "video", "status", "error", "message", e.getMessage()));
@@ -121,7 +152,12 @@ public class VideoController {
         if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
             return ResponseEntity.badRequest().build();
         }
-        File f = new File(OUTPUT_DIR + "/" + filename);
+        // Phase 1：视频可能在临时归档（.temp-output/视频/）也可能已被用户保存到永久 outputDir/视频/
+        // 先查临时再查永久，向后兼容（前端不用改 src 路径）
+        File f = new File(new File(appProperties.getPaths().getTempOutputDir(), "视频"), filename);
+        if (!f.exists()) {
+            f = new File(new File(appProperties.getPaths().getOutputDir(), "视频"), filename);
+        }
         if (!f.exists()) {
             return ResponseEntity.notFound().build();
         }

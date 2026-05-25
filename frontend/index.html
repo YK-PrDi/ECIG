@@ -65,13 +65,9 @@
                         <span>历史记录</span>
                     </div>
 
-                    <div class="user-menu-item" onclick="openConfigModal()">
+                    <div class="user-menu-item" onclick="openSettingsView()">
                         <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-                        同步配置
-                    </div>
-                    <div class="user-menu-item" onclick="openProxyModal()">
-                        <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-                        代理设置
+                        设置
                     </div>
                     <!-- 生成完自动加到画布的开关（视频模式不参与） -->
                     <div class="user-menu-item" onclick="event.stopPropagation();toggleAutoBoard()">
@@ -538,6 +534,18 @@
         let products = [];
         let currentMode = 'standard';
         let pollTimer = null;
+
+        // Phase 2：每个浏览器一个稳定 sessionId，存 localStorage；服务端按它分组对话/生图历史
+        const SESSION_ID = (function () {
+            try {
+                let s = localStorage.getItem('eb_session_id');
+                if (!s) {
+                    s = 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+                    localStorage.setItem('eb_session_id', s);
+                }
+                return s;
+            } catch (_) { return 'sess_default'; }
+        })();
         let droppedFiles = [];
         let isTextOnly = false;
         window.pendingMask = null;
@@ -834,21 +842,33 @@
                 return;
             }
 
-            grid.innerHTML = filteredData.map(item => `
-                <div class="history-card" onclick="openHistoryFolder('${item.filePath.replace(/'/g, "\\'")}', '${escHtml(item.name)}')">
+            // 卡片用 history record id 作为 key，避免把绝对路径塞进 inline onclick 触发 JS 转义
+            window.__historyById = window.__historyById || {};
+            grid.innerHTML = filteredData.map(item => {
+                window.__historyById[item.id] = item;
+                const thumbUrl = item.thumbnail
+                    ? `/api/history/thumbnail?id=${item.id}`
+                    : '';
+                const savedBadge = item.saved
+                    ? `<div style="position:absolute;top:8px;right:8px;background:#10B981;color:#fff;padding:2px 8px;border-radius:8px;font-size:0.65rem;">已保存</div>`
+                    : '';
+                return `
+                <div class="history-card" onclick="openHistoryRecord(${item.id})" style="position:relative;">
                     <div class="history-img-wrapper">
-                        <img src="/api/image?path=${encodeURIComponent(item.thumbnail || item.filePath)}" alt="${escHtml(item.name)}" loading="lazy">
+                        ${thumbUrl ? `<img src="${thumbUrl}" alt="${escHtml(item.name)}" loading="lazy" onerror="this.style.display='none'">` : '<div style="height:160px;background:var(--bg-card);display:flex;align-items:center;justify-content:center;color:var(--text-dim);">无缩略图</div>'}
                     </div>
+                    ${savedBadge}
                     <div class="history-badge">${escHtml(item.agent)}</div>
                     <div class="history-overlay">
                         <div class="history-prompt">${escHtml(item.name)}</div>
                         <div class="history-meta">
-                            <span>${escHtml(String(item.count))} 张</span>
                             <span>${escHtml(item.date)}</span>
+                            <span style="cursor:pointer;color:#fca5a5;" onclick="event.stopPropagation();deleteHistoryRecord(${item.id})">🗑</span>
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         async function loadHistoryData() {
@@ -856,25 +876,48 @@
             grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 80px; color: var(--text-dim);">加载中...</div>`;
 
             try {
-                const res = await fetch('/api/gallery');
+                // Phase 2：从 SQLite 拉历史；按 sessionId 过滤当前浏览器，兼顾隐私 & 多用户共用一份磁盘
+                const res = await fetch('/api/history/generations?sessionId=' + encodeURIComponent(SESSION_ID) + '&size=120');
                 const data = await res.json();
+                const items = data.items || [];
 
-                const folders = (data.items || []).filter(item => item.type === 'folder' && item.count > 0);
+                // mode → 统一过滤 type：标准/自定义/电商/开品 都归 image，video 归 video
+                realHistoryData = items.map(g => {
+                    const isVideo = g.mode === 'video';
+                    const modeLabel = ({
+                        standard: '标准模式', custom: '自定义模式',
+                        ecommerce: '电商模式', kaipin: '开品模式',
+                        inpaint: '局部重绘', video: '视频模式'
+                    })[g.mode] || (g.mode || 'AI 生图');
+                    return {
+                        id: g.id,
+                        type: isVideo ? 'video' : 'image',
+                        name: (g.prompt || '(无提示词)').slice(0, 60),
+                        agent: modeLabel,
+                        date: formatRelativeTime(new Date(g.createdAt).getTime()),
+                        // outputPath 是批次目录（图片）或具体视频文件；让卡片用 outputPath 当 thumbnail key，
+                        // openHistoryFolder 时根据 outputPath 拉详情
+                        filePath: g.outputPath || '',
+                        outputPath: g.outputPath || '',
+                        savedPath: g.savedPath || '',
+                        saved: !!g.saved,
+                        prompt: g.prompt || '',
+                        mode: g.mode || '',
+                        agentId: g.agentId || '',
+                        configJson: g.configJson || '',
+                        refPathsJson: g.refPathsJson || '',
+                        sessionId: g.sessionId || '',
+                        // 缩略图：图片模式用 outputPath（gallery 列首图）；视频用 outputPath 文件本身
+                        thumbnail: g.outputPath || ''
+                    };
+                });
 
-                realHistoryData = folders.map(folder => ({
-                    id: folder.path,
-                    type: 'image',
-                    name: folder.name,
-                    agent: folder.name.includes('自定义模式') ? '自定义模式' : 'AI 生图',
-                    date: formatRelativeTime(folder.modified),
-                    count: folder.count,
-                    filePath: folder.path,
-                    thumbnail: folder.thumbnail
-                }));
+                document.getElementById('historyTotalCount').innerText = realHistoryData.length;
 
                 setTimeout(() => {
                     const activeBtn = document.querySelector('#historyFilter .mode-btn.active');
-                    if (activeBtn) filterHistory('all', activeBtn);
+                    if (activeBtn) filterHistory(activeBtn.dataset.filter || 'all', activeBtn);
+                    else renderFilteredHistory('all');
                 }, 20);
 
             } catch (error) {
@@ -883,39 +926,141 @@
             }
         }
 
-        async function openHistoryFolder(folderPath, folderName) {
+        // Phase 2 详情：根据 GenerationHistory 列出图片/视频 + 提供 🔄 重生 + 💾 保存
+        async function openHistoryRecord(id) {
+            const rec = (window.__historyById || {})[id];
+            if (!rec) return;
+
+            // 拉详情：列出 outputPath 目录下所有图（视频则单文件）
+            let mediaList = [];
             try {
-                const res = await fetch(`/api/gallery?path=${encodeURIComponent(folderPath)}`);
-                const data = await res.json();
-                const images = (data.items || []).filter(i => i.type === 'image');
-                if (images.length === 0) return;
+                if (rec.mode === 'video') {
+                    const filename = rec.outputPath.split(/[\\/]/).pop();
+                    mediaList = [{ type: 'video', path: rec.outputPath, name: filename, url: `/api/video/file?filename=${encodeURIComponent(filename)}` }];
+                } else if (rec.outputPath) {
+                    const r = await fetch(`/api/gallery?path=${encodeURIComponent(rec.outputPath)}`);
+                    const d = await r.json();
+                    mediaList = (d.items || []).filter(i => i.type === 'image').map(i => ({
+                        type: 'image', path: i.path, name: i.name,
+                        url: `/api/image?path=${encodeURIComponent(i.path)}`
+                    }));
+                }
+            } catch (e) { console.warn('拉历史详情失败', e); }
 
-                const mask = document.createElement('div');
-                mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:40px 24px;overflow-y:auto;';
-                mask.onclick = e => { if (e.target === mask) mask.remove(); };
+            const mask = document.createElement('div');
+            mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;flex-direction:column;align-items:center;padding:30px 24px;overflow-y:auto;';
+            mask.onclick = e => { if (e.target === mask) mask.remove(); };
 
-                const title = document.createElement('div');
-                title.style.cssText = 'color:#e5e7eb;font-size:0.9rem;margin-bottom:16px;align-self:flex-start;max-width:900px;width:100%;display:flex;justify-content:space-between;align-items:center;';
-                title.innerHTML = `<span>${escHtml(folderName)}</span><button onclick="this.closest('div[style]').remove()" style="background:none;border:none;color:#9ca3af;font-size:1.2rem;cursor:pointer;">✕</button>`;
+            const card = document.createElement('div');
+            card.style.cssText = 'max-width:900px;width:100%;background:var(--bg);border-radius:12px;padding:20px;color:var(--text);';
 
-                const grid = document.createElement('div');
-                grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;max-width:900px;width:100%;';
+            const refsHtml = (rec.refPathsJson && rec.refPathsJson.length > 4)
+                ? '<div style="margin-top:10px;font-size:0.78rem;color:var(--text-dim);">参考图归档：' + escHtml(rec.refPathsJson) + '</div>' : '';
 
-                images.forEach(img => {
-                    const url = `/api/image?path=${encodeURIComponent(img.path)}`;
-                    const el = document.createElement('img');
-                    el.src = url;
-                    el.style.cssText = 'width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;';
-                    el.onclick = e => { e.stopPropagation(); handleMediaClick('image', url, img.name, e); };
-                    grid.appendChild(el);
-                });
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                    <div style="flex:1;">
+                        <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:4px;">${escHtml(rec.agent)} · ${escHtml(rec.date)}</div>
+                        <div style="font-size:0.92rem;font-weight:500;margin-bottom:6px;white-space:pre-wrap;word-break:break-word;">${escHtml(rec.prompt || '(无提示词)')}</div>
+                        ${refsHtml}
+                    </div>
+                    <div style="display:flex;gap:8px;flex-shrink:0;">
+                        <button class="btn-outline" onclick="regenerateFromHistory(${id})" style="padding:6px 12px;">🔄 重生</button>
+                        <button class="btn-outline" onclick="this.closest('div[style*=\\'position:fixed\\']').remove()" style="padding:6px 12px;">关闭</button>
+                    </div>
+                </div>
+                <div id="histDetailGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:18px;"></div>
+            `;
+            mask.appendChild(card);
+            document.body.appendChild(mask);
 
-                mask.appendChild(title);
-                mask.appendChild(grid);
-                document.body.appendChild(mask);
-            } catch (e) {
-                console.error('打开历史文件夹失败', e);
+            const detailGrid = card.querySelector('#histDetailGrid');
+            if (mediaList.length === 0) {
+                detailGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--text-dim);">输出文件不存在或已被清理（临时归档 2 小时 TTL）</div>';
+                return;
             }
+            mediaList.forEach(m => {
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'position:relative;border-radius:8px;overflow:hidden;background:var(--bg-card);';
+                const pathKey = 'h' + Math.random().toString(36).slice(2, 9);
+                window.__pathMap = window.__pathMap || {};
+                window.__pathMap[pathKey] = m.path;
+                if (m.type === 'image') {
+                    wrap.innerHTML = `
+                        <img src="${m.url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="openPreview('image','${m.url}',event)">
+                        <div style="display:flex;gap:6px;padding:6px 8px;background:var(--bg);">
+                            <button class="btn-outline" style="flex:1;padding:4px 6px;font-size:0.72rem;" onclick="saveToGalleryByKey('${pathKey}', this)">💾 保存</button>
+                        </div>`;
+                } else {
+                    wrap.innerHTML = `
+                        <video src="${m.url}" controls style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#000;"></video>
+                        <div style="display:flex;gap:6px;padding:6px 8px;background:var(--bg);">
+                            <button class="btn-outline" style="flex:1;padding:4px 6px;font-size:0.72rem;" onclick="saveToGalleryByKey('${pathKey}', this)">💾 保存</button>
+                        </div>`;
+                }
+                detailGrid.appendChild(wrap);
+            });
+        }
+
+        async function deleteHistoryRecord(id) {
+            if (!confirm('删除这条历史记录？（不会删除已保存到画廊的文件，只删 DB 记录 + 临时归档）')) return;
+            try {
+                const r = await fetch('/api/history/generations/' + id, { method: 'DELETE' });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                loadHistoryData();
+            } catch (e) {
+                alert('删除失败：' + (e.message || e));
+            }
+        }
+
+        // 🔄 重生：根据 mode 回填到对应输入区，让用户检查后再触发
+        async function regenerateFromHistory(id) {
+            const rec = (window.__historyById || {})[id];
+            if (!rec) return;
+            // 关闭详情遮罩
+            document.querySelectorAll('div[style*="position:fixed"]').forEach(el => {
+                if (el.style.zIndex === '9999') el.remove();
+            });
+            closeSettingsView && (typeof closeSettingsView === 'function' && closeSettingsView());
+            // 关闭历史视图回到工作台
+            const hv = document.getElementById('historyView');
+            if (hv) hv.classList.remove('active');
+
+            // 切到对应模式
+            if (typeof switchMode === 'function') {
+                try {
+                    switch (rec.mode) {
+                        case 'standard':  switchMode('standard'); break;
+                        case 'custom':
+                        case 'inpaint':   switchMode('custom');   break;
+                        case 'ecommerce': switchMode('ecommerce');break;
+                        case 'kaipin':    switchMode('kaipin');   break;
+                        case 'video':     switchMode('video');    break;
+                    }
+                } catch (_) {}
+            }
+
+            // 回填 prompt
+            const promptInput = document.getElementById('promptInput');
+            if (promptInput && rec.prompt) promptInput.value = rec.prompt;
+
+            // 拉归档参考图缩略图回显到聊天区
+            let refsHtml = '';
+            try {
+                const r = await fetch('/api/history/refs/' + id);
+                if (r.ok) {
+                    const d = await r.json();
+                    const items = d.items || [];
+                    if (items.length) {
+                        refsHtml = '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">'
+                            + items.map(it => `<img src="${it.url}" title="${escHtml(it.name)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">`).join('')
+                            + '</div>';
+                    }
+                }
+            } catch (_) {}
+
+            const text = `📋 已从历史记录恢复 [${rec.agent}] 的提示词与模式` + (refsHtml ? '；参考图见下方缩略图（请重新拖拽到对应输入框）' : '') + '。请检查后点 🚀 重新生成。';
+            appendMessage('ai', text + refsHtml, true);
         }
 
         function formatRelativeTime(ms) {
@@ -1228,6 +1373,52 @@
             }
         }
 
+        // Phase 1：用户点 💾 → 把临时归档里的图 copy 到永久 outputDir。
+        // 成功后按钮变 ✓ 并禁用，避免重复点；失败保留按钮可重试。
+        async function saveToGallery(btn, tempPath) {
+            if (!tempPath) return;
+            if (btn.classList.contains('saved') || btn.disabled) return;
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳';
+            try {
+                const resp = await fetch('/api/save-to-gallery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tempPath })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    btn.classList.add('saved');
+                    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                    btn.title = '已保存到 ' + (data.savedPath || '画廊');
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alertSafe('保存失败：' + (data.error || '未知错误'));
+                }
+            } catch (e) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                alertSafe('保存失败：' + (e.message || e));
+            }
+        }
+
+        // 包装层：onclick 里只传短 key（alphanumeric），从 window.__pathMap 查表拿真实路径再调原函数。
+        // 解决了 Windows 路径含 \c \. \t \20 等字符进 inline onclick 字符串字面量被 JS 转义吃掉的 bug
+        // （症状：后端拿到 "D:codeele-business-java..temp-output..." 残缺路径 + 控制字符）。
+        function saveToGalleryByKey(btn, pathKey) {
+            const tempPath = (window.__pathMap || {})[pathKey];
+            if (!tempPath) { alertSafe('保存失败：路径未找到（页面已重渲）'); return; }
+            return saveToGallery(btn, tempPath);
+        }
+        function sendFeedbackByKey(btn, rating, promptKey, pathKey) {
+            const map = window.__pathMap || {};
+            const prompt = map[promptKey] || '';
+            const imagePath = map[pathKey] || '';
+            return sendFeedback(btn, rating, prompt, imagePath);
+        }
+
         async function executeTask() {
             // 阻止双击 / 连发：上一次提交还没拿到 taskId（或还在 inpaint 同步出图）就直接忽略
             // 修这次"按了 20 次按钮 → 后台堆 20 条任务"的 bug
@@ -1268,6 +1459,7 @@
                     fd.append('image',  imgFile,  'image.png');
                     fd.append('mask',   maskBlob, 'mask.png');
                     fd.append('prompt', prompt);
+                    fd.append('sessionId', SESSION_ID);
                     const res = await fetch('/api/inpaint', { method: 'POST', body: fd });
                     const result = await res.json();
                     if (!res.ok) throw new Error(result.error || '请求失败');
@@ -1301,6 +1493,7 @@
             if (currentMode === 'standard') {
                 if (ids.length === 0) return alert('请选择产品');
                 payload.productIds = ids;
+                payload.sessionId = SESSION_ID;
                 appendMessage('user', `[生图任务] 模型: ${agentId}\n提示词: ${payload.prompt}`);
 
                 try {
@@ -1353,6 +1546,8 @@
 
                 formData.append('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
                 formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
+                formData.append('sessionId', SESSION_ID);
+                formData.append('mode', 'custom');
 
                 const hasBase = droppedFiles.length > 0 || sessionImagePath;
                 const taskLabel = hasBase ? '重绘任务' : '文生图任务';
@@ -1421,6 +1616,8 @@
                 promptsToSend.forEach(p => formData.append('prompt', p));
                 formData.append('count',   '1');
                 formData.append('agentId', agentId);
+                formData.append('sessionId', SESSION_ID);
+                formData.append('mode', 'ecommerce');
                 if (isDetail) formData.append('aspect', '9:16');
 
                 // 诊断日志（v2026-05-22-r2）：前端实际发出的 prompt 数 / 图片数 / 是否 pair 模式
@@ -1487,6 +1684,8 @@
                 const kpCount = (Number.isFinite(kpCountRaw) && kpCountRaw >= 1 && kpCountRaw <= 50) ? kpCountRaw : 1;
                 formData.append('count', String(kpCount));
                 formData.append('agentId', agentId);
+                formData.append('sessionId', SESSION_ID);
+                formData.append('mode', 'kaipin');
                 const focusLabel = {cost:'成本与量产', premium:'颜值与溢价', disruptive:'颠覆性创新', custom:'自定义'}[focus];
                 appendMessage('user',
                     `[开品模式] 模型: ${agentId}\n产品 A: ${a}\n产品 B: ${b}` +
@@ -1523,6 +1722,7 @@
                     fd.append('prompt', payload.prompt || '');
                     fd.append('aspectRatio', aspectRatio);
                     fd.append('durationSeconds', String(durationSeconds));
+                    fd.append('sessionId', SESSION_ID);
                     if (refImgCount) {
                         droppedFiles.forEach(f => fd.append('images', f));
                     }
@@ -1746,18 +1946,27 @@
                         for (const img of imageItems) {
                             const imgUrl = `/api/image?path=${encodeURIComponent(img.path)}`;
                             const safeName = escHtml(result.name);
-                            const safePrompt = (result.prompt || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                            const safePath = img.path.replace(/'/g, "\\'");
+                            // 不再把路径塞进 inline onclick 字符串字面量 —— Windows 路径里的 \c \. \t \20 等
+                            // 会被 JS 当转义序列吃掉，导致后端拿到 "D:codeele-business-java..temp-output..." 这种残缺字符串。
+                            // 改成短 key + window 全局映射：onclick 只传 alphanumeric key，函数内查表拿真实路径，零转义风险。
+                            window.__pathMap = window.__pathMap || {};
+                            const pathKey = 'p' + Math.random().toString(36).slice(2, 10);
+                            window.__pathMap[pathKey] = img.path;
+                            const promptKey = 'pr' + Math.random().toString(36).slice(2, 10);
+                            window.__pathMap[promptKey] = result.prompt || '';
                             htmlContent += `<div class="result-image-wrap" data-img-url="${imgUrl}">`;
                             htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="单点预览，三连点下载；Ctrl+点击多选，拖入输入框" ondragstart="onResultImgDragStart(event,'${imgUrl}')" onclick="onResultImgClick(event,'${imgUrl}','${safeName}.png')">`;
                             htmlContent += `<div class="feedback-bar">
-                                <button class="feedback-btn" onclick="sendFeedback(this,'like','${safePrompt}','${safePath}')" title="满意">
+                                <button class="feedback-btn" onclick="sendFeedbackByKey(this,'like','${promptKey}','${pathKey}')" title="满意">
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
                                 </button>
-                                <button class="feedback-btn" onclick="sendFeedback(this,'dislike','${safePrompt}','${safePath}')" title="不满意">
+                                <button class="feedback-btn" onclick="sendFeedbackByKey(this,'dislike','${promptKey}','${pathKey}')" title="不满意">
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
                                 </button>
-                                <button class="feedback-btn" onclick="event.stopPropagation();regenerateLastGen()" title="用上次的参数重新生成（不用重新配置面板和上传图片）" style="margin-left:auto;">
+                                <button class="feedback-btn save-btn" onclick="event.stopPropagation();saveToGalleryByKey(this,'${pathKey}')" title="保存到画廊（不点 2 小时后自动清理）" style="margin-left:auto;">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                </button>
+                                <button class="feedback-btn" onclick="event.stopPropagation();regenerateLastGen()" title="用上次的参数重新生成（不用重新配置面板和上传图片）">
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                                 </button>
                               </div>`;
@@ -1853,6 +2062,20 @@
             container.appendChild(msg);
             const inputH2 = (document.querySelector('.input-area-wrapper') || {}).offsetHeight || 0;
             container.scrollTop = container.scrollHeight + inputH2 + 40;
+
+            // Phase 2：把对话写进 SQLite（失败静默；isHtml 时存原始 text，前端不再回放 HTML）
+            try {
+                fetch('/api/history/conversations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionId: SESSION_ID,
+                        role: role,
+                        content: isHtml ? msg.innerText : text, // HTML 模式只存可读文本，避免回放时 XSS
+                        mode: currentMode || ''
+                    })
+                }).catch(() => {});
+            } catch (_) {}
         }
 
         function setSessionImage(serverPath) {
@@ -2867,27 +3090,246 @@
         let isConfigured = false;
         let selectedPlatform = 'dingtalk';
 
-        function openConfigModal() {
-            const modal = document.getElementById('configModal');
-            modal.style.display = 'flex';
-            setTimeout(() => modal.classList.add('show'), 10);
+        let isShowingSettings = false;
+
+        // 打开设置全屏页（替代原 modal）；同时退出历史记录视图，避免两层叠在一起
+        function openSettingsView() {
+            const view = document.getElementById('settingsView');
+            view.classList.add('active');
+            isShowingSettings = true;
             document.getElementById('userMenu').classList.remove('show');
-            fetch('/api/config').then(r => r.json()).then(cfg => {
-                if (cfg.app_key)    document.getElementById('dt_app_key').value    = cfg.app_key;
-                if (cfg.app_secret) document.getElementById('dt_app_secret').value = cfg.app_secret;
-                if (cfg.union_id)   document.getElementById('dt_union_id').value   = cfg.union_id;
-                if (cfg.app_uuid)   document.getElementById('dt_app_uuid').value   = cfg.app_uuid;
-                if (cfg.sheet_id)   document.getElementById('dt_sheet_id').value   = cfg.sheet_id;
-                if (cfg.app_key && cfg.app_secret && cfg.union_id && cfg.app_uuid && cfg.sheet_id) {
+            // 一次拉全部字段（钉钉 / 代理 / 自定义保存目录）
+            fetch('/api/settings').then(r => r.json()).then(s => {
+                const dt = s.dingtalk || {};
+                document.getElementById('dt_app_key').value    = dt.app_key    || '';
+                document.getElementById('dt_app_secret').value = dt.app_secret || '';
+                document.getElementById('dt_union_id').value   = dt.union_id   || '';
+                document.getElementById('dt_app_uuid').value   = dt.app_uuid   || '';
+                document.getElementById('dt_sheet_id').value   = dt.sheet_id   || '';
+                if (dt.app_key && dt.app_secret && dt.union_id && dt.app_uuid && dt.sheet_id) {
                     isConfigured = true;
                 }
+                const px = s.proxy || {};
+                document.getElementById('pxy_host').value = px.proxy_host || '';
+                document.getElementById('pxy_port').value = px.proxy_port || '8086';
+                document.getElementById('customOutputDir').value = s.customOutputDir || '';
             }).catch(() => {});
         }
 
-        function closeConfigModal() {
-            const modal = document.getElementById('configModal');
-            modal.classList.remove('show');
-            setTimeout(() => modal.style.display = 'none', 300);
+        function closeSettingsView() {
+            const view = document.getElementById('settingsView');
+            view.classList.remove('active');
+            isShowingSettings = false;
+        }
+
+        // 兼容旧调用入口
+        function openSettingsModal() { openSettingsView(); }
+        function closeSettingsModal() { closeSettingsView(); }
+
+        // Electron 环境下走 IPC 弹原生目录选择框（跟首次启动选下载位置一致的体验）；
+        // 浏览器环境下打开内嵌的"目录浏览"全屏页（类似历史记录），不再用 alert
+        async function pickDirOrFallback() {
+            const input = document.getElementById('customOutputDir');
+            if (window.electronAPI && typeof window.electronAPI.pickDir === 'function') {
+                try {
+                    const dir = await window.electronAPI.pickDir(input.value || '');
+                    if (dir) input.value = dir;
+                } catch (e) {
+                    appendMessage('ai', '❌ 打开目录选择框失败：' + (e.message || e));
+                }
+                return;
+            }
+            // 浏览器 fallback：打开内嵌目录浏览
+            openDirBrowser(input.value || '');
+        }
+
+        // ── 目录浏览（浏览器 fallback）：通过 /api/settings/browse-dir 逐层加载 ──
+        let __dirBrowserCurrent = ''; // 当前展示的绝对路径，"" = 顶层（盘符列表）
+        let __dirBrowserParent  = null;
+        let __dirBrowserPrevSettingsOpen = false;
+
+        function openDirBrowser(initial) {
+            // 先把设置全屏页临时藏起来，关 dir browser 时再恢复
+            __dirBrowserPrevSettingsOpen = isShowingSettings;
+            if (__dirBrowserPrevSettingsOpen) {
+                document.getElementById('settingsView').classList.remove('active');
+            }
+            const view = document.getElementById('dirBrowserView');
+            view.classList.add('active');
+            const startPath = (initial && initial.trim()) ? initial.trim() : '';
+            loadDirBrowser(startPath);
+        }
+
+        function closeDirBrowser() {
+            const view = document.getElementById('dirBrowserView');
+            view.classList.remove('active');
+            if (__dirBrowserPrevSettingsOpen) {
+                document.getElementById('settingsView').classList.add('active');
+            }
+            __dirBrowserPrevSettingsOpen = false;
+        }
+
+        function loadDirBrowser(path) {
+            const url = '/api/settings/browse-dir' + (path ? ('?path=' + encodeURIComponent(path)) : '');
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.error) { appendMessage('ai', '❌ 浏览目录失败：' + data.error); return; }
+                __dirBrowserCurrent = data.path || '';
+                __dirBrowserParent  = (data.parent === undefined) ? null : data.parent;
+                document.getElementById('dirBrowserPath').value = __dirBrowserCurrent || '（盘符层）';
+                document.getElementById('dirBrowserUp').disabled = (__dirBrowserParent === null);
+                const grid = document.getElementById('dirBrowserGrid');
+                grid.innerHTML = '';
+                const items = data.items || [];
+                if (items.length === 0) {
+                    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-dim);padding:40px;">此目录下没有可显示的子文件夹</div>';
+                    return;
+                }
+                items.forEach(it => {
+                    const card = document.createElement('div');
+                    card.className = 'platform-card';
+                    card.style.cursor = 'pointer';
+                    card.style.padding = '14px';
+                    card.style.display = 'flex';
+                    card.style.alignItems = 'center';
+                    card.style.gap = '10px';
+                    card.innerHTML = '<span style="font-size:20px;">📁</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (it.name || '') + '</span>';
+                    card.onclick = () => loadDirBrowser(it.path);
+                    grid.appendChild(card);
+                });
+            }).catch(e => appendMessage('ai', '❌ 浏览目录请求失败：' + (e.message || e)));
+        }
+
+        function dirBrowserGoUp() {
+            if (__dirBrowserParent === null) return;
+            loadDirBrowser(__dirBrowserParent);
+        }
+
+        function dirBrowserConfirm() {
+            if (!__dirBrowserCurrent) {
+                appendMessage('ai', '⚠️ 请先进入一个具体的文件夹再点确认');
+                return;
+            }
+            document.getElementById('customOutputDir').value = __dirBrowserCurrent;
+            closeDirBrowser();
+        }
+
+        // ── 各段独立保存：互不影响，钉钉空时不会触发钉钉验证 ──
+        function __btnFlash(btnId, msg, color, restoreOriginal) {
+            const btn = document.getElementById(btnId);
+            const original = restoreOriginal || btn.dataset.origText || btn.textContent;
+            btn.dataset.origText = original;
+            btn.textContent = msg;
+            btn.style.background = color || '';
+            btn.disabled = true;
+            setTimeout(() => {
+                btn.textContent = original;
+                btn.style.background = '';
+                btn.disabled = false;
+            }, 1600);
+        }
+
+        async function saveDingTalkOnly() {
+            document.querySelectorAll('#dingtalkForm .input-field.error').forEach(el => el.classList.remove('error'));
+            const ids = ['dt_app_key', 'dt_app_secret', 'dt_union_id', 'dt_app_uuid', 'dt_sheet_id'];
+            const v = {};
+            ids.forEach(id => v[id] = document.getElementById(id).value.trim());
+            const allFilled = ids.every(id => v[id]);
+            if (!allFilled) {
+                ids.forEach(id => { if (!v[id]) document.getElementById(id).classList.add('error'); });
+                appendMessage('ai', '❌ 钉钉 5 个字段必须全部填写才能保存');
+                return;
+            }
+            const btn = document.getElementById('saveDingBtn');
+            btn.dataset.origText = btn.textContent;
+            btn.textContent = '保存中...';
+            btn.disabled = true;
+            try {
+                const resp = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dingtalk: { app_key: v.dt_app_key, app_secret: v.dt_app_secret, union_id: v.dt_union_id, app_uuid: v.dt_app_uuid, sheet_id: v.dt_sheet_id } })
+                });
+                if (!resp.ok) { __btnFlash('saveDingBtn', '保存失败', '#EF4444'); return; }
+                btn.textContent = '验证中...';
+                const r = await fetch('/api/products');
+                const data = await r.json();
+                if (!r.ok || data.error) {
+                    const raw = data.error || '验证失败';
+                    let hint = raw;
+                    if (/operatorId/i.test(raw))                    hint = 'Union ID 无效，请核对后重新保存';
+                    else if (/access_token|AccessToken/i.test(raw)) hint = 'AppKey / AppSecret 无效';
+                    else if (/appUuid|base/i.test(raw))             hint = 'AppUuid 无效，请核对多维表地址';
+                    else if (/sheet/i.test(raw))                    hint = 'SheetId 无效，请核对多维表地址';
+                    __btnFlash('saveDingBtn', '验证失败', '#EF4444');
+                    appendMessage('ai', `❌ 钉钉配置验证失败：${hint}`);
+                    return;
+                }
+                isConfigured = true;
+                products = data.products || [];
+                __btnFlash('saveDingBtn', '已保存 ✓', '#10B981');
+                appendMessage('ai', `✅ 钉钉配置验证通过，已同步 ${products.length} 个产品。`);
+            } catch (e) {
+                __btnFlash('saveDingBtn', '保存失败', '#EF4444');
+                appendMessage('ai', '❌ 保存钉钉配置失败：' + (e.message || '网络错误'));
+            }
+        }
+
+        async function saveProxyOnly() {
+            const btn = document.getElementById('saveProxyBtn');
+            btn.dataset.origText = btn.textContent;
+            btn.textContent = '保存中...';
+            btn.disabled = true;
+            try {
+                const resp = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ proxy: {
+                        proxy_host: document.getElementById('pxy_host').value.trim(),
+                        proxy_port: document.getElementById('pxy_port').value.trim() || '8086'
+                    }})
+                });
+                if (!resp.ok) {
+                    let err = '保存失败';
+                    try { const d = await resp.json(); err = d.error || err; } catch (_) {}
+                    __btnFlash('saveProxyBtn', err, '#EF4444');
+                    return;
+                }
+                __btnFlash('saveProxyBtn', '已保存 ✓', '#10B981');
+            } catch (_) {
+                __btnFlash('saveProxyBtn', '保存失败', '#EF4444');
+            }
+        }
+
+        async function saveOutputDirOnly() {
+            const btn = document.getElementById('saveDirBtn');
+            btn.dataset.origText = btn.textContent;
+            btn.textContent = '保存中...';
+            btn.disabled = true;
+            try {
+                const resp = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ customOutputDir: document.getElementById('customOutputDir').value.trim() })
+                });
+                if (!resp.ok) {
+                    // 路径无效后端给 400 + {error}
+                    let err = '保存失败';
+                    try { const d = await resp.json(); err = d.error || err; } catch (_) {}
+                    __btnFlash('saveDirBtn', err, '#EF4444');
+                    appendMessage('ai', '❌ 文件保存位置无效：' + err);
+                    return;
+                }
+                __btnFlash('saveDirBtn', '已保存 ✓', '#10B981');
+            } catch (_) {
+                __btnFlash('saveDirBtn', '保存失败', '#EF4444');
+            }
+        }
+
+        // 兼容旧调用：合并保存（不再被新 UI 使用，保留以防其它入口）
+        function saveSettings() {
+            saveDingTalkOnly();
+            saveProxyOnly();
+            saveOutputDirOnly();
         }
 
         // ── 电商方案配置弹窗 ──
@@ -2934,54 +3376,10 @@
         }
 
         function openProxyModal() {
-            const modal = document.getElementById('proxyModal');
-            modal.style.display = 'flex';
-            setTimeout(() => modal.classList.add('show'), 10);
-            document.getElementById('userMenu').classList.remove('show');
-            fetch('/api/config').then(r => r.json()).then(cfg => {
-                document.getElementById('pxy_host').value = cfg.proxy_host || '';
-                document.getElementById('pxy_port').value = cfg.proxy_port || '8086';
-            }).catch(() => {});
+            // 兼容老调用（早期菜单已删，但其它代码可能还引用）— 直接转新 settings
+            openSettingsModal();
         }
-
-        function closeProxyModal() {
-            const modal = document.getElementById('proxyModal');
-            modal.classList.remove('show');
-            setTimeout(() => modal.style.display = 'none', 300);
-        }
-
-        function saveProxyConfig() {
-            const btn = document.getElementById('saveProxyBtn');
-            const originalText = btn.textContent;
-            btn.textContent = '保存中...';
-            btn.disabled = true;
-            fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    proxy_host: document.getElementById('pxy_host').value.trim(),
-                    proxy_port: document.getElementById('pxy_port').value.trim() || '8086'
-                })
-            }).then(r => {
-                if (!r.ok) throw new Error('保存失败');
-                btn.textContent = '保存成功！';
-                btn.style.background = '#10B981';
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.background = '';
-                    btn.disabled = false;
-                    closeProxyModal();
-                }, 800);
-            }).catch(() => {
-                btn.textContent = '保存失败，请重试';
-                btn.style.background = '#EF4444';
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.background = '';
-                    btn.disabled = false;
-                }, 1500);
-            });
-        }
+        function closeProxyModal() { closeSettingsModal(); }
 
         function selectPlatform(el, platformId) {
             document.querySelectorAll('.platform-card').forEach(card => card.classList.remove('active'));
@@ -2991,84 +3389,8 @@
             selectedPlatform = platformId;
         }
 
-        function savePlatformConfig() {
-            document.querySelectorAll('.input-field.error').forEach(input => input.classList.remove('error'));
-            if (selectedPlatform === 'dingtalk') {
-                const fields = ['dt_app_key', 'dt_app_secret', 'dt_union_id', 'dt_app_uuid', 'dt_sheet_id'];
-                let hasError = false;
-                fields.forEach(id => {
-                    const input = document.getElementById(id);
-                    if (!input.value.trim()) { input.classList.add('error'); hasError = true; }
-                });
-                if (hasError) return;
-            }
-            const btn = document.getElementById('saveConfigBtn');
-            const originalText = btn.textContent;
-            btn.textContent = '保存中...';
-            btn.disabled = true;
-
-            const restoreBtn = (msg, color) => {
-                btn.textContent = msg;
-                btn.style.background = color;
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.background = '';
-                    btn.disabled = false;
-                }, 1800);
-            };
-
-            (async () => {
-                // 1) 保存
-                try {
-                    const saveResp = await fetch('/api/config', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            app_key:    document.getElementById('dt_app_key').value.trim(),
-                            app_secret: document.getElementById('dt_app_secret').value.trim(),
-                            union_id:   document.getElementById('dt_union_id').value.trim(),
-                            app_uuid:   document.getElementById('dt_app_uuid').value.trim(),
-                            sheet_id:   document.getElementById('dt_sheet_id').value.trim()
-                        })
-                    });
-                    if (!saveResp.ok) { restoreBtn('保存失败，请重试', '#EF4444'); return; }
-                } catch (_) {
-                    restoreBtn('保存失败，请重试', '#EF4444'); return;
-                }
-
-                // 2) 验证：调一次 /api/products，钉钉参数对了才算成功
-                btn.textContent = '验证中...';
-                try {
-                    const res  = await fetch('/api/products');
-                    const data = await res.json();
-                    if (!res.ok || data.error) {
-                        const raw = data.error || '验证失败';
-                        let hint = raw;
-                        if (/operatorId/i.test(raw))          hint = 'Union ID 无效，请核对后重新保存';
-                        else if (/access_token|AccessToken/i.test(raw)) hint = 'AppKey / AppSecret 无效';
-                        else if (/appUuid|base/i.test(raw))   hint = 'AppUuid 无效，请核对多维表地址';
-                        else if (/sheet/i.test(raw))          hint = 'SheetId 无效，请核对多维表地址';
-                        restoreBtn('验证失败', '#EF4444');
-                        appendMessage('ai', `❌ 钉钉配置验证失败：${hint}`);
-                        return;
-                    }
-                    isConfigured = true;
-                    products = data.products || [];
-                    btn.textContent = '配置成功！';
-                    btn.style.background = '#10B981';
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.style.background = '';
-                        btn.disabled = false;
-                        closeConfigModal();
-                        appendMessage('ai', `✅ 配置验证通过，已同步 ${products.length} 个产品。`);
-                    }, 800);
-                } catch (e) {
-                    restoreBtn('验证失败', '#EF4444');
-                    appendMessage('ai', '❌ 钉钉配置验证失败：' + (e.message || '网络错误'));
-                }
-            })();
-        }
+        // savePlatformConfig() 已合并入 saveSettings()，保留空 stub 以防其它入口残留调用
+        function savePlatformConfig() { saveSettings(); }
 
         // ── 无限画布（CanvasBoard）──
         class CanvasBoard {
@@ -3773,6 +4095,7 @@
                     }
                     fd.append('mask',   maskBlob, 'mask.png');
                     fd.append('prompt', prompt);
+                    fd.append('sessionId', SESSION_ID);
                     const res = await fetch('/api/inpaint', { method: 'POST', body: fd });
                     const result = await res.json();
                     if (!res.ok) throw new Error(result.error || '请求失败');
@@ -3789,14 +4112,7 @@
             board = new CanvasBoard();
             new ResizeObserver(() => board._resize()).observe(document.getElementById('canvasPanel'));
             initResizers();
-            const configModal = document.getElementById('configModal');
-            if (configModal) configModal.onclick = function(e) {
-                if (e.target === this) closeConfigModal();
-            };
-            const proxyModal = document.getElementById('proxyModal');
-            if (proxyModal) proxyModal.onclick = function(e) {
-                if (e.target === this) closeProxyModal();
-            };
+            // settingsView 是全屏页面，无需点击空白处关闭
         });
 
         function initResizers() {
@@ -3863,9 +4179,9 @@
         <div class="history-toolbar">
             <div class="mode-selector" id="historyFilter" style="background:var(--bg-card); border:1px solid var(--border); position: relative;">
                 <div id="historySliderBg" style="position: absolute; top: 4px; bottom: 4px; background: #FFFFFF; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 1;"></div>
-                <button class="mode-btn active" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('all', this)">全部</button>
-                <button class="mode-btn" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('image', this)">图片</button>
-                <button class="mode-btn" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('video', this)">视频</button>
+                <button class="mode-btn active" data-filter="all" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('all', this)">全部</button>
+                <button class="mode-btn" data-filter="image" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('image', this)">图片</button>
+                <button class="mode-btn" data-filter="video" style="position: relative; z-index: 2; background: transparent; box-shadow: none;" onclick="filterHistory('video', this)">视频</button>
             </div>
             <div class="history-count">共 <b id="historyTotalCount">0</b> 条记录</div>
         </div>
@@ -3873,93 +4189,137 @@
         <div class="history-grid" id="historyGrid"></div>
     </div>
 
-    <!-- ── 配置弹窗 ── -->
-    <div id="configModal" class="modal-overlay">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3>同步平台设置</h3>
-                <button class="close-btn" onclick="closeConfigModal()">×</button>
+    <!-- 目录浏览全屏界面（浏览器态 fallback；Electron 走原生 IPC 不会进这里） -->
+    <div id="dirBrowserView" class="history-view">
+        <div class="history-header">
+            <button class="btn-back" onclick="closeDirBrowser()">
+                <svg style="width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+                返回设置
+            </button>
+            <h2>选择保存位置</h2>
+            <p>逐层进入文件夹，点击"选择此文件夹"完成</p>
+        </div>
+
+        <div class="history-toolbar" style="flex-direction:column;align-items:stretch;gap:10px;">
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn-outline" id="dirBrowserUp" onclick="dirBrowserGoUp()" style="padding:6px 12px;flex:0 0 auto;">⬆️ 上级</button>
+                <input type="text" id="dirBrowserPath" class="input-field" readonly style="flex:1;background:var(--bg-card);" placeholder="（盘符层级 / 顶层）">
+                <button class="btn-primary" onclick="dirBrowserConfirm()" style="padding:6px 14px;flex:0 0 auto;white-space:nowrap;">✓ 选择此文件夹</button>
             </div>
-            <p class="modal-desc">选择并配置一个平台作为产品数据的同步来源</p>
-            <div class="platform-grid" style="margin-bottom: 20px;">
-                <div class="platform-card active" onclick="selectPlatform(this, 'dingtalk')">
-                    <div class="platform-icon dingtalk">钉</div>
-                    <span>钉钉</span>
-                    <div class="check-mark">L</div>
+        </div>
+
+        <div id="dirBrowserGrid" style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:10px;"></div>
+    </div>
+
+    <!-- ── 设置全屏页面（替代旧 modal；同步配置 + 代理 + 文件保存位置 三段，各自独立保存） ── -->
+    <div id="settingsView" class="history-view">
+        <div class="history-header">
+            <button class="btn-back" onclick="closeSettingsView()">
+                <svg style="width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+                返回工作台
+            </button>
+            <h2>应用设置</h2>
+            <p>三段配置各自保存：钉钉、代理、文件保存位置。任一段保存失败不影响其它段。</p>
+        </div>
+
+        <div style="max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:18px;">
+
+            <!-- ① 同步平台 -->
+            <section class="settings-card">
+                <div class="settings-card-head">
+                    <h3>① 同步平台</h3>
+                    <button class="btn-primary" id="saveDingBtn" onclick="saveDingTalkOnly()" style="padding:6px 14px;">保存并验证</button>
                 </div>
-                <div class="platform-card" onclick="selectPlatform(this, 'wecom')">
-                    <div class="platform-icon wecom">企</div>
-                    <span>企业微信</span>
-                    <div class="check-mark">L</div>
-                </div>
-                <div class="platform-card" onclick="selectPlatform(this, 'todesk')">
-                    <div class="platform-icon todesk">T</div>
-                    <span>ToDesk</span>
-                    <div class="check-mark">L</div>
-                </div>
-            </div>
-            <div class="forms-container">
-                <div id="dingtalkForm" class="platform-form active">
-                    <div class="form-item">
-                        <label>AppKey <span class="required">*</span></label>
-                        <input type="text" id="dt_app_key" class="input-field" placeholder="应用的 AppKey">
+                <p class="modal-desc" style="margin-top:0;">选择并配置一个平台作为产品数据的同步来源。本段为空时不会触发钉钉验证，可只保存其它两段。</p>
+                <div class="platform-grid" style="margin-bottom:14px;">
+                    <div class="platform-card active" onclick="selectPlatform(this, 'dingtalk')">
+                        <div class="platform-icon dingtalk">钉</div>
+                        <span>钉钉</span>
+                        <div class="check-mark">L</div>
                     </div>
-                    <div class="form-item">
-                        <label>AppSecret <span class="required">*</span></label>
-                        <input type="password" id="dt_app_secret" class="input-field" placeholder="应用的 AppSecret">
+                    <div class="platform-card" onclick="selectPlatform(this, 'wecom')">
+                        <div class="platform-icon wecom">企</div>
+                        <span>企业微信</span>
+                        <div class="check-mark">L</div>
                     </div>
-                    <div class="form-item full-width">
-                        <label>UnionID <span class="required">*</span></label>
-                        <input type="text" id="dt_union_id" class="input-field" placeholder="操作人的 UnionID">
-                    </div>
-                    <div class="form-item">
-                        <label>App UUID <span class="required">*</span></label>
-                        <input type="text" id="dt_app_uuid" class="input-field" placeholder="多维表 App UUID">
-                    </div>
-                    <div class="form-item">
-                        <label>Sheet ID <span class="required">*</span></label>
-                        <input type="text" id="dt_sheet_id" class="input-field" placeholder="多维表 Sheet ID">
+                    <div class="platform-card" onclick="selectPlatform(this, 'todesk')">
+                        <div class="platform-icon todesk">T</div>
+                        <span>ToDesk</span>
+                        <div class="check-mark">L</div>
                     </div>
                 </div>
-                <div id="wecomForm" class="platform-form">
-                    <p class="placeholder-text">企业微信参数配置项待开放...</p>
+                <div class="forms-container">
+                    <div id="dingtalkForm" class="platform-form active">
+                        <div class="form-item">
+                            <label>AppKey <span class="required">*</span></label>
+                            <input type="text" id="dt_app_key" class="input-field" placeholder="应用的 AppKey">
+                        </div>
+                        <div class="form-item">
+                            <label>AppSecret <span class="required">*</span></label>
+                            <input type="password" id="dt_app_secret" class="input-field" placeholder="应用的 AppSecret">
+                        </div>
+                        <div class="form-item full-width">
+                            <label>UnionID <span class="required">*</span></label>
+                            <input type="text" id="dt_union_id" class="input-field" placeholder="操作人的 UnionID">
+                        </div>
+                        <div class="form-item">
+                            <label>App UUID <span class="required">*</span></label>
+                            <input type="text" id="dt_app_uuid" class="input-field" placeholder="多维表 App UUID">
+                        </div>
+                        <div class="form-item">
+                            <label>Sheet ID <span class="required">*</span></label>
+                            <input type="text" id="dt_sheet_id" class="input-field" placeholder="多维表 Sheet ID">
+                        </div>
+                    </div>
+                    <div id="wecomForm" class="platform-form">
+                        <p class="placeholder-text">企业微信参数配置项待开放...</p>
+                    </div>
+                    <div id="todeskForm" class="platform-form">
+                        <p class="placeholder-text">ToDesk参数配置项待开放...</p>
+                    </div>
                 </div>
-                <div id="todeskForm" class="platform-form">
-                    <p class="placeholder-text">ToDesk参数配置项待开放...</p>
+            </section>
+
+            <!-- ② 代理 -->
+            <section class="settings-card">
+                <div class="settings-card-head">
+                    <h3>② 代理设置</h3>
+                    <button class="btn-primary" id="saveProxyBtn" onclick="saveProxyOnly()" style="padding:6px 14px;">保存代理</button>
                 </div>
-            </div>
-            <div class="modal-footer" style="margin-top: 16px;">
-                <button class="btn-outline" style="flex:1" onclick="closeConfigModal()">取消</button>
-                <button class="btn-primary" style="flex:2" id="saveConfigBtn" onclick="savePlatformConfig()">保存并验证</button>
-            </div>
+                <p class="modal-desc" style="margin-top:0;">Gemini 等模型需要代理才能访问。留空主机则自动跟随系统加速器（推荐）</p>
+                <div class="forms-container" style="margin-top:8px;">
+                    <div class="form-item" style="flex:3;">
+                        <label>代理主机 <span style="font-weight:400;color:var(--text-dim);">（留空 = 系统代理）</span></label>
+                        <input type="text" id="pxy_host" class="input-field" placeholder="留空则自动使用系统加速器">
+                    </div>
+                    <div class="form-item" style="flex:1;">
+                        <label>端口</label>
+                        <input type="number" id="pxy_port" class="input-field" placeholder="8086" value="8086">
+                    </div>
+                </div>
+            </section>
+
+            <!-- ③ 文件保存位置 -->
+            <section class="settings-card">
+                <div class="settings-card-head">
+                    <h3>③ 文件保存位置</h3>
+                    <button class="btn-primary" id="saveDirBtn" onclick="saveOutputDirOnly()" style="padding:6px 14px;">保存目录</button>
+                </div>
+                <p class="modal-desc" style="margin-top:0;">用户点 💾 保存图片/视频时使用的目录。留空则使用程序默认目录。</p>
+                <div class="form-item full-width" style="margin-top:8px;">
+                    <label>保存目录</label>
+                    <div style="display:flex;gap:8px;align-items:stretch;">
+                        <input type="text" id="customOutputDir" class="input-field" style="flex:1;" placeholder="留空使用默认目录">
+                        <button type="button" class="btn-outline" id="pickDirBtn" onclick="pickDirOrFallback()" style="flex:0 0 auto;padding:0 14px;white-space:nowrap;">📁 浏览...</button>
+                    </div>
+                    <p style="font-size:0.7rem;color:var(--text-dim);margin-top:6px;">点 📁 在新页面中浏览磁盘选择目录；也可直接粘贴绝对路径。</p>
+                </div>
+            </section>
+
         </div>
     </div>
 
-    <!-- ── 代理设置弹窗 ── -->
-    <div id="proxyModal" class="modal-overlay">
-        <div class="modal-card" style="max-width:420px;">
-            <div class="modal-header">
-                <h3>代理设置</h3>
-                <button class="close-btn" onclick="closeProxyModal()">×</button>
-            </div>
-            <p class="modal-desc">Gemini 等模型需要代理才能访问。留空主机则自动跟随系统加速器（推荐）</p>
-            <div class="forms-container" style="margin-top:12px;">
-                <div class="form-item" style="flex:3;">
-                    <label>代理主机 <span style="font-weight:400;color:var(--text-dim);">（留空 = 系统代理）</span></label>
-                    <input type="text" id="pxy_host" class="input-field" placeholder="留空则自动使用系统加速器">
-                </div>
-                <div class="form-item" style="flex:1;">
-                    <label>端口</label>
-                    <input type="number" id="pxy_port" class="input-field" placeholder="8086" value="8086">
-                </div>
-            </div>
-            <p style="font-size:0.72rem; color:var(--text-dim); margin-top:8px;">保存后立即生效，无需重启。填写后优先使用指定代理，覆盖系统代理。</p>
-            <div class="modal-footer" style="margin-top:16px;">
-                <button class="btn-outline" style="flex:1" onclick="closeProxyModal()">取消</button>
-                <button class="btn-primary" style="flex:2" id="saveProxyBtn" onclick="saveProxyConfig()">保存</button>
-            </div>
-        </div>
-    </div>
+    <!-- 旧 settingsModal 已废弃（设置改成 settingsView 全屏页面） -->
 
     <!-- 电商方案配置弹窗 -->
     <div id="ecommerceModal" class="modal-overlay" style="z-index: 5000;" onclick="if(event.target===this) closeEcommerceModal()">

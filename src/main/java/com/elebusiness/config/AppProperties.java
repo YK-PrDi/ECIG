@@ -91,6 +91,11 @@ public class AppProperties {
     public static class Paths {
         private String referenceDir = "./大参考";
         private String outputDir = "./生成结果";
+        private String tempOutputDir = "./.temp-output";
+        // Phase 2：历史记录用的参考图归档目录。生图时把 ref 图复制一份到这里，DB 存路径，
+        // 用户在历史 UI 点"重生"时能找到原参考图；只在用户手动删除历史条目时才清理。
+        // 不参与 .temp-output 的 2h TTL 清理。
+        private String historyRefsDir = "./.history-refs";
         private String configFile = "./config.json";
         private String promptsDir = "./prompts";
 
@@ -98,6 +103,10 @@ public class AppProperties {
         public void setReferenceDir(String referenceDir) { this.referenceDir = referenceDir; }
         public String getOutputDir() { return outputDir; }
         public void setOutputDir(String outputDir) { this.outputDir = outputDir; }
+        public String getTempOutputDir() { return tempOutputDir; }
+        public void setTempOutputDir(String tempOutputDir) { this.tempOutputDir = tempOutputDir; }
+        public String getHistoryRefsDir() { return historyRefsDir; }
+        public void setHistoryRefsDir(String historyRefsDir) { this.historyRefsDir = historyRefsDir; }
         public String getConfigFile() { return configFile; }
         public void setConfigFile(String configFile) { this.configFile = configFile; }
         public String getPromptsDir() { return promptsDir; }

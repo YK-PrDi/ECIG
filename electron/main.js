@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const path  = require('path');
 const http  = require('http');
@@ -262,6 +262,7 @@ function createMain() {
         webPreferences: {
             nodeIntegration:  false,
             contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js'),
         },
     });
 
@@ -346,6 +347,19 @@ function createMain() {
         }
     });
 }
+
+// ── IPC：渲染层调 window.electronAPI.pickDir() 弹原生目录选择框 ──
+ipcMain.handle('pick-dir', async (_event, defaultPath) => {
+    const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+    const result = await dialog.showOpenDialog(owner, {
+        title: '选择文件保存位置',
+        defaultPath: defaultPath || app.getPath('pictures'),
+        properties: ['openDirectory', 'createDirectory'],
+        buttonLabel: '选择此文件夹',
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
+});
 
 // ── 应用启动 ──
 app.whenReady().then(async () => {
