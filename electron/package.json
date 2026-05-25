@@ -1,6 +1,6 @@
 {
   "name": "ai-studio",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "AI 产品图片生成系统",
   "main": "main.js",
   "scripts": {
