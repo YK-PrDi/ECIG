@@ -5,19 +5,22 @@ chcp 65001 > nul
 rem ============================================================
 rem  AI Studio — 一键清缓存 + 打包（含内嵌 JRE）
 rem  用法：
-rem    build-dist.bat              正常构建（复用已有 dist/runtime 加速）
+rem    build-dist.bat              正常构建（复用已有 dist/runtime 加速 + 自动 bump patch 版本号）
 rem    build-dist.bat --clean      连同 dist/runtime 一起全清后重裁 JRE
 rem    build-dist.bat --skip-jre   跳过 jlink（用户机器需自带 Java 17+）
+rem    build-dist.bat --no-bump    跳过自动 bump electron/package.json 的 patch 版本号
 rem ============================================================
 
 cd /d "%~dp0"
 
 set "CLEAN_RUNTIME=0"
 set "SKIP_JRE=0"
+set "SKIP_BUMP=0"
 :parse_args
 if "%~1"=="" goto after_args
 if /I "%~1"=="--clean"    set "CLEAN_RUNTIME=1"
 if /I "%~1"=="--skip-jre" set "SKIP_JRE=1"
+if /I "%~1"=="--no-bump"  set "SKIP_BUMP=1"
 shift
 goto parse_args
 :after_args
@@ -27,7 +30,34 @@ echo  AI Studio 打包流程
 echo  清 dist/dist-electron/target:      是
 echo  清 dist/runtime (重裁 JRE):        %CLEAN_RUNTIME% (--clean 启用)
 echo  跳过内嵌 JRE:                       %SKIP_JRE% (--skip-jre 启用)
+echo  自动 bump version (patch+1):        当 SKIP_BUMP=%SKIP_BUMP% 为 0 时执行 (--no-bump 跳过)
 echo ============================================================
+echo.
+
+rem ── 预检：脏数据提示 + 自动 bump version ──────────────────
+echo [预检 1/2] 检查 frontend/data/categories/ 工作树状态（防止把测试残留打进 release）...
+git status --short frontend/data/categories/ 2>nul
+echo.
+echo 上面如果有 "??" 或 "M" 开头的文件，是未入库的本地导入产物 / 修改。
+echo 这些会被一并打进 release exe；如要排除请 Ctrl-C 中止，git stash 或先 commit 后再来。
+echo 直接回车继续打包（会带上当前工作树状态）。
+pause
+
+if "%SKIP_BUMP%"=="1" (
+    echo [预检 2/2] --no-bump 已启用，跳过版本号 bump。
+    goto after_bump
+)
+echo [预检 2/2] 自动 bump electron/package.json 的 patch 版本号 ...
+set "NEW_VERSION="
+for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$txt = Get-Content -Raw electron\package.json; $m = [regex]::Match($txt, '\"version\"\s*:\s*\"(\d+)\.(\d+)\.(\d+)\"'); if (-not $m.Success) { Write-Error 'version not found'; exit 1 }; $new = '{0}.{1}.{2}' -f $m.Groups[1].Value, $m.Groups[2].Value, ([int]$m.Groups[3].Value + 1); $out = $txt -replace '(\"version\"\s*:\s*\")(\d+\.\d+\.\d+)(\")', ('${1}' + $new + '${3}'); $utf8NoBom = New-Object System.Text.UTF8Encoding($false); [System.IO.File]::WriteAllText((Resolve-Path 'electron\package.json'), $out, $utf8NoBom); Write-Output $new"') do set "NEW_VERSION=%%v"
+if "%NEW_VERSION%"=="" (
+    echo  [错误] 自动 bump 失败（PowerShell 不可用 / package.json 格式异常）。
+    echo         请手动改 electron\package.json 的 version 字段后用 --no-bump 重跑。
+    pause
+    exit /b 1
+)
+echo        新版本号: %NEW_VERSION%
+:after_bump
 echo.
 
 rem ── 1/7 清缓存 ──────────────────────────────────────────────

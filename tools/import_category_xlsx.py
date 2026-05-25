@@ -43,16 +43,43 @@ from _xlsx_parse import parse_many
 # PyInstaller onefile 模式下 __file__ 指向临时解压目录，sys.executable 才是 exe 真实路径。
 # 所以用 cwd 当项目根；用户必须从项目根目录调用此脚本/exe（README 已说明）。
 PROJECT_ROOT = Path.cwd()
-DATA_DIR     = PROJECT_ROOT / 'frontend' / 'data'
-CAT_TREE     = DATA_DIR / 'categories.js'
-CAT_DIR      = DATA_DIR / 'categories'
-INDEX_HTML   = PROJECT_ROOT / 'frontend' / 'index.html'
 
 
 def main(argv):
     if not argv:
         print(__doc__)
         sys.exit(1)
+
+    # --out-dir 让 caller 把品类输出重定向到外部可写目录（打包态由 ResourceController 注入）。
+    # 不传则维持源码态行为：直接写 PROJECT_ROOT/frontend/data/。
+    out_root = None
+    cleaned = []
+    skip = False
+    for i, a in enumerate(argv):
+        if skip:
+            skip = False
+            continue
+        if a == '--out-dir' and i + 1 < len(argv):
+            out_root = Path(argv[i + 1])
+            skip = True
+            continue
+        if a.startswith('--out-dir='):
+            out_root = Path(a.split('=', 1)[1])
+            continue
+        cleaned.append(a)
+    argv = cleaned
+
+    if out_root:
+        DATA_DIR   = out_root / 'data'
+        CAT_TREE   = DATA_DIR / 'categories.js'
+        CAT_DIR    = DATA_DIR / 'categories'
+        INDEX_HTML = None  # 打包态 jar 内 index.html 只读，不能 patch
+        print(f'  写入目录 → {DATA_DIR}（外部用户目录）')
+    else:
+        DATA_DIR   = PROJECT_ROOT / 'frontend' / 'data'
+        CAT_TREE   = DATA_DIR / 'categories.js'
+        CAT_DIR    = DATA_DIR / 'categories'
+        INDEX_HTML = PROJECT_ROOT / 'frontend' / 'index.html'
 
     # 收集 xlsx 路径，glob 自动展开
     paths = []
@@ -101,10 +128,11 @@ def main(argv):
         added_tree = update_categories_tree(CAT_TREE, cat_path)
         if added_tree:
             print(f'      ✓ 已追加叶子到 categories.js')
-        # 同步 index.html
-        added_html = update_index_html(INDEX_HTML, slug)
-        if added_html:
-            print(f'      ✓ 已追加 <script src> 到 index.html')
+        # 同步 index.html（仅源码态；打包态 jar 内只读，由前端运行时动态 import）
+        if INDEX_HTML is not None:
+            added_html = update_index_html(INDEX_HTML, slug)
+            if added_html:
+                print(f'      ✓ 已追加 <script src> 到 index.html')
 
     print()
     print('完成。建议执行：')

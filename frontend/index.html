@@ -69,6 +69,11 @@
                         <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                         设置
                     </div>
+                    <!-- 导入品类 xlsx：触发隐藏的 ecXlsxFile，复用电商配置弹窗里那个 input -->
+                    <div class="user-menu-item" onclick="document.getElementById('ecXlsxFile').click()">
+                        <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        导入品类 xlsx
+                    </div>
                     <!-- 生成完自动加到画布的开关（视频模式不参与） -->
                     <div class="user-menu-item" onclick="event.stopPropagation();toggleAutoBoard()">
                         <svg style="width:16px; height:16px; margin-right:8px; vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -278,12 +283,10 @@
                         <div id="customConfig" class="panel-view">
                             <div class="config-group" style="flex-direction:column; gap:4px;" id="grp-category">
                                 <label>产品类目</label>
-                                <div class="ec-cascader drop-up" id="cust-cat-cascader" tabindex="0" style="position:relative;">
-                                    <div class="ec-cascader-trigger" onclick="custToggleCascader(event)">
-                                        <span class="ec-cascader-text" id="cust-cat-text">— 点击选择</span>
-                                        <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                    </div>
-                                    <div class="ec-cascader-panels" id="cust-cat-panels"></div>
+                                <div class="gf-select" tabindex="0" onclick="openCustomCatModal()" style="cursor:pointer;">
+                                    <input type="hidden" id="cust-cat-hidden" value="">
+                                    <span class="gf-select-trigger" id="cust-cat-text" style="flex:1;">— 点击选择</span>
+                                    <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </div>
                             </div>
                             <div class="config-group" style="min-width:150px;" id="grp-custom-aspect">
@@ -637,72 +640,76 @@
         }
 
         // ── 自定义模式产品类目（独立，不共享电商模式提示词）──
+        // ── 自定义模式产品类目（弹小 modal，复用 EC_CATEGORY_TREE） ──
+        // 不在 .config-drawer（transform 容器）里 inline 弹面板，避免 fixed 定位被困。
         let custCatPath = [];
-        function loadCategories() { custCatPath = []; custRefreshCascaderColumns(); }
 
-        function custToggleCascader(e) {
-            e && e.stopPropagation();
-            const el = document.getElementById('cust-cat-cascader');
-            if (!el) return;
-            const wasOpen = el.classList.contains('open');
-            document.querySelectorAll('.ec-cascader.open').forEach(c => c.classList.remove('open'));
-            if (!wasOpen) { custRefreshCascaderColumns(); el.classList.add('open'); }
+        function openCustomCatModal() {
+            const modal = document.getElementById('customCatModal');
+            if (!modal) return;
+            customCatRefreshColumns();
+            modal.classList.add('show');
         }
 
-        function custRefreshCascaderColumns() {
+        function closeCustomCatModal() {
+            const modal = document.getElementById('customCatModal');
+            if (!modal) return;
+            modal.classList.remove('show');
+        }
+
+        function customCatRefreshColumns() {
             const tree = window.EC_CATEGORY_TREE;
-            if (!tree) return;
-            const panels = document.getElementById('cust-cat-panels');
-            if (!panels) return;
-            const cols = [custBuildColumn(tree, 0)];
+            const panels = document.getElementById('customCatPanels');
+            if (!tree || !panels) return;
+            const cols = [customCatBuildColumn(tree, 0)];
             let nodes = tree;
             for (let i = 0; i < custCatPath.length; i++) {
-                const found = nodes.find(n => n.display === custCatPath[i]);
-                if (!found || !found.children) break;
-                nodes = found.children;
-                cols.push(custBuildColumn(nodes, i + 1));
+                const hit = (nodes || []).find(n => n.display === custCatPath[i]);
+                if (!hit || !hit.children || !hit.children.length) break;
+                nodes = hit.children;
+                cols.push(customCatBuildColumn(nodes, i + 1));
             }
             panels.innerHTML = cols.join('');
         }
 
-        function custBuildColumn(nodes, level) {
-            const items = nodes.map(n => {
-                const hasChildren = !!(n.children && n.children.length);
-                const isActive = custCatPath[level] === n.display;
-                return `<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''} ${isActive ? 'active' : ''}"
-                    onclick="custPickItem(${level}, '${ecEscAttr(n.display)}', ${hasChildren})">
-                    <span class="ec-cascader-label">${n.display}</span>
-                    ${hasChildren ? `<span class="ec-cascader-arrow-r">›</span>` : ''}
-                </div>`;
-            }).join('');
-            const clearItem = level === 0
-                ? `<div class="ec-cascader-item" style="color:var(--text-dim);border-bottom:1px dashed var(--border);"
-                    onclick="custPickCascader([])">
-                    <span class="ec-cascader-label">— 清空选择</span>
-                </div>` : '';
-            return `<div class="ec-cascader-panel" data-level="${level}">${clearItem}${items}</div>`;
+        function customCatBuildColumn(nodes, level) {
+            return `<div class="ec-cascader-panel" data-level="${level}">` +
+                (nodes || []).map(n => {
+                    const hasChildren = !!(n.children && n.children.length);
+                    const isActive = custCatPath[level] === n.display;
+                    return `<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''} ${isActive ? 'active' : ''}"
+                        onclick="customCatPick(${level}, '${ecEscAttr(n.display)}', ${hasChildren})">
+                        <span class="ec-cascader-label">${ecEscAttr(n.display)}</span>
+                        ${hasChildren ? `<span class="ec-cascader-arrow-r">›</span>` : ''}
+                    </div>`;
+                }).join('') +
+                '</div>';
         }
 
-        function custPickItem(level, display, hasChildren) {
+        function customCatPick(level, display, hasChildren) {
             custCatPath = custCatPath.slice(0, level);
             custCatPath[level] = display;
-            if (!hasChildren) {
-                selectedPrompt = { prompt: display, negativePrompt: '' };
-                document.getElementById('cust-cat-text').textContent = custCatPath.join(' > ');
-                document.getElementById('cust-cat-cascader')?.classList.remove('open');
-            } else {
+            if (hasChildren) {
                 selectedPrompt = { prompt: '', negativePrompt: '' };
-                custRefreshCascaderColumns();
+                customCatRefreshColumns();
+            } else {
+                selectedPrompt = { prompt: display, negativePrompt: '' };
+                const txt = document.getElementById('cust-cat-text');
+                if (txt) txt.textContent = custCatPath.join(' > ');
+                closeCustomCatModal();
             }
         }
 
-        function custPickCascader(path) {
-            custCatPath = path || [];
+        function customCatClear() {
+            custCatPath = [];
             selectedPrompt = { prompt: '', negativePrompt: '' };
-            document.getElementById('cust-cat-text').textContent = '— 点击选择';
-            custRefreshCascaderColumns();
+            const txt = document.getElementById('cust-cat-text');
+            if (txt) txt.textContent = '— 点击选择';
+            customCatRefreshColumns();
         }
 
+        // 旧 API 兼容（其它入口可能仍在调）
+        function loadCategories() { custCatPath = []; }
         function renderCatLevel() {}
         function selectCat() {}
 
@@ -770,6 +777,8 @@
 
         async function initApp() {
             await loadAgents();
+            // 拉取磁盘上额外的品类 slug（用户导入产物 + 打包态外部目录）；按需 dynamic import
+            await loadExtraCategoryScripts();
             // 静默检查配置状态；不再自动拉钉钉产品列表，改由用户在"同步配置"里点"保存并验证"触发
             try {
                 const cfg = await fetch('/api/config').then(r => r.json());
@@ -778,6 +787,32 @@
                 }
             } catch (_) {}
             loadCategories();
+        }
+
+        // 把还没在 index.html 里静态引入的品类 .js 动态加载进来（打包态用户导入产物的关键）
+        async function loadExtraCategoryScripts() {
+            let slugs = [];
+            try {
+                const r = await fetch('/api/categories/index');
+                if (r.ok) slugs = (await r.json()).slugs || [];
+            } catch (_) { return; }
+            // 已有的 <script src="data/categories/xxx.js"> 跳过；避免重复执行覆盖
+            const existing = new Set();
+            document.querySelectorAll('script[src*="data/categories/"]').forEach(s => {
+                const m = (s.getAttribute('src') || '').match(/data\/categories\/([^/?#]+)\.js/);
+                if (m) existing.add(m[1]);
+            });
+            const toLoad = slugs.filter(s => !existing.has(s));
+            for (const slug of toLoad) {
+                await new Promise(resolve => {
+                    const s = document.createElement('script');
+                    s.src = `data/categories/${encodeURIComponent(slug)}.js`;
+                    s.async = false; // 顺序执行，避免覆盖 EC_CATALOG
+                    s.onload = () => resolve();
+                    s.onerror = () => { console.warn('[loadExtraCategory] failed:', slug); resolve(); };
+                    document.head.appendChild(s);
+                });
+            }
         }
 
         let isShowingHistory = false;
@@ -2607,8 +2642,38 @@
                 `<div class="gf-option" style="color:var(--primary);border-top:1px dashed var(--border);" onclick="ecPromptAddOpt('${f.key}','${ecEscAttr(f.label)}')">➕ 添加自定义选项</div>`;
         }
 
-        function ecPromptAddOpt(fieldKey, fieldLabel) {
-            const v = (prompt(`为【${fieldLabel}】添加一个新选项：`) || '').trim();
+        // Electron 屏蔽 window.prompt，原 prompt() 直接静默返回 '' 导致"添加自定义选项/卖点"看似失效。
+        // 用一个轻量内嵌 modal 顶上来，返回 Promise<string|null>。
+        function ecAskInput(title, defaultValue) {
+            return new Promise(resolve => {
+                const mask = document.createElement('div');
+                mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100001;display:flex;align-items:center;justify-content:center;';
+                const card = document.createElement('div');
+                card.style.cssText = 'background:var(--bg);color:var(--text-main);padding:18px 20px;border-radius:10px;min-width:340px;max-width:90vw;box-shadow:0 12px 40px rgba(0,0,0,0.25);';
+                card.innerHTML = `
+                    <div style="font-size:0.86rem;margin-bottom:10px;line-height:1.5;">${String(title).replace(/</g,'&lt;')}</div>
+                    <input type="text" id="__ecAskInputBox" value="${(defaultValue||'').replace(/"/g,'&quot;')}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.86rem;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:flex-end;gap:8px;">
+                        <button class="btn-outline" id="__ecAskCancel" style="padding:6px 14px;">取消</button>
+                        <button class="btn-primary" id="__ecAskOk" style="padding:6px 16px;">确定</button>
+                    </div>`;
+                mask.appendChild(card);
+                document.body.appendChild(mask);
+                const box = card.querySelector('#__ecAskInputBox');
+                box.focus(); box.select();
+                const cleanup = () => mask.remove();
+                card.querySelector('#__ecAskOk').onclick = () => { const v = box.value; cleanup(); resolve(v); };
+                card.querySelector('#__ecAskCancel').onclick = () => { cleanup(); resolve(null); };
+                box.onkeydown = e => {
+                    if (e.key === 'Enter') { const v = box.value; cleanup(); resolve(v); }
+                    else if (e.key === 'Escape') { cleanup(); resolve(null); }
+                };
+                mask.onclick = e => { if (e.target === mask) { cleanup(); resolve(null); } };
+            });
+        }
+
+        async function ecPromptAddOpt(fieldKey, fieldLabel) {
+            const v = ((await ecAskInput(`为【${fieldLabel}】添加一个新选项：`)) || '').trim();
             if (!v) return;
             if (ecAddUserOpt(fieldKey, v, v)) {
                 const f = EC_FIELDS.find(x => x.key === fieldKey);
@@ -2703,15 +2768,15 @@
             ecRenderSellings(ecSel.shape || '');
         }
 
-        function ecPromptAddSelling() {
+        async function ecPromptAddSelling() {
             if (!ecIsCategoryReady()) { alert('请先选择品类（叶子级）'); return; }
             const shapeValue = ecSel.shape || '';
             if (!shapeValue) { alert('请先选择"形态结构"'); return; }
-            const label = (prompt('卖点简称（显示在 checkbox 旁，例如"强劲吸附"）：') || '').trim();
+            const label = ((await ecAskInput('卖点简称（显示在 checkbox 旁，例如"强劲吸附"）：')) || '').trim();
             if (!label) return;
-            const sellingPrompt = (prompt('卖点文字要求（将拼进生图 prompt，例如位置/字体/排版等）：', label) || '').trim();
+            const sellingPrompt = ((await ecAskInput('卖点文字要求（将拼进生图 prompt，例如位置/字体/排版等）：', label)) || '').trim();
             if (!sellingPrompt) return;
-            const composition = (prompt('场景构图描述（必填，将拼进生图 prompt）：') || '').trim();
+            const composition = ((await ecAskInput('场景构图描述（必填，将拼进生图 prompt）：')) || '').trim();
             if (!composition) return;
             const key = 'user_' + Date.now();
             ecAddUserSelling(shapeValue, { key, label, prompt: sellingPrompt, composition });
@@ -4320,6 +4385,24 @@
     </div>
 
     <!-- 旧 settingsModal 已废弃（设置改成 settingsView 全屏页面） -->
+
+    <!-- 自定义模式：产品类目选择 modal（跟电商共用 EC_CATEGORY_TREE 数据 + ecBuildColumn 渲染） -->
+    <div id="customCatModal" class="modal-overlay" style="z-index: 5000;" onclick="if(event.target===this) closeCustomCatModal()">
+        <div class="modal-card" style="width: 720px; max-width: 92vw;">
+            <div class="modal-header">
+                <h3>选择产品类目</h3>
+                <button class="close-btn" onclick="closeCustomCatModal()">×</button>
+            </div>
+            <p class="modal-desc" style="margin-top:0;">从下面的级联中逐级选择，选到叶节点自动确定。</p>
+            <div id="customCatCascader" class="ec-cascader open" style="position:relative; min-height: 280px;">
+                <div class="ec-cascader-panels" id="customCatPanels" style="position: relative; top: auto; bottom: auto; display: flex;"></div>
+            </div>
+            <div class="modal-footer" style="margin-top: 16px;">
+                <button class="btn-outline" style="flex:1" onclick="closeCustomCatModal()">取消</button>
+                <button class="btn-outline" style="flex:1" onclick="customCatClear()">清空选择</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 电商方案配置弹窗 -->
     <div id="ecommerceModal" class="modal-overlay" style="z-index: 5000;" onclick="if(event.target===this) closeEcommerceModal()">

@@ -143,6 +143,42 @@ public class ResourceController {
         }
     }
 
+    /**
+     * 列出所有可用品类 .js 文件 slug，前端 boot 时按这个清单 dynamic import。
+     * 来源：userDataDir/data/categories/（用户导入产物，打包态可写）+ 静态 frontend/data/categories/（内置）
+     * 同名 slug 时 userDataDir 优先（WebMvcConfig 已经把它放第一位 serve）。
+     */
+    @GetMapping("/api/categories/index")
+    public ResponseEntity<Map<String, Object>> categoriesIndex() {
+        java.util.Set<String> slugs = new java.util.LinkedHashSet<>();
+        // 用户目录（如果存在）
+        try {
+            String userData = appProperties.getPaths().getUserDataDir();
+            if (userData != null && !userData.isBlank()) {
+                File userCat = new File(userData, "data/categories");
+                File[] kids = userCat.listFiles();
+                if (kids != null) for (File k : kids) {
+                    String n = k.getName();
+                    if (k.isFile() && n.endsWith(".js")) slugs.add(n.substring(0, n.length() - 3));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("枚举用户品类目录失败: {}", e.getMessage());
+        }
+        // 内置 frontend/data/categories/（源码态项目根；打包态由 jar 内静态资源覆盖）
+        try {
+            File builtIn = new File(System.getProperty("user.dir"), "frontend/data/categories");
+            File[] kids = builtIn.listFiles();
+            if (kids != null) for (File k : kids) {
+                String n = k.getName();
+                if (k.isFile() && n.endsWith(".js")) slugs.add(n.substring(0, n.length() - 3));
+            }
+        } catch (Exception e) {
+            log.warn("枚举内置品类目录失败: {}", e.getMessage());
+        }
+        return ResponseEntity.ok(Map.of("slugs", new ArrayList<>(slugs)));
+    }
+
     @DeleteMapping("/api/gallery")
     public ResponseEntity<Map<String, Object>> deleteGalleryItem(@RequestParam String path) {
         try {
@@ -259,10 +295,16 @@ public class ResourceController {
     /** 把上传的 xlsx 落盘到项目根，调用 import-tool.exe（或 python tools/import_category_xlsx.py），返回脚本 stdout。 */
     @PostMapping("/api/import/xlsx")
     public ResponseEntity<Map<String, Object>> importXlsx(@RequestParam("files") List<MultipartFile> files) {
-        // 打包态下直接拒绝：用户机器上 frontend/data 在 resources/ 是只读的，导入功能仅供开发期
-        if ("true".equalsIgnoreCase(System.getProperty("app.packaged", "false"))) {
-            return ResponseEntity.ok(Map.of("success", false,
-                    "error", "导入功能仅供开发环境使用；打包后无法写入只读的 frontend/data 目录。"));
+        // 打包态：写到 userDataDir/data/categories/（外部可写）；源码态写 frontend/data/categories/
+        boolean packaged = "true".equalsIgnoreCase(System.getProperty("app.packaged", "false"));
+        File outDir = null;
+        if (packaged) {
+            String userData = appProperties.getPaths().getUserDataDir();
+            if (userData == null || userData.isBlank()) {
+                return ResponseEntity.ok(Map.of("success", false,
+                        "error", "缺少 user-data-dir 配置；请联系开发者更新到支持外部写入的版本"));
+            }
+            outDir = new File(userData).getAbsoluteFile();
         }
         File projectRoot = new File(System.getProperty("user.dir"));
         File pyScript = new File(projectRoot, "tools/import_category_xlsx.py");
@@ -323,6 +365,11 @@ public class ResourceController {
         } else {
             cmd.add(System.getenv().getOrDefault("PYTHON", "python"));
             cmd.add("tools/import_category_xlsx.py");
+        }
+        // 打包态把外部 dataDir 注入；源码态保持脚本默认行为（写 frontend/data/）
+        if (outDir != null) {
+            cmd.add("--out-dir");
+            cmd.add(outDir.getAbsolutePath());
         }
         cmd.addAll(savedPaths);
         try {

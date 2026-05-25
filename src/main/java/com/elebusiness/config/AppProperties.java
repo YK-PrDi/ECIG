@@ -98,6 +98,9 @@ public class AppProperties {
         private String historyRefsDir = "./.history-refs";
         private String configFile = "./config.json";
         private String promptsDir = "./prompts";
+        // 打包态由 electron 经 -Dapp.paths.user-data-dir=... 注入；源码态留空则 fallback "./"
+        // 导入工具写到 ${userDataDir}/data/categories/，前端按 file:${userDataDir}/ 优先 serve
+        private String userDataDir = "./";
 
         public String getReferenceDir() { return referenceDir; }
         public void setReferenceDir(String referenceDir) { this.referenceDir = referenceDir; }
@@ -111,6 +114,8 @@ public class AppProperties {
         public void setConfigFile(String configFile) { this.configFile = configFile; }
         public String getPromptsDir() { return promptsDir; }
         public void setPromptsDir(String promptsDir) { this.promptsDir = promptsDir; }
+        public String getUserDataDir() { return userDataDir; }
+        public void setUserDataDir(String userDataDir) { this.userDataDir = userDataDir; }
     }
 
     public static class Api {
