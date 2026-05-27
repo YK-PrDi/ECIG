@@ -647,6 +647,8 @@
         function openCustomCatModal() {
             const modal = document.getElementById('customCatModal');
             if (!modal) return;
+            const searchInp = document.getElementById('custom-cat-search');
+            if (searchInp) searchInp.value = '';
             customCatRefreshColumns();
             modal.classList.add('show');
         }
@@ -661,6 +663,11 @@
             const tree = window.EC_CATEGORY_TREE;
             const panels = document.getElementById('customCatPanels');
             if (!tree || !panels) return;
+            const q = ((document.getElementById('custom-cat-search') || {}).value || '').trim().toLowerCase();
+            if (q) {
+                panels.innerHTML = customCatBuildSearchColumn(tree, q);
+                return;
+            }
             const cols = [customCatBuildColumn(tree, 0)];
             let nodes = tree;
             for (let i = 0; i < custCatPath.length; i++) {
@@ -670,6 +677,45 @@
                 cols.push(customCatBuildColumn(nodes, i + 1));
             }
             panels.innerHTML = cols.join('');
+        }
+
+        function customCatBuildSearchColumn(nodes, q) {
+            const results = [];
+            function walk(nodeList, path) {
+                for (const n of (nodeList || [])) {
+                    const fullPath = path ? path + ' > ' + n.display : n.display;
+                    if (n.display.toLowerCase().includes(q)) {
+                        const hasChildren = !!(n.children && n.children.length);
+                        const pathArr = fullPath.split(' > ');
+                        results.push(`<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''}"
+                            onclick="customCatPickSearch(${ecEscAttr(JSON.stringify(pathArr))}, ${hasChildren})">
+                            <span class="ec-cascader-label" style="font-size:0.72rem;">${ecEscAttr(fullPath)}</span>
+                        </div>`);
+                    }
+                    if (n.children && n.children.length) walk(n.children, fullPath);
+                }
+            }
+            walk(nodes, '');
+            if (!results.length) return `<div class="ec-cascader-panel" data-level="0"><span style="padding:8px 12px;font-size:0.75rem;color:var(--text-dim);display:block;">无匹配品类</span></div>`;
+            return `<div class="ec-cascader-panel" data-level="0" style="flex:1;">${results.join('')}</div>`;
+        }
+
+        function customCatOnSearch(val) {
+            customCatRefreshColumns();
+        }
+
+        function customCatPickSearch(pathArr, hasChildren) {
+            custCatPath = pathArr;
+            const searchInp = document.getElementById('custom-cat-search');
+            if (searchInp) searchInp.value = '';
+            if (!hasChildren) {
+                selectedPrompt = { prompt: pathArr[pathArr.length - 1], negativePrompt: '' };
+                const txt = document.getElementById('cust-cat-text');
+                if (txt) txt.textContent = pathArr.join(' > ');
+                closeCustomCatModal();
+            } else {
+                customCatRefreshColumns();
+            }
         }
 
         function customCatBuildColumn(nodes, level) {
@@ -1619,11 +1665,14 @@
                 // SKU / 详情页 都必须带参考图（每张 ref → 1 张对应输出）
                 const isDetail = ecSel.imageType === '详情页';
                 const isSku    = ecSel.imageType === 'SKU';
-                // 多张优先用 droppedFiles；没有才 fallback 到会话底图（单张）
-                const refCount = droppedFiles.length > 0 ? droppedFiles.length : (sessionImagePath ? 1 : 0);
+                // 弹窗参考图/产品图优先；没有才用 droppedFiles；再 fallback 到会话底图
+                const ecModalImages = [window.ecRefImage, window.ecProductImage].filter(Boolean);
+                const refCount = ecModalImages.length > 0
+                    ? ecModalImages.length
+                    : (droppedFiles.length > 0 ? droppedFiles.length : (sessionImagePath ? 1 : 0));
                 if ((isDetail || isSku) && refCount === 0) {
                     const label = isDetail ? '详情页' : 'SKU';
-                    alert(`${label} 生成需要至少 1 张参考主图，请先上传或在会话里选中一张主图再试`);
+                    alert(`${label} 生成需要至少 1 张参考主图，请先在弹窗上传参考图/产品图，或在会话里选中一张主图再试`);
                     return;
                 }
 
@@ -1631,7 +1680,9 @@
                 if (!ecPrompts.length) { alert('无法生成提示词，请至少选择或填写一项参数'); return; }
 
                 const formData = new FormData();
-                if (droppedFiles.length > 0) {
+                if (ecModalImages.length > 0) {
+                    ecModalImages.forEach(f => formData.append('images', f));
+                } else if (droppedFiles.length > 0) {
                     droppedFiles.forEach(f => formData.append('images', f));
                 } else if (sessionImagePath) {
                     try {
@@ -1658,10 +1709,12 @@
                 // 诊断日志（v2026-05-22-r2）：前端实际发出的 prompt 数 / 图片数 / 是否 pair 模式
                 console.log('[ecommerce submit]', {
                     promptCount: promptsToSend.length,
-                    imageCount: droppedFiles.length || (sessionImagePath ? 1 : 0),
+                    imageCount: refCount,
                     pairImages: usePair,
                     imageType: ecSel.imageType,
                     sellingsCount: ecSel.sellings.length,
+                    ecModalImages: ecModalImages.length,
+                    refCategory: window.ecRefCategory,
                 });
 
                 const sellingLabels = ecSel.sellings.length
@@ -2193,19 +2246,10 @@
             return window.ecCatalogHas(ecCategoryPath());
         }
 
-        // 聚合预设+用户自定义的卖点列表
-        // - 预设：从所选品类的 EC_CATALOG 取，再按当前形态结构过滤（卖点声明了 shapes 时只保留命中的）
-        // - 自定义：仍按"形态结构"分桶（保持向后兼容）
+        // 聚合预设+用户自定义的卖点列表（不按形态结构过滤，所有卖点均展示）
         function ecGetSellings(shapeValue) {
             const cat = window.ecCatalogGet(ecCategoryPath());
-            const presets = (cat.sellings || []).filter(s => {
-                if (!s.shapes || !s.shapes.length) return true; // 未声明 shapes 的卖点对所有形态可用
-                if (!shapeValue) return false;                  // 已声明 shapes 但用户未选形态：不展示
-                return s.shapes.includes(shapeValue);
-            });
-            // 品类预设卖点的对象结构是 {label, prompt, composition}，没有 key 字段；
-            // 但渲染 / 选中 / 兜底全链路都靠 s.key 串起来 —— 没 key 时回落用 label 当 key。
-            // 用户自定义卖点已带 key，不动；这里只给 preset 兜底。
+            const presets = cat.sellings || [];
             const presetsKeyed = presets.map(s => s.key ? s : Object.assign({ key: s.label }, s));
             return [...presetsKeyed, ...ecUserSellings(shapeValue || '')];
         }
@@ -2264,6 +2308,12 @@
                         <span class="ec-cascader-text" id="ec-cat-text">— 点击选择</span>
                         ${ecArrow()}
                     </div>
+                    <div id="ec-cat-search-wrap" style="padding:6px 8px;border-bottom:1px solid var(--border);display:none;">
+                        <input type="text" id="ec-cat-search" placeholder="🔎 搜索品类"
+                            onclick="event.stopPropagation()"
+                            oninput="ecOnCatSearch(this.value)"
+                            style="width:100%;padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:0.75rem;box-sizing:border-box;">
+                    </div>
                     <div class="ec-cascader-panels" id="ec-cat-panels"></div>
                 </div>
             </div>`;
@@ -2293,11 +2343,58 @@
                     style="font-size:0.72rem;color:var(--text-dim);line-height:1.5;padding:8px 10px;background:var(--surface-alt,#F8FAFC);border:1px solid var(--border);border-radius:6px;min-height:40px;">——</div>
             </div>`;
 
+            // 参考图 + 产品图
+            const ecRefCat = window.ecRefCategory || 'composition';
+            const refCatOpts = [
+                { value: 'composition', label: '构图参考' },
+                { value: 'storyboard',  label: '分镜参考' },
+                { value: 'similar',     label: '同类品参考' },
+                { value: 'style',       label: '风格参考' },
+                { value: 'custom',      label: '自定义' },
+            ];
+            const isCustom = ecRefCat === 'custom';
+            const customVal = (window.ecRefCategoryCustom || '').replace(/"/g, '&quot;');
+            const refCatRadios = refCatOpts.map(o =>
+                `<label style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer;">
+                    <input type="radio" name="ec-ref-category" value="${o.value}"${ecRefCat === o.value ? ' checked' : ''} onchange="ecOnRefCatChange(this.value)">
+                    ${o.label}
+                </label>`
+            ).join('');
+            html += `<div class="config-group" style="width:100%;">
+                <label>参考图 &amp; 产品图（生图时作为主要参考对象）</label>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:200px;">
+                        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px;">参考图</div>
+                        <div id="ec-ref-img-box" style="border:1px dashed var(--border);border-radius:8px;padding:10px;min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;background:var(--surface-alt,#F8FAFC);"
+                            onclick="document.getElementById('ec-ref-img-input').click()">
+                            <input type="file" id="ec-ref-img-input" accept="image/*" style="display:none;" onchange="ecHandleRefImg('ref',this)">
+                            <div id="ec-ref-img-thumb" style="display:none;"></div>
+                            <span id="ec-ref-img-hint" style="font-size:0.72rem;color:var(--text-dim);">点击上传参考图</span>
+                        </div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">${refCatRadios}</div>
+                        <input type="text" id="ec-ref-cat-custom" placeholder="描述参考方式…"
+                            value="${customVal}"
+                            oninput="window.ecRefCategoryCustom=this.value"
+                            style="display:${isCustom ? 'block' : 'none'};width:100%;margin-top:6px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:0.75rem;box-sizing:border-box;">
+                    </div>
+                    <div style="flex:1;min-width:200px;">
+                        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px;">产品图</div>
+                        <div id="ec-product-img-box" style="border:1px dashed var(--border);border-radius:8px;padding:10px;min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;background:var(--surface-alt,#F8FAFC);"
+                            onclick="document.getElementById('ec-product-img-input').click()">
+                            <input type="file" id="ec-product-img-input" accept="image/*" style="display:none;" onchange="ecHandleRefImg('product',this)">
+                            <div id="ec-product-img-thumb" style="display:none;"></div>
+                            <span id="ec-product-img-hint" style="font-size:0.72rem;color:var(--text-dim);">点击上传产品图</span>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
             container.innerHTML = html;
             ecRenderCascader();
             ecRenderGlobalFields();
             ecRenderScopedFields();
             ecRefreshCategoryUI();
+            ecRenderRefImgThumbs();
         }
 
         // 单个字段的 DOM 模板
@@ -2411,6 +2508,14 @@
                 });
             }
             cas.classList.toggle('open');
+            const wrap = document.getElementById('ec-cat-search-wrap');
+            if (wrap) wrap.style.display = willOpen ? '' : 'none';
+            if (willOpen) {
+                // 清空上次搜索词，避免残留
+                const inp = document.getElementById('ec-cat-search');
+                if (inp) inp.value = '';
+                ecRefreshCascaderColumns();
+            }
         }
 
         function ecRenderCascader() {
@@ -2418,14 +2523,17 @@
             ecRefreshCascaderColumns();
         }
 
-        // 根据 ecCatPath 重建所有列（第 0 列 + 每层展开到的子列）
+        // 根据 ecCatPath 重建列内容（搜索框是独立 DOM 节点，不在 panels 里，不会被替换）
         function ecRefreshCascaderColumns() {
             const panels = document.getElementById('ec-cat-panels');
             if (!panels) return;
+            const searchVal = (document.getElementById('ec-cat-search') || {}).value || '';
+            if (searchVal.trim()) {
+                panels.innerHTML = ecBuildSearchColumn(EC_CATEGORY_TREE, searchVal.trim().toLowerCase());
+                return;
+            }
             const cols = [];
-            // 第 0 列：根
             cols.push(ecBuildColumn(EC_CATEGORY_TREE, 0));
-            // 按 ecCatPath 逐级找子节点，生成后续列
             let nodes = EC_CATEGORY_TREE;
             for (let i = 0; i < ecCatPath.length; i++) {
                 const hit = (nodes || []).find(n => n.display === ecCatPath[i]);
@@ -2434,6 +2542,31 @@
                 cols.push(ecBuildColumn(nodes, i + 1));
             }
             panels.innerHTML = cols.join('');
+        }
+
+        // 递归收集所有 display 包含 q 的节点（含非叶子），平铺成单列
+        function ecBuildSearchColumn(nodes, q) {
+            const results = [];
+            function walk(nodeList, path) {
+                for (const n of (nodeList || [])) {
+                    const fullPath = path ? path + ' > ' + n.display : n.display;
+                    if (n.display.toLowerCase().includes(q)) {
+                        const hasChildren = !!(n.children && n.children.length);
+                        results.push(`<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''}"
+                            onclick="event.stopPropagation();ecPickCascaderItem(${(fullPath.split(' > ').length - 1)}, '${ecEscAttr(n.display)}', ${hasChildren}, ${ecEscAttr(JSON.stringify(fullPath.split(' > ')))})">
+                            <span class="ec-cascader-label" style="font-size:0.72rem;">${ecEscAttr(fullPath)}</span>
+                        </div>`);
+                    }
+                    if (n.children && n.children.length) walk(n.children, fullPath);
+                }
+            }
+            walk(nodes, '');
+            if (!results.length) return `<div class="ec-cascader-panel" data-level="0"><span style="padding:8px 12px;font-size:0.75rem;color:var(--text-dim);display:block;">无匹配品类</span></div>`;
+            return `<div class="ec-cascader-panel" data-level="0">${results.join('')}</div>`;
+        }
+
+        function ecOnCatSearch(val) {
+            ecRefreshCascaderColumns();
         }
 
         function ecBuildColumn(nodes, level) {
@@ -2554,9 +2687,17 @@
         // 行为分两种：
         //   - 叶子 → 选中后保持面板打开（用户可改主意继续选其他）
         //   - 非叶子 → 同时展开下一级供继续向下选；用户停在某一级直接关面板即可
-        function ecPickCascaderItem(level, display, hasChildren) {
-            ecCatPath = ecCatPath.slice(0, level);
-            ecCatPath.push(display);
+        // fullPathArr：搜索结果点击时传入完整路径数组，直接覆盖 ecCatPath
+        function ecPickCascaderItem(level, display, hasChildren, fullPathArr) {
+            if (fullPathArr && Array.isArray(fullPathArr)) {
+                ecCatPath = fullPathArr;
+            } else {
+                ecCatPath = ecCatPath.slice(0, level);
+                ecCatPath.push(display);
+            }
+            // 清空搜索框（搜索结果选中后恢复正常级联视图）
+            const searchInp = document.getElementById('ec-cat-search');
+            if (searchInp) searchInp.value = '';
 
             // 实时写入选中并刷新所有依赖品类的 UI（触发器文字、字段下拉、卖点列表）
             const prevPath = (ecSel.category || []).join('>');
@@ -2729,9 +2870,7 @@
             }
             const fullList = ecGetSellings(shapeValue);
             if (fullList.length === 0) {
-                container.innerHTML = shapeValue
-                    ? `<span style="font-size:0.75rem;color:var(--text-dim);">当前品类+形态暂无预设卖点，可点上方"➕ 为当前形态添加卖点"</span>`
-                    : `<span style="font-size:0.75rem;color:var(--text-dim);">该品类的卖点按"形态结构"区分，请先选形态；或直接添加自定义卖点</span>`;
+                container.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);">当前品类暂无预设卖点，可点上方"➕ 为当前形态添加卖点"</span>`;
                 return;
             }
             // 搜索过滤（label / prompt 不区分大小写模糊匹配）。空搜索词 = 不过滤
@@ -2768,10 +2907,64 @@
             ecRenderSellings(ecSel.shape || '');
         }
 
+        // ── 参考图 / 产品图 ──
+        window.ecRefImage     = window.ecRefImage     || null;
+        window.ecProductImage = window.ecProductImage || null;
+        window.ecRefCategory  = window.ecRefCategory  || 'composition';
+
+        const EC_REF_CAT_LABEL = { composition: '构图参考', storyboard: '分镜参考', similar: '同类品参考', style: '风格参考' };
+
+        function ecHandleRefImg(slot, input) {
+            const f = input.files && input.files[0];
+            input.value = '';
+            if (!f) return;
+            if (slot === 'ref') window.ecRefImage = f;
+            else window.ecProductImage = f;
+            ecRenderRefImgThumbs();
+        }
+
+        function ecRenderRefImgThumbs() {
+            ecRenderOneRefThumb('ref',     window.ecRefImage,     'ec-ref-img-thumb',     'ec-ref-img-hint');
+            ecRenderOneRefThumb('product', window.ecProductImage, 'ec-product-img-thumb', 'ec-product-img-hint');
+        }
+
+        function ecRenderOneRefThumb(slot, file, thumbId, hintId) {
+            const thumb = document.getElementById(thumbId);
+            const hint  = document.getElementById(hintId);
+            if (!thumb) return;
+            if (!file) {
+                thumb.style.display = 'none';
+                thumb.innerHTML = '';
+                if (hint) hint.style.display = '';
+                return;
+            }
+            if (hint) hint.style.display = 'none';
+            const url = URL.createObjectURL(file);
+            thumb.innerHTML = `<div style="display:flex;align-items:center;gap:6px;">
+                <img src="${url}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;" alt="${slot}">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.72rem;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${file.name}</div>
+                </div>
+                <span onclick="event.stopPropagation();ecClearRefImg('${slot}')" style="cursor:pointer;color:var(--text-dim);padding:0 4px;" title="移除">✕</span>
+            </div>`;
+            thumb.style.display = 'block';
+        }
+
+        function ecClearRefImg(slot) {
+            if (slot === 'ref') window.ecRefImage = null;
+            else window.ecProductImage = null;
+            ecRenderRefImgThumbs();
+        }
+
+        function ecOnRefCatChange(val) {
+            window.ecRefCategory = val;
+            const inp = document.getElementById('ec-ref-cat-custom');
+            if (inp) inp.style.display = (val === 'custom') ? 'block' : 'none';
+        }
+
         async function ecPromptAddSelling() {
             if (!ecIsCategoryReady()) { alert('请先选择品类（叶子级）'); return; }
             const shapeValue = ecSel.shape || '';
-            if (!shapeValue) { alert('请先选择"形态结构"'); return; }
             const label = ((await ecAskInput('卖点简称（显示在 checkbox 旁，例如"强劲吸附"）：')) || '').trim();
             if (!label) return;
             const sellingPrompt = ((await ecAskInput('卖点文字要求（将拼进生图 prompt，例如位置/字体/排版等）：', label)) || '').trim();
@@ -2827,8 +3020,17 @@
         const EC_NEGATIVE = '【禁止·结构】产品零件数量/形状/色彩/材质/logo 改变、合并简化结构、deformed、bad anatomy、extra fingers。【禁止·穿模】手指穿过产品、产品穿透墙/桌/玻璃/置物架、衣袖/毛发穿过产品、接触点融合/共用边/嵌入对方、产品悬空无支撑或部分嵌入背景。【禁止·画质】worst quality、low quality、blurry、noise、pixelated、plastic texture、uncanny valley、模糊材质、丢失细节。【禁止·光影】overexposed、underexposed、harsh lighting、heavy shadows、金属反光糊成白片丢失细节、阴影方向与光源不一致。【禁止·合规】watermark、text、signature、产品上出现假 logo / measurement markings / UI 元素、把多场景拼成一张图（除非模板明确要求）。';
 
         function buildEcommercePrompts(userReq) {
-            const hasRef   = (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
+            const hasModalRef = !!(window.ecRefImage || window.ecProductImage);
+            const hasRef   = hasModalRef
+                           || (typeof droppedFiles !== 'undefined' && Array.isArray(droppedFiles) && droppedFiles.length > 0)
                            || (typeof sessionImagePath !== 'undefined' && !!sessionImagePath);
+            // 参考类别说明（仅在有参考图时附加）
+            const refCatMap = { composition: '请以参考图的构图方式为主要参考，产品/场景内容可自由发挥。', storyboard: '请以参考图的分镜/叙事节奏为主要参考，还原其画面切分与视角逻辑。', similar: '请以参考图作为同类竞品参考，在保持本品牌风格的前提下借鉴其视觉亮点。', style: '请以参考图的整体视觉风格（色调/光影/氛围）为主要参考，产品本身保持原样。' };
+            const refCatNote = (hasModalRef && window.ecRefImage)
+                ? (window.ecRefCategory === 'custom'
+                    ? (window.ecRefCategoryCustom || '').trim()
+                    : (refCatMap[window.ecRefCategory] || ''))
+                : '';
             // 品类专属 lock / negative 优先；未配置则回退全局默认
             const cat        = window.ecCatalogGet ? window.ecCatalogGet(ecCategoryPath()) : null;
             // 品类专属 lock / negative：沿品类路径从叶子向根冒泡查找首个有定义的，叶子专属优先 → 中间分支 → 根模板 → 全局兜底
@@ -2836,6 +3038,7 @@
             const subjectLock = (window.ecCatalogResolveUp && window.ecCatalogResolveUp(path, 'subjectLock')) || EC_SUBJECT_LOCK;
             const negative    = (window.ecCatalogResolveUp && window.ecCatalogResolveUp(path, 'negative'))    || EC_NEGATIVE;
             const lockLine   = hasRef ? (subjectLock + '\n') : '';
+            const refCatLine = refCatNote ? (refCatNote + '\n') : '';
 
             // ── SKU / 详情页：不喂全套字段，仅在主图基础上做轻量改造 ──
             // 调用方（executeTask）已强制要求 SKU/详情页 上传参考图；这里若仍无 ref 则返回空，让上层提示。
@@ -2849,7 +3052,7 @@
                 if (ecSel.shortPrompt) extras.push(`附加拍摄指令[${ecSel.shortPrompt}]`);
                 if (userReq)           extras.push(`客户附加要求[${userReq}]`);
                 const extrasLine = extras.length ? `\n${extras.join('；')}。` : '';
-                return [`${lockLine}${directive}${extrasLine}\n${negative}`];
+                return [`${lockLine}${refCatLine}${directive}${extrasLine}\n${negative}`];
             }
 
             // ── 主图分支：完整字段拼装 ──
@@ -2897,10 +3100,10 @@
             }
             if (!sel) {
                 const paramsText = base.length ? `参数：${base.join('；')}。` : '（用户未指定参数，请按通用电商主图风格发挥。）';
-                return [`${lockLine}${intro}\n${paramsText}\n${negative}`];
+                return [`${lockLine}${refCatLine}${intro}\n${paramsText}\n${negative}`];
             }
             const params = [...base, `卖点[${sel.prompt}]`, `场景构图[${sel.composition}]`];
-            return [`${lockLine}${intro}\n参数：${params.join('；')}。\n${negative}`];
+            return [`${lockLine}${refCatLine}${intro}\n参数：${params.join('；')}。\n${negative}`];
         }
 
         // 开品模式：构造跨界开品设计师 prompt
@@ -4394,6 +4597,11 @@
                 <button class="close-btn" onclick="closeCustomCatModal()">×</button>
             </div>
             <p class="modal-desc" style="margin-top:0;">从下面的级联中逐级选择，选到叶节点自动确定。</p>
+            <div style="padding:0 0 8px 0;">
+                <input type="text" id="custom-cat-search" placeholder="🔎 搜索品类"
+                    oninput="customCatOnSearch(this.value)"
+                    style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.75rem;box-sizing:border-box;">
+            </div>
             <div id="customCatCascader" class="ec-cascader open" style="position:relative; min-height: 280px;">
                 <div class="ec-cascader-panels" id="customCatPanels" style="position: relative; top: auto; bottom: auto; display: flex;"></div>
             </div>

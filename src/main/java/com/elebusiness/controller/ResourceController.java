@@ -165,13 +165,18 @@ public class ResourceController {
         } catch (Exception e) {
             log.warn("枚举用户品类目录失败: {}", e.getMessage());
         }
-        // 内置 frontend/data/categories/（源码态项目根；打包态由 jar 内静态资源覆盖）
+        // 内置 frontend/data/categories/
+        // 源码态：user.dir/frontend/data/categories/
+        // 打包态：electron 通过 -Dspring.web.resources.static-locations=file:<resourcesPath>/frontend/ 注入，
+        //         从该属性解析出 frontend 根目录，再拼 data/categories/
         try {
-            File builtIn = new File(System.getProperty("user.dir"), "frontend/data/categories");
-            File[] kids = builtIn.listFiles();
-            if (kids != null) for (File k : kids) {
-                String n = k.getName();
-                if (k.isFile() && n.endsWith(".js")) slugs.add(n.substring(0, n.length() - 3));
+            File builtIn = resolveBuiltInCategoriesDir();
+            if (builtIn != null) {
+                File[] kids = builtIn.listFiles();
+                if (kids != null) for (File k : kids) {
+                    String n = k.getName();
+                    if (k.isFile() && n.endsWith(".js")) slugs.add(n.substring(0, n.length() - 3));
+                }
             }
         } catch (Exception e) {
             log.warn("枚举内置品类目录失败: {}", e.getMessage());
@@ -400,6 +405,30 @@ public class ResourceController {
     }
 
     // ── 私有辅助方法（首图查找、递归删除）；countImages 已抽到 ControllerHelpers（B 阶段审查 #10） ──
+
+    /**
+     * 定位内置 frontend/data/categories/ 目录。
+     * 打包态：electron 通过 -Dspring.web.resources.static-locations=file:<path>/frontend/ 注入，
+     *         从该属性解析出 frontend 根目录。
+     * 源码态：user.dir/frontend/data/categories/
+     */
+    private File resolveBuiltInCategoriesDir() {
+        // 优先从 spring.web.resources.static-locations 解析（打包态 electron 注入的绝对路径）
+        String staticLoc = System.getProperty("spring.web.resources.static-locations");
+        if (staticLoc != null && !staticLoc.isBlank()) {
+            // 格式：file:/path/to/frontend/  或  file:/path/to/frontend/,classpath:/static/
+            for (String loc : staticLoc.split(",")) {
+                loc = loc.trim();
+                if (loc.startsWith("file:")) {
+                    String dir = loc.substring(5).replaceAll("[/\\\\]+$", "");
+                    File catDir = new File(dir, "data/categories");
+                    if (catDir.isDirectory()) return catDir;
+                }
+            }
+        }
+        // 源码态 fallback
+        return new File(System.getProperty("user.dir"), "frontend/data/categories");
+    }
 
     /** 检测系统是否有可用的 python 解释器。优先 PYTHON 环境变量，再退回 python --version。 */
     private boolean hasPython() {
