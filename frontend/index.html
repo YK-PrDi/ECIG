@@ -2223,13 +2223,13 @@
             return true;
         }
         function ecRemoveUserOpt(fieldKey, value) {
-            const all = ecLoad(EC_LS_OPTS);
+            const all = ecLoad(EC_LS_OPTS) || {};
             if (!all[fieldKey]) return;
             all[fieldKey] = all[fieldKey].filter(o => o.value !== value);
             ecSave(EC_LS_OPTS, all);
         }
         function ecAddUserSelling(shapeValue, selling) {
-            const all = ecLoad(EC_LS_SELLINGS);
+            const all = ecLoad(EC_LS_SELLINGS) || {};
             const list = all[shapeValue] || [];
             if (list.find(s => s.key === selling.key)) return false;
             list.push(selling);
@@ -2238,7 +2238,7 @@
             return true;
         }
         function ecRemoveUserSelling(shapeValue, key) {
-            const all = ecLoad(EC_LS_SELLINGS);
+            const all = ecLoad(EC_LS_SELLINGS) || {};
             if (!all[shapeValue]) return;
             all[shapeValue] = all[shapeValue].filter(s => s.key !== key);
             ecSave(EC_LS_SELLINGS, all);
@@ -2267,11 +2267,15 @@
         }
 
         // 聚合预设+用户自定义的卖点列表（不按形态结构过滤，所有卖点均展示）
+        // 用户卖点统一存在 '' 桶（不再按形态分桶），读取时始终合并
         function ecGetSellings(shapeValue) {
             const cat = window.ecCatalogGet(ecCategoryPath());
             const presets = cat.sellings || [];
             const presetsKeyed = presets.map(s => s.key ? s : Object.assign({ key: s.label }, s));
-            return [...presetsKeyed, ...ecUserSellings(shapeValue || '')];
+            // 合并 '' 桶（统一桶）和 shapeValue 桶（向后兼容旧数据）
+            const userAll = ecUserSellings('');
+            const userShape = shapeValue ? ecUserSellings(shapeValue).filter(s => !userAll.find(u => u.key === s.key)) : [];
+            return [...presetsKeyed, ...userAll, ...userShape];
         }
 
         let ecSel = { category: [], sellings: [], shortPrompt: '' };
@@ -2901,7 +2905,8 @@
                 container.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);">没有匹配 "${ecEscAttr(q)}" 的卖点（${fullList.length} 个全部不匹配）</span>`;
                 return;
             }
-            const isUser = s => ecUserSellings(shapeValue || '').some(u => u.key === s.key);
+            const isUser = s => ecUserSellings('').some(u => u.key === s.key) ||
+                                (shapeValue ? ecUserSellings(shapeValue).some(u => u.key === s.key) : false);
             const restored = prevKey ? list.find(s => s.key === prevKey) : null;
             if (restored) {
                 ecSel.sellings = [restored];
@@ -2982,23 +2987,23 @@
 
         async function ecPromptAddSelling() {
             if (!ecIsCategoryReady()) { alert('请先选择品类（叶子级）'); return; }
-            const shapeValue = ecSel.shape || '';
             const label = ((await ecAskInput('卖点简称（显示在 checkbox 旁，例如"强劲吸附"）：')) || '').trim();
             if (!label) return;
             const sellingPrompt = ((await ecAskInput('卖点文字要求（将拼进生图 prompt，例如位置/字体/排版等）：', label)) || '').trim();
             if (!sellingPrompt) return;
-            const composition = ((await ecAskInput('场景构图描述（必填，将拼进生图 prompt）：')) || '').trim();
-            if (!composition) return;
+            const composition = ((await ecAskInput('场景构图描述（选填，留空则不指定构图）：')) || '').trim();
             const key = 'user_' + Date.now();
-            ecAddUserSelling(shapeValue, { key, label, prompt: sellingPrompt, composition });
-            ecRenderSellings(shapeValue);
+            ecAddUserSelling('', { key, label, prompt: sellingPrompt, composition });
+            ecRenderSellings(ecSel.shape || '');
         }
 
         function ecDeleteUserSelling(shapeValue, key) {
             if (!confirm('删除这个自定义卖点？')) return;
-            ecRemoveUserSelling(shapeValue, key);
+            ecRemoveUserSelling('', key);           // 统一桶
+            if (shapeValue) ecRemoveUserSelling(shapeValue, key); // 兼容旧数据
             ecSel.sellings = ecSel.sellings.filter(s => s.key !== key);
-            ecRenderSellings(shapeValue);
+            if (typeof window !== 'undefined' && window.__ecSelectedSellingKey === key) window.__ecSelectedSellingKey = '';
+            ecRenderSellings(ecSel.shape || '');
         }
 
         function ecToggleSelling(shapeValue, key, checked) {
@@ -3695,6 +3700,7 @@
         // ── 电商方案配置弹窗 ──
         function openEcommerceModal() {
             ecPanelInit = false;
+            window.__ecSellingSearch = '';
             document.getElementById('ecModalFieldsContainer').innerHTML = '';
             initEcommercePanel();
             const modal = document.getElementById('ecommerceModal');
