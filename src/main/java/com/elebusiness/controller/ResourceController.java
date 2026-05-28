@@ -312,16 +312,19 @@ public class ResourceController {
             outDir = new File(userData).getAbsoluteFile();
         }
         File projectRoot = new File(System.getProperty("user.dir"));
+        // 打包态：import-tool.exe 在 resources/ 下（通过 extraResources 打入）
+        // 源码态：tools/dist/import-tool.exe 或项目根 import-tool.exe
+        String resourcesPath = System.getProperty("app.resources-path");
+        File exeInResources = (resourcesPath != null && !resourcesPath.isBlank())
+                ? new File(resourcesPath, "import-tool.exe") : null;
         File pyScript = new File(projectRoot, "tools/import_category_xlsx.py");
         File exeProd = new File(projectRoot, "import-tool.exe");
         File exeDev  = new File(projectRoot, "tools/dist/import-tool.exe");
         File runner;
         boolean useExe = true;
-        // 优先级：python 脚本 > 项目根 exe > tools/dist exe
-        // 开发期 _xlsx_parse.py / _writer.py 改动很频繁（如分隔符归一化、卖点合并顺序），
-        // python 脚本能立刻反映改动；exe 是 PyInstaller 打包的旧版，不重新打包就不会带上新逻辑。
-        // 只有用户彻底没装 python 的环境才退回 exe。
-        if (pyScript.exists() && hasPython())  { runner = pyScript; useExe = false; }
+        // 优先级：resources/import-tool.exe（打包态）> python 脚本 > 项目根 exe > tools/dist exe
+        if (exeInResources != null && exeInResources.exists()) runner = exeInResources;
+        else if (pyScript.exists() && hasPython())  { runner = pyScript; useExe = false; }
         else if (exeProd.exists())             runner = exeProd;
         else if (exeDev.exists())              runner = exeDev;
         else if (pyScript.exists()){ runner = pyScript; useExe = false; }

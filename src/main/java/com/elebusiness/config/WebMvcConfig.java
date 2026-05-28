@@ -9,12 +9,10 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.io.File;
 
 /**
- * 让用户在 ${userDataDir}/data/categories/ 下覆盖打包态只读的 frontend/data/categories/。
- * 用户用 📥 导入 xlsx 后，新生成的品类 .js 会落到这个可写目录，前端按
- *   /data/categories/<slug>.js
- * 请求时优先命中这里，再 fallback 到 frontend/static-locations。
- *
- * Order：addResourceLocations 注册顺序即查找顺序，第一个命中即返；userDataDir 在前 = 用户覆盖优先。
+ * /data/categories/** 资源处理：
+ * - userDataDir/data/categories/ 优先（用户导入产物）
+ * - fallback 到内置 frontend/data/categories/（打包态从 JVM 属性解析路径，源码态用 user.dir）
+ * 两个 location 写在同一个 handler，Spring 按顺序查找，第一个命中即返回。
  */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
@@ -29,19 +27,37 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String userDataDir = appProperties.getPaths().getUserDataDir();
-        if (userDataDir == null || userDataDir.isBlank()) return;
-
-        File catDir = new File(userDataDir, "data/categories");
-        if (!catDir.exists()) {
-            // 不主动创建：导入工具第一次跑时会建；这里建只是为了 mkdirs，不影响 handler 注册
-            try { catDir.mkdirs(); } catch (Exception ignored) {}
+        // 解析内置 frontend/ 根目录
+        // 打包态：electron 通过 -Dspring.web.resources.static-locations=file:<resourcesPath>/frontend/ 注入
+        // 源码态：user.dir/frontend/
+        String builtInFrontend = null;
+        String staticLoc = System.getProperty("spring.web.resources.static-locations");
+        if (staticLoc != null && !staticLoc.isBlank()) {
+            for (String loc : staticLoc.split(",")) {
+                loc = loc.trim();
+                if (loc.startsWith("file:")) {
+                    builtInFrontend = loc.endsWith("/") ? loc : loc + "/";
+                    break;
+                }
+            }
         }
+        if (builtInFrontend == null) {
+            builtInFrontend = "file:" + System.getProperty("user.dir").replace('\\', '/') + "/frontend/";
+        }
+        String builtInCatLoc = builtInFrontend + "data/categories/";
 
-        // 必须以斜杠结尾，Spring 才会把它当目录处理
-        String location = "file:" + catDir.getAbsolutePath().replace('\\', '/') + "/";
-        registry.addResourceHandler("/data/categories/**")
-                .addResourceLocations(location);
-        log.info("用户覆盖目录已挂载: /data/categories/** -> {}", location);
+        String userDataDir = appProperties.getPaths().getUserDataDir();
+        if (userDataDir != null && !userDataDir.isBlank()) {
+            File catDir = new File(userDataDir, "data/categories");
+            try { catDir.mkdirs(); } catch (Exception ignored) {}
+            String userLoc = "file:" + catDir.getAbsolutePath().replace('\\', '/') + "/";
+            registry.addResourceHandler("/data/categories/**")
+                    .addResourceLocations(userLoc, builtInCatLoc);
+            log.info("品类资源: /data/categories/** -> [用户] {} , [内置] {}", userLoc, builtInCatLoc);
+        } else {
+            registry.addResourceHandler("/data/categories/**")
+                    .addResourceLocations(builtInCatLoc);
+            log.info("品类资源: /data/categories/** -> [内置] ", builtInCatLoc);
+        }
     }
 }

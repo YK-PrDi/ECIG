@@ -1,6 +1,6 @@
 {
   "name": "ai-studio",
-  "version": "1.2.1",
+  "version": "1.2.3",
   "description": "AI 产品图片生成系统",
   "main": "main.js",
   "scripts": {
@@ -33,10 +33,12 @@
       "runAfterFinish": true
     },
     "extraResources": [
-      { "from": "../dist/app.jar",  "to": "app.jar"  },
-      { "from": "../dist/runtime",  "to": "runtime"  },
-      { "from": "../dist/frontend", "to": "frontend" },
-      { "from": "../prompts",       "to": "prompts"  }
+      { "from": "../dist/app.jar",              "to": "app.jar"          },
+      { "from": "../dist/runtime",              "to": "runtime"          },
+      { "from": "../dist/frontend",             "to": "frontend"         },
+      { "from": "../prompts",                   "to": "prompts"          },
+      { "from": "../大参考",                    "to": "大参考"           },
+      { "from": "../tools/dist/import-tool.exe","to": "import-tool.exe"  }
     ],
     "directories": {
       "output": "../dist-electron"
