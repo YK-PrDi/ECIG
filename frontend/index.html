@@ -33,6 +33,13 @@
             <img src="icon.png" alt="羽刃" style="width: 32px; height: 32px; border-radius: 8px; object-fit: cover; margin-right: 8px;">
             羽刃
         </a>
+        <button onclick="openDocsView()" title="使用文档"
+            style="margin-left:12px;padding:0 12px;height:32px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:0.78rem;cursor:pointer;display:flex;align-items:center;gap:5px;flex-shrink:0;transition:all 0.15s;"
+            onmouseenter="this.style.background='var(--primary-light)';this.style.color='var(--primary)';this.style.borderColor='var(--primary)'"
+            onmouseleave="this.style.background='transparent';this.style.color='var(--text-muted)';this.style.borderColor='var(--border)'">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            使用文档
+        </button>
         <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
             <button id="themeToggleBtn" onclick="switchTheme()" title="切换明暗模式"
                 style="width:36px;height:36px;border-radius:50%;border:none;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;flex-shrink:0;"
@@ -2215,13 +2222,13 @@
             return true;
         }
         function ecRemoveUserOpt(fieldKey, value) {
-            const all = ecLoad(EC_LS_OPTS);
+            const all = ecLoad(EC_LS_OPTS) || {};
             if (!all[fieldKey]) return;
             all[fieldKey] = all[fieldKey].filter(o => o.value !== value);
             ecSave(EC_LS_OPTS, all);
         }
         function ecAddUserSelling(shapeValue, selling) {
-            const all = ecLoad(EC_LS_SELLINGS);
+            const all = ecLoad(EC_LS_SELLINGS) || {};
             const list = all[shapeValue] || [];
             if (list.find(s => s.key === selling.key)) return false;
             list.push(selling);
@@ -2230,7 +2237,7 @@
             return true;
         }
         function ecRemoveUserSelling(shapeValue, key) {
-            const all = ecLoad(EC_LS_SELLINGS);
+            const all = ecLoad(EC_LS_SELLINGS) || {};
             if (!all[shapeValue]) return;
             all[shapeValue] = all[shapeValue].filter(s => s.key !== key);
             ecSave(EC_LS_SELLINGS, all);
@@ -2240,17 +2247,34 @@
         function ecCategoryPath() {
             return (ecSel.category || []).join('>');
         }
-        // 是否选到叶子品类（注册表里有数据）
+        // 是否选到了叶子品类（树里没有 children，或 EC_CATALOG 里有注册）
         function ecIsCategoryReady() {
-            return window.ecCatalogHas(ecCategoryPath());
+            const path = ecCategoryPath();
+            if (!path) return false;
+            if (window.ecCatalogHas(path)) return true;
+            // EC_CATALOG 里没注册时，检查 EC_CATEGORY_TREE 里是否是叶子节点
+            const segs = (ecSel.category || []);
+            if (!segs.length) return false;
+            let nodes = window.EC_CATEGORY_TREE || [];
+            for (let i = 0; i < segs.length; i++) {
+                const hit = nodes.find(n => n.display === segs[i]);
+                if (!hit) return false;
+                if (i === segs.length - 1) return !hit.children || !hit.children.length;
+                nodes = hit.children || [];
+            }
+            return false;
         }
 
         // 聚合预设+用户自定义的卖点列表（不按形态结构过滤，所有卖点均展示）
+        // 用户卖点统一存在 '' 桶（不再按形态分桶），读取时始终合并
         function ecGetSellings(shapeValue) {
             const cat = window.ecCatalogGet(ecCategoryPath());
             const presets = cat.sellings || [];
             const presetsKeyed = presets.map(s => s.key ? s : Object.assign({ key: s.label }, s));
-            return [...presetsKeyed, ...ecUserSellings(shapeValue || '')];
+            // 合并 '' 桶（统一桶）和 shapeValue 桶（向后兼容旧数据）
+            const userAll = ecUserSellings('');
+            const userShape = shapeValue ? ecUserSellings(shapeValue).filter(s => !userAll.find(u => u.key === s.key)) : [];
+            return [...presetsKeyed, ...userAll, ...userShape];
         }
 
         let ecSel = { category: [], sellings: [], shortPrompt: '' };
@@ -2291,10 +2315,8 @@
             // 打包模式下隐藏 xlsx 导入条（开发期专用功能；用户机器不能写 resources/frontend/data/）
             try {
                 const params = new URLSearchParams(location.search);
-                if (params.get('packaged') === '1') {
-                    const bar = document.getElementById('ecImportBar');
-                    if (bar) bar.style.display = 'none';
-                }
+                // 打包态 import-tool.exe 已通过 extraResources 打入，xlsx 导入功能可用，不再隐藏
+                void params;
             } catch (_) {}
             const container = document.getElementById('ecModalFieldsContainer');
             let html = '';
@@ -2882,7 +2904,8 @@
                 container.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);">没有匹配 "${ecEscAttr(q)}" 的卖点（${fullList.length} 个全部不匹配）</span>`;
                 return;
             }
-            const isUser = s => ecUserSellings(shapeValue || '').some(u => u.key === s.key);
+            const isUser = s => ecUserSellings('').some(u => u.key === s.key) ||
+                                (shapeValue ? ecUserSellings(shapeValue).some(u => u.key === s.key) : false);
             const restored = prevKey ? list.find(s => s.key === prevKey) : null;
             if (restored) {
                 ecSel.sellings = [restored];
@@ -2963,23 +2986,23 @@
 
         async function ecPromptAddSelling() {
             if (!ecIsCategoryReady()) { alert('请先选择品类（叶子级）'); return; }
-            const shapeValue = ecSel.shape || '';
             const label = ((await ecAskInput('卖点简称（显示在 checkbox 旁，例如"强劲吸附"）：')) || '').trim();
             if (!label) return;
             const sellingPrompt = ((await ecAskInput('卖点文字要求（将拼进生图 prompt，例如位置/字体/排版等）：', label)) || '').trim();
             if (!sellingPrompt) return;
-            const composition = ((await ecAskInput('场景构图描述（必填，将拼进生图 prompt）：')) || '').trim();
-            if (!composition) return;
+            const composition = ((await ecAskInput('场景构图描述（选填，留空则不指定构图）：')) || '').trim();
             const key = 'user_' + Date.now();
-            ecAddUserSelling(shapeValue, { key, label, prompt: sellingPrompt, composition });
-            ecRenderSellings(shapeValue);
+            ecAddUserSelling('', { key, label, prompt: sellingPrompt, composition });
+            ecRenderSellings(ecSel.shape || '');
         }
 
         function ecDeleteUserSelling(shapeValue, key) {
             if (!confirm('删除这个自定义卖点？')) return;
-            ecRemoveUserSelling(shapeValue, key);
+            ecRemoveUserSelling('', key);           // 统一桶
+            if (shapeValue) ecRemoveUserSelling(shapeValue, key); // 兼容旧数据
             ecSel.sellings = ecSel.sellings.filter(s => s.key !== key);
-            ecRenderSellings(shapeValue);
+            if (typeof window !== 'undefined' && window.__ecSelectedSellingKey === key) window.__ecSelectedSellingKey = '';
+            ecRenderSellings(ecSel.shape || '');
         }
 
         function ecToggleSelling(shapeValue, key, checked) {
@@ -3393,6 +3416,80 @@
         function openSettingsModal() { openSettingsView(); }
         function closeSettingsModal() { closeSettingsView(); }
 
+        // ── 使用文档 ──
+        const DOCS_TOC = [
+            { group: '入门' },
+            { id: 'doc-quickstart', label: '快速开始',     section: 'doc-quickstart' },
+            { id: 'doc-flow',       label: '基本流程',     section: 'doc-quickstart' },
+            { id: 'doc-model',      label: '选择模型',     section: 'doc-quickstart' },
+            { group: '模式介绍' },
+            { id: 'doc-mode-custom',  label: '自定义模式', section: 'doc-modes' },
+            { id: 'doc-mode-ec',      label: '电商模式',   section: 'doc-modes' },
+            { id: 'doc-mode-kaipin',  label: '开品模式',   section: 'doc-modes' },
+            { id: 'doc-mode-video',   label: '视频模式',   section: 'doc-modes' },
+            { group: '电商模式' },
+            { id: 'doc-ec-category',  label: '品类选择',   section: 'doc-ec-detail' },
+            { id: 'doc-ec-selling',   label: '卖点配置',   section: 'doc-ec-detail' },
+            { id: 'doc-ec-imagetype', label: '图片类型',   section: 'doc-ec-detail' },
+            { id: 'doc-ec-fields',    label: '专属字段',   section: 'doc-ec-detail' },
+            { group: '参考图' },
+            { id: 'doc-refimg-upload',   label: '上传方式',   section: 'doc-refimg' },
+            { id: 'doc-refimg-category', label: '参考类别',   section: 'doc-refimg' },
+            { group: '其他' },
+            { id: 'doc-import',  label: '品类数据导入', section: 'doc-import' },
+            { id: 'doc-history', label: '历史记录',     section: 'doc-history' },
+            { id: 'doc-faq',     label: '常见问题',     section: 'doc-faq' },
+        ];
+
+        let docsScrollObserver = null;
+
+        function openDocsView() {
+            const view = document.getElementById('docsView');
+            view.classList.add('active');
+            document.getElementById('userMenu').classList.remove('show');
+            buildDocsToc();
+            initDocsScrollSpy();
+        }
+
+        function closeDocsView() {
+            document.getElementById('docsView').classList.remove('active');
+            if (docsScrollObserver) { docsScrollObserver.disconnect(); docsScrollObserver = null; }
+        }
+
+        function buildDocsToc() {
+            const list = document.getElementById('docs-toc-list');
+            if (!list || list.dataset.built) return;
+            list.dataset.built = '1';
+            list.innerHTML = DOCS_TOC.map(item => {
+                if (item.group) return `<div class="doc-toc-group">${item.group}</div>`;
+                return `<a class="doc-toc-item" data-target="${item.id}" onclick="docsScrollTo('${item.id}')">${item.label}</a>`;
+            }).join('');
+        }
+
+        function docsScrollTo(id) {
+            const el = document.getElementById(id);
+            const content = document.getElementById('docs-content');
+            if (!el || !content) return;
+            content.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' });
+        }
+
+        function initDocsScrollSpy() {
+            const content = document.getElementById('docs-content');
+            if (!content) return;
+            if (docsScrollObserver) docsScrollObserver.disconnect();
+            const targets = DOCS_TOC.filter(i => i.id).map(i => document.getElementById(i.id)).filter(Boolean);
+            docsScrollObserver = new IntersectionObserver(entries => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        document.querySelectorAll('.doc-toc-item').forEach(a => a.classList.remove('active'));
+                        const active = document.querySelector(`.doc-toc-item[data-target="${entry.target.id}"]`);
+                        if (active) active.classList.add('active');
+                    }
+                });
+            }, { root: content, rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+            targets.forEach(t => docsScrollObserver.observe(t));
+        }
+
         // Electron 环境下走 IPC 弹原生目录选择框（跟首次启动选下载位置一致的体验）；
         // 浏览器环境下打开内嵌的"目录浏览"全屏页（类似历史记录），不再用 alert
         async function pickDirOrFallback() {
@@ -3602,6 +3699,7 @@
         // ── 电商方案配置弹窗 ──
         function openEcommerceModal() {
             ecPanelInit = false;
+            window.__ecSellingSearch = '';
             document.getElementById('ecModalFieldsContainer').innerHTML = '';
             initEcommercePanel();
             const modal = document.getElementById('ecommerceModal');
@@ -4585,6 +4683,209 @@
 
         </div>
     </div>
+
+    </div>
+
+    <!-- ── 使用文档全屏页面 ── -->
+    <div id="docsView" class="history-view" style="padding:0;">
+        <div style="display:flex;height:100%;overflow:hidden;">
+
+            <!-- 左侧目录 -->
+            <nav id="docs-toc" style="width:220px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;padding:24px 0;background:var(--bg-card);">
+                <div style="padding:0 20px 16px;display:flex;align-items:center;gap:8px;">
+                    <button onclick="closeDocsView()" title="返回"
+                        style="width:28px;height:28px;border-radius:6px;border:none;background:var(--surface-alt);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+                    </button>
+                    <span style="font-size:0.8rem;font-weight:600;color:var(--text-primary);">使用文档</span>
+                </div>
+                <div id="docs-toc-list"></div>
+            </nav>
+
+            <!-- 右侧内容 -->
+            <div id="docs-content" style="flex:1;overflow-y:auto;padding:40px 60px;max-width:860px;">
+
+                <!-- § 1 快速开始 -->
+                <section id="doc-quickstart" class="doc-section">
+                    <h1 class="doc-h1">快速开始</h1>
+                    <p class="doc-p">羽刃创意中心是一款面向电商视觉团队的 AI 生图工作台，支持四种生图模式，覆盖从主图到详情页、从开品设计到视频脚本的全链路需求。</p>
+
+                    <h2 class="doc-h2" id="doc-flow">基本流程</h2>
+                    <ol class="doc-ol">
+                        <li>在顶部导航选择模式（自定义 / 电商 / 开品 / 视频）</li>
+                        <li>在右侧面板配置参数（品类、卖点、参考图等）</li>
+                        <li>在底部输入框补充附加要求，点击发送</li>
+                        <li>等待生成完成，点击 💾 保存到本地画廊</li>
+                    </ol>
+
+                    <div class="doc-tip">
+                        <strong>提示</strong> — 生成的图片会先进入临时归档（2 小时后自动清理），点 💾 才会永久保存到你在设置里指定的目录。
+                    </div>
+
+                    <h2 class="doc-h2" id="doc-model">选择模型</h2>
+                    <p class="doc-p">每种模式都可以在发送前切换 AI 模型。不同模型在风格、速度、成本上有差异，建议先用默认模型出图，满意后再批量生成。</p>
+                </section>
+
+                <!-- § 2 模式介绍 -->
+                <section id="doc-modes" class="doc-section">
+                    <h1 class="doc-h1">四种模式</h1>
+
+                    <h2 class="doc-h2" id="doc-mode-custom">自定义模式</h2>
+                    <p class="doc-p">最灵活的模式，适合有明确 prompt 想法的用户。可以直接输入文字描述，也可以上传参考图让 AI 在此基础上重绘或扩展。</p>
+                    <ul class="doc-ul">
+                        <li><strong>产品类目</strong> — 点击"选择类目"按钮，从树状菜单中选择，支持搜索。选中后系统会自动补充该品类的风格约束。</li>
+                        <li><strong>上传图片</strong> — 拖拽或点击上传区域，支持多张。上传后图片作为参考底图，AI 会在保持产品一致性的前提下重绘场景。</li>
+                        <li><strong>局部编辑</strong> — 在左侧面板上传底图后，用画笔涂抹需要修改的区域，再描述修改内容，AI 只改涂抹区域。</li>
+                    </ul>
+
+                    <h2 class="doc-h2" id="doc-mode-ec">电商模式</h2>
+                    <p class="doc-p">专为电商主图设计，通过结构化参数（品类 + 卖点 + 字段）自动生成符合平台规范的高清主图。</p>
+                    <ul class="doc-ul">
+                        <li><strong>品类选择</strong> — 支持多级级联，支持搜索。选到叶子节点后系统自动加载该品类的专属字段和卖点库。</li>
+                        <li><strong>卖点</strong> — 从预设卖点中单选，或点"➕ 添加卖点"自定义。每个卖点对应一套场景构图描述，直接影响生图结果。</li>
+                        <li><strong>图片类型</strong> — 主图（默认）/ SKU / 详情页。SKU 和详情页需要先上传参考主图。</li>
+                        <li><strong>参考图 / 产品图</strong> — 在配置弹窗底部上传，生图时优先于聊天区上传的图片。</li>
+                    </ul>
+
+                    <h2 class="doc-h2" id="doc-mode-kaipin">开品模式</h2>
+                    <p class="doc-p">跨界开品设计师模式。输入产品 A（功能参考）和产品 B（造型参考），AI 生成融合两者特点的新品设计方案图。</p>
+                    <ul class="doc-ul">
+                        <li>A / B 两侧各可上传图片或填写文字描述，至少填一侧。</li>
+                        <li><strong>卖点</strong> — 必填，描述新品的核心卖点，直接影响设计方向。</li>
+                        <li><strong>方案侧重</strong> — 成本量产 / 颜值溢价 / 颠覆创新 / 自定义，决定 AI 的设计取向。</li>
+                    </ul>
+
+                    <h2 class="doc-h2" id="doc-mode-video">视频模式</h2>
+                    <p class="doc-p">基于文字描述或参考图生成短视频（8 秒，720p）。适合制作产品展示视频、场景动态图。</p>
+                    <ul class="doc-ul">
+                        <li>上传参考图后，AI 会以该图为起始帧生成动态视频。</li>
+                        <li>视频生成时间较长（约 2–5 分钟），请耐心等待进度条。</li>
+                        <li>生成完成后点 ⬇ 下载 mp4 文件。</li>
+                    </ul>
+                </section>
+
+                <!-- § 3 电商模式详解 -->
+                <section id="doc-ec-detail" class="doc-section">
+                    <h1 class="doc-h1">电商模式详解</h1>
+
+                    <h2 class="doc-h2" id="doc-ec-category">品类选择</h2>
+                    <p class="doc-p">点击"电商方案"按钮打开配置弹窗，品类选择器支持两种方式：</p>
+                    <ul class="doc-ul">
+                        <li><strong>级联浏览</strong> — 逐级点击展开，点击条目本体即选中（任意层级均可停留），点击右侧 › 仅展开下一级不选中。</li>
+                        <li><strong>搜索</strong> — 在搜索框输入关键词，结果以"完整路径"形式平铺展示，点击即选中。支持中文输入法。</li>
+                    </ul>
+                    <p class="doc-p">选中品类后，系统会自动加载该品类的专属字段（如安装方式、形态结构等）和卖点库。</p>
+
+                    <h2 class="doc-h2" id="doc-ec-selling">卖点配置</h2>
+                    <p class="doc-p">卖点决定生图的核心场景构图。选中一个卖点后，下方"场景构图"区域会实时预览对应的构图描述。</p>
+                    <ul class="doc-ul">
+                        <li>预设卖点来自品类数据库，选好品类后直接展示，无需先选形态结构。</li>
+                        <li>点"➕ 为当前形态添加卖点"可以自定义卖点，填写简称、文字要求、场景构图描述后保存，下次打开仍然可用。</li>
+                        <li>搜索框支持按卖点名称或 prompt 内容模糊匹配。</li>
+                    </ul>
+
+                    <h2 class="doc-h2" id="doc-ec-imagetype">图片类型</h2>
+                    <table class="doc-table">
+                        <thead><tr><th>类型</th><th>用途</th><th>是否需要参考图</th></tr></thead>
+                        <tbody>
+                            <tr><td>主图</td><td>电商列表主展示图，1:1 或 3:4</td><td>可选（有参考图时主体一致性更强）</td></tr>
+                            <tr><td>SKU</td><td>白底/纯色背景产品展示图</td><td>必须</td></tr>
+                            <tr><td>详情页</td><td>9:16 纵向详情页，每张参考图生成一张</td><td>必须</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2 class="doc-h2" id="doc-ec-fields">专属字段说明</h2>
+                    <p class="doc-p">选中品类后会出现品类专属字段（标注"· 品类专属"），这些字段直接影响生图 prompt，建议按实际产品填写。部分字段仅在特定图片类型下生效（标注"· 仅 主图/SKU"等）。</p>
+                </section>
+
+                <!-- § 4 参考图使用 -->
+                <section id="doc-refimg" class="doc-section">
+                    <h1 class="doc-h1">参考图使用</h1>
+
+                    <h2 class="doc-h2" id="doc-refimg-upload">上传方式</h2>
+                    <p class="doc-p">有两个上传入口：</p>
+                    <ul class="doc-ul">
+                        <li><strong>聊天区拖拽/点击上传</strong> — 适合临时参考，每次发送后清空。</li>
+                        <li><strong>电商配置弹窗底部</strong> — 参考图和产品图各一个框，保存配置后跨次发送保持不变，生图时优先于聊天区图片。</li>
+                    </ul>
+
+                    <h2 class="doc-h2" id="doc-refimg-category">参考类别</h2>
+                    <p class="doc-p">参考图下方可以选择 AI 参考这张图的方式：</p>
+                    <table class="doc-table">
+                        <thead><tr><th>类别</th><th>含义</th></tr></thead>
+                        <tbody>
+                            <tr><td>构图参考</td><td>以参考图的构图方式为主，产品/场景内容可自由发挥</td></tr>
+                            <tr><td>分镜参考</td><td>还原参考图的画面切分与视角逻辑</td></tr>
+                            <tr><td>同类品参考</td><td>以竞品图为参考，借鉴视觉亮点但保持本品牌风格</td></tr>
+                            <tr><td>风格参考</td><td>以参考图的色调/光影/氛围为主，产品本身保持原样</td></tr>
+                            <tr><td>自定义</td><td>自由填写参考方式描述，直接拼入生图指令</td></tr>
+                        </tbody>
+                    </table>
+
+                    <div class="doc-tip">
+                        <strong>产品图</strong> — 产品图框上传的是你的实际产品图，AI 会以此为主体进行场景重绘，保持产品造型/色彩/材质/logo 不变。
+                    </div>
+                </section>
+
+                <!-- § 5 品类导入 -->
+                <section id="doc-import" class="doc-section">
+                    <h1 class="doc-h1">品类数据导入</h1>
+                    <p class="doc-p">系统内置了常用品类数据，如需添加自定义品类，可通过 xlsx 文件导入。</p>
+
+                    <h2 class="doc-h2" id="doc-import-how">导入步骤</h2>
+                    <ol class="doc-ol">
+                        <li>点击右上角头像菜单 → "导入品类 xlsx"</li>
+                        <li>选择准备好的 .xlsx 文件（支持同时选多个）</li>
+                        <li>等待导入完成，日志区域会显示处理结果</li>
+                        <li>刷新页面后新品类即可在品类选择器中使用</li>
+                    </ol>
+
+                    <div class="doc-tip">
+                        <strong>注意</strong> — xlsx 导入是增量合并，不会删除已有数据。同名品类会被新数据覆盖。
+                    </div>
+                </section>
+
+                <!-- § 6 历史记录 -->
+                <section id="doc-history" class="doc-section">
+                    <h1 class="doc-h1">历史记录</h1>
+                    <p class="doc-p">点击右上角头像菜单 → "历史记录"，可以查看所有生图记录。</p>
+                    <ul class="doc-ul">
+                        <li>每条记录显示生成时间、模式、使用的 prompt 和缩略图。</li>
+                        <li>点"重新生成"可以用相同参数再生成一次。</li>
+                        <li>已保存到画廊的图片会标注 💾 图标。</li>
+                        <li>删除历史记录不会删除已保存到画廊的图片。</li>
+                    </ul>
+                </section>
+
+                <!-- § 7 常见问题 -->
+                <section id="doc-faq" class="doc-section">
+                    <h1 class="doc-h1">常见问题</h1>
+
+                    <div class="doc-faq-item">
+                        <div class="doc-faq-q">生图一直转圈没有结果？</div>
+                        <div class="doc-faq-a">检查网络连接和代理设置（设置 → 代理配置）。如果使用了代理，确认代理地址和端口正确。超时后系统会自动重试 2 次。</div>
+                    </div>
+                    <div class="doc-faq-item">
+                        <div class="doc-faq-q">电商模式品类选择器是空的？</div>
+                        <div class="doc-faq-a">通常是打包版本的路径问题，升级到最新版本后可解决。如果仍然为空，尝试通过"导入品类 xlsx"手动导入品类数据。</div>
+                    </div>
+                    <div class="doc-faq-item">
+                        <div class="doc-faq-q">生成的图片产品形状/颜色不对？</div>
+                        <div class="doc-faq-a">上传产品图并选择合适的参考类别（建议"同类品参考"或不选参考类别直接上传产品图），同时确保品类和卖点选择准确。</div>
+                    </div>
+                    <div class="doc-faq-item">
+                        <div class="doc-faq-q">图片保存在哪里？</div>
+                        <div class="doc-faq-a">点 💾 后图片保存到"设置 → 文件保存位置"中指定的目录，默认是应用数据目录下的"生成结果"文件夹。</div>
+                    </div>
+                    <div class="doc-faq-item">
+                        <div class="doc-faq-q">如何批量生成多张图？</div>
+                        <div class="doc-faq-a">电商模式下，详情页类型会按上传的参考图数量批量生成（每张参考图对应一张详情页）。其他类型目前每次生成 1 张，可以多次发送。</div>
+                    </div>
+                </section>
+
+            </div><!-- /docs-content -->
+        </div><!-- /flex -->
+    </div><!-- /docsView -->
 
     <!-- 旧 settingsModal 已废弃（设置改成 settingsView 全屏页面） -->
 

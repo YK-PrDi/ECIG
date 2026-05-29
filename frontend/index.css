@@ -1345,3 +1345,114 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     font-size: 1rem;
     font-weight: 600;
 }
+
+/* ── 使用文档 ── */
+.doc-section {
+    margin-bottom: 48px;
+    padding-bottom: 40px;
+    border-bottom: 1px solid var(--border);
+}
+.doc-section:last-child { border-bottom: none; }
+
+.doc-h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-primary, #111827);
+    margin: 0 0 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--primary, #3b82f6);
+    display: inline-block;
+}
+.doc-h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary, #111827);
+    margin: 28px 0 10px;
+}
+.doc-p {
+    font-size: 0.88rem;
+    line-height: 1.75;
+    color: var(--text-secondary, #374151);
+    margin: 0 0 12px;
+}
+.doc-ul, .doc-ol {
+    font-size: 0.88rem;
+    line-height: 1.75;
+    color: var(--text-secondary, #374151);
+    margin: 0 0 12px;
+    padding-left: 20px;
+}
+.doc-ul li, .doc-ol li { margin-bottom: 4px; }
+
+.doc-tip {
+    background: var(--primary-light, #EFF6FF);
+    border-left: 3px solid var(--primary, #3b82f6);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 14px;
+    font-size: 0.83rem;
+    line-height: 1.6;
+    color: var(--text-secondary, #374151);
+    margin: 14px 0;
+}
+.doc-tip strong { color: var(--primary, #3b82f6); }
+
+.doc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+    margin: 12px 0;
+}
+.doc-table th {
+    background: var(--surface-alt, #F8FAFC);
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-primary, #111827);
+    border: 1px solid var(--border);
+}
+.doc-table td {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    color: var(--text-secondary, #374151);
+    vertical-align: top;
+}
+.doc-table tr:nth-child(even) td { background: var(--surface-alt, #F8FAFC); }
+
+.doc-faq-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+.doc-faq-q {
+    padding: 12px 16px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary, #111827);
+    background: var(--surface-alt, #F8FAFC);
+    cursor: pointer;
+    user-select: none;
+}
+.doc-faq-q::before { content: 'Q  '; color: var(--primary, #3b82f6); }
+.doc-faq-a {
+    padding: 10px 16px;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    color: var(--text-secondary, #374151);
+    background: var(--bg-card);
+}
+
+/* 目录项 */
+.doc-toc-item {
+    display: block;
+    padding: 5px 20px;
+    font-size: 0.8rem;
+    color: var(--text-muted, #6B7280);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    text-decoration: none;
+}
+.doc-toc-item:hover { color: var(--primary, #3b82f6); background: var(--primary-light, #EFF6FF); }
+.doc-toc-item.active { color: var(--primary, #3b82f6); border-left-color: var(--primary, #3b82f6); background: var(--primary-light, #EFF6FF); font-weight: 500; }
+.doc-toc-group { padding: 12px 20px 4px; font-size: 0.7rem; font-weight: 600; color: var(--text-dim, #9CA3AF); text-transform: uppercase; letter-spacing: 0.05em; }

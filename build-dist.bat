@@ -39,8 +39,8 @@ echo [pre 1/2] check working-tree of frontend/data/categories/ (avoid leaking te
 git status --short frontend/data/categories/ 2>nul
 echo.
 echo Lines starting with "??" or " M" above are not committed yet and WILL be packed into the release exe.
-echo Press Ctrl-C to abort (then git stash or commit first), or any key to continue.
-pause
+echo (auto-continuing in non-interactive mode; use Ctrl-C to abort manually if needed)
+echo.
 
 if "%SKIP_BUMP%"=="1" (
     echo [pre 2/2] --no-bump set, skip version bump.
@@ -195,5 +195,4 @@ for %%f in (dist-electron\*.exe) do echo    dist-electron\%%~nxf
 echo    dist-electron\win-unpacked\AI Studio.exe  (portable)
 echo ============================================================
 echo.
-pause
 endlocal

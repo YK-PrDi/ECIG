@@ -85,11 +85,17 @@ def main(argv):
     paths = []
     for a in argv:
         p = Path(a)
+        # 相对路径先拼 cwd 再判断（PyInstaller 冻结环境下 Path(rel).is_file() 可能失效）
+        if not p.is_absolute():
+            p = Path.cwd() / a
         if p.is_file():
             paths.append(p)
             continue
-        # glob 兜底（Windows 下 cmd 不展开通配）
-        matched = list(Path('.').glob(a))
+        # glob 兜底（Windows 下 cmd 不展开通配；PyInstaller 不支持 glob，跳过）
+        try:
+            matched = list(Path('.').glob(a))
+        except (NotImplementedError, Exception):
+            matched = []
         if matched:
             paths.extend(matched)
         else:

@@ -134,6 +134,7 @@ async function startJava() {
         `-Dapp.paths.reference-dir=${path.join(dataDir, '大参考').replace(/\\/g, '/')}`,
         `-Dapp.paths.prompts-dir=${path.join(dataDir, 'prompts').replace(/\\/g, '/')}`,
         `-Dapp.paths.user-data-dir=${dataDir.replace(/\\/g, '/')}`,
+        `-Dapp.resources-path=${process.resourcesPath.replace(/\\/g, '/')}`,
         `-Dapp.packaged=${app.isPackaged ? 'true' : 'false'}`,
         '-jar', jarPath
     ];
