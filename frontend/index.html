@@ -311,6 +311,22 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="config-group" style="max-width:100px;" id="grp-custom-count">
+                                <label>生成数量</label>
+                                <div class="gf-select drop-up" tabindex="0">
+                                    <input type="hidden" id="customCount" value="1">
+                                    <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                        <span class="gf-select-text">1 张</span>
+                                        <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    </div>
+                                    <div class="gf-select-options">
+                                        <div class="gf-option selected" data-value="1" onclick="selectOption(this, event)">1 张</div>
+                                        <div class="gf-option" data-value="2" onclick="selectOption(this, event)">2 张</div>
+                                        <div class="gf-option" data-value="3" onclick="selectOption(this, event)">3 张</div>
+                                        <div class="gf-option" data-value="4" onclick="selectOption(this, event)">4 张</div>
+                                    </div>
+                                </div>
+                            </div>
                             <div class="config-group" style="max-width:140px; display:none;" id="grp-denoising">
                                 <label>重绘幅度 (0-1)</label>
                                 <input type="number" id="customDenoising" class="input-field" placeholder="0.5" step="0.1" min="0" max="1" value="0.5">
@@ -764,6 +780,138 @@
         function loadCategories() { custCatPath = []; }
         function renderCatLevel() {}
         function selectCat() {}
+
+        // ── 豆包图片分析 & 批量生图 ──
+        const DOUBAO_API_KEY = '34e179d9-eca6-4ba2-b05f-94a7ed1ca97b';
+        const DOUBAO_MODEL = 'doubao-seed-2-0-lite-260215';
+        const DOUBAO_ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3/responses';
+
+        async function analyzeWithDoubao(base64List, userPrompt, count) {
+            const imageInputs = base64List.map(b64 => ({
+                type: 'input_image',
+                image_url: b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`
+            }));
+            const payload = {
+                model: DOUBAO_MODEL,
+                input: [{ role: 'user', content: [
+                    ...imageInputs,
+                    { type: 'input_text', text:
+                        `请分析以上图片，结合用户描述："${userPrompt || '无'}"，` +
+                        `生成 ${count} 段适合AI生图的中文提示词，每段不超过150字，段与段之间用"---"分隔，不要加序号。` }
+                ]}]
+            };
+            const res = await fetch(DOUBAO_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${DOUBAO_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            return data?.output?.find(o => o.type === 'message')
+                ?.content?.find(c => c.type === 'output_text')?.text || '';
+        }
+
+        function splitDoubaoResult(text, count) {
+            const parts = text.split(/\n?---\n?/).map(s => s.trim()).filter(Boolean);
+            while (parts.length < count) parts.push('');
+            return parts.slice(0, count);
+        }
+
+        let _doubaoConfirmed = false;
+
+        async function triggerDoubaoInline() {
+            const files = [...droppedFiles];
+            const userPrompt = document.getElementById('promptInput').value.trim();
+            const count = parseInt(document.getElementById('customCount')?.value, 10) || 1;
+
+            const containerId = 'doubao-inline-' + Date.now();
+            appendMessage('ai', `<div id="${containerId}" style="min-width:280px;width:100%;"><div style="color:var(--text-dim);font-size:0.85rem;">⏳ 豆包分析中...</div></div>`, true);
+            // 让豆包气泡更宽，不受 75% 限制
+            const bubble = document.getElementById(containerId)?.closest('.msg-bubble');
+            if (bubble) bubble.style.maxWidth = '90%';
+
+            let result = '';
+            try {
+                const base64List = await Promise.all(files.map(f => new Promise(res => {
+                    const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(f);
+                })));
+                result = await analyzeWithDoubao(base64List, userPrompt, count);
+            } catch(e) {
+                console.warn('豆包调用失败', e);
+                result = userPrompt || '';
+            }
+
+            const segments = splitDoubaoResult(result, count);
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = `
+                <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px;">豆包分析完成，共 ${segments.length} 段，可编辑后发送：</div>
+                ${segments.map((seg, i) => `
+                    <div style="margin-bottom:12px; background:var(--bg-panel); padding:8px 10px; border-radius:8px; border:1px solid var(--border);">
+                        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px;font-weight:500;">第 ${i+1} 张</div>
+                        <textarea class="doubao-ta" data-index="${i}"
+                            style="display:block;width:100%;min-height:56px;padding:6px;border:1px solid rgba(128,128,128,0.2);
+                            border-radius:6px;font-size:0.8rem;resize:vertical;line-height:1.5;
+                            background:var(--bg);color:var(--text-main);box-sizing:border-box;">${seg.trim()}</textarea>
+                    </div>`).join('')}
+                <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                    <button onclick="cancelDoubaoInline('${containerId}')"
+                        style="padding:6px 16px;border:1px solid var(--border);border-radius:8px;
+                        background:transparent;color:var(--text-main);font-size:0.85rem;cursor:pointer;">取消</button>
+                    <button id="btn-${containerId}" onclick="confirmDoubaoInline('${containerId}')"
+                        style="padding:6px 16px;background:var(--primary);color:#fff;border:none;
+                        border-radius:8px;font-size:0.85rem;cursor:pointer;">发送生图</button>
+                </div>`;
+            container._files = files;
+        }
+
+        async function confirmDoubaoInline(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const confirmBtn = document.getElementById(`btn-${containerId}`);
+            const cancelBtn = container.querySelector('button[onclick*="cancel"]');
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '⏳ 发送中...';
+                confirmBtn.style.opacity = '0.7';
+                confirmBtn.style.cursor = 'not-allowed';
+            }
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
+
+            const tas = [...container.querySelectorAll('.doubao-ta')];
+            const files = container._files || [];
+            _doubaoConfirmed = true;
+
+            let sentCount = 0;
+            for (let i = 0; i < tas.length; i++) {
+                const prompt = tas[i].value.trim();
+                if (!prompt) continue;
+                droppedFiles = files.length > 0 ? [files[Math.min(i, files.length - 1)]] : [];
+                document.getElementById('promptInput').value = prompt;
+                await executeTask();
+                sentCount++;
+                await new Promise(r => setTimeout(r, 800));
+            }
+            _doubaoConfirmed = false;
+
+            if (sentCount > 0) {
+                container.innerHTML = `
+                    <div style="padding: 10px 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; color: #10B981; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        已成功提交 ${sentCount} 个生图任务
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `<div style="font-size:0.85rem;color:var(--text-dim);">已取消（未输入任何有效提示词）</div>`;
+            }
+        }
+
+        function cancelDoubaoInline(containerId) {
+            const container = document.getElementById(containerId);
+            if (container) container.innerHTML = '<span style="color:var(--text-dim);font-size:0.85rem;">已取消</span>';
+        }
 
         function updateControlStates() {
             const agentSelect = document.getElementById('agentSelect');
@@ -1603,6 +1751,14 @@
                 }
 
             } else if (currentMode === 'custom') {
+                // 未经豆包确认时，先走豆包分析流程
+                if (!_doubaoConfirmed) {
+                    triggerDoubaoInline();
+                    promptInput.value = '';
+                    clearFiles();
+                    return;
+                }
+
                 apiPath = '/api/custom_generate';
 
                 // 合并类目提示词与用户输入
@@ -1633,6 +1789,7 @@
 
                 formData.append('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
                 formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
+                formData.append('count', String(parseInt(document.getElementById('customCount')?.value, 10) || 1));
                 formData.append('sessionId', SESSION_ID);
                 formData.append('mode', 'custom');
 
@@ -3300,10 +3457,17 @@
 
             if (droppedFiles.length > 0) {
                 document.getElementById('imagePreviewContainer').style.display = 'flex';
-                appendMessage('ai', `已接收 ${droppedFiles.length} 张图片，正在为您准备自由创作模式...`);
-                const input = document.getElementById('promptInput');
-                if (!input.value) input.placeholder = "结合这些图片生成...";
-                input.focus();
+                if (currentMode === 'custom') {
+                    // 拖图后不单独触发，统一等用户点发送走 executeTask 拦截
+                    const input = document.getElementById('promptInput');
+                    if (!input.value) input.placeholder = "描述你的需求，点发送后豆包将分析图片...";
+                    input.focus();
+                } else {
+                    appendMessage('ai', `已接收 ${droppedFiles.length} 张图片，正在为您准备自由创作模式...`);
+                    const input = document.getElementById('promptInput');
+                    if (!input.value) input.placeholder = "结合这些图片生成...";
+                    input.focus();
+                }
             }
         }
 
@@ -4888,6 +5052,7 @@
     </div><!-- /docsView -->
 
     <!-- 旧 settingsModal 已废弃（设置改成 settingsView 全屏页面） -->
+
 
     <!-- 自定义模式：产品类目选择 modal（跟电商共用 EC_CATEGORY_TREE 数据 + ecBuildColumn 渲染） -->
     <div id="customCatModal" class="modal-overlay" style="z-index: 5000;" onclick="if(event.target===this) closeCustomCatModal()">
