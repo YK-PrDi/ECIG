@@ -28,21 +28,9 @@ window.EC_FIELDS = [
         { display: '8K', value: '8K' }
       ]
     },
-    { key: 'filterCount', label: '滤芯个数', promptKey: '滤芯个数', global: true,
-      onlyImageTypes: ['SKU'],   // 仅 SKU 类型激活；选了之后会在 prompt 里追加"整齐排列 N 个滤芯..."
-      options: [
-        { display: '1', value: '1' },
-        { display: '2', value: '2' },
-        { display: '3', value: '3' },
-        { display: '4', value: '4' },
-        { display: '5', value: '5' },
-        { display: '6', value: '6' },
-        { display: '7', value: '7' },
-        { display: '8', value: '8' },
-        { display: '9', value: '9' },
-        { display: '10', value: '10' }
-      ]
-    },
+    { key: 'filterCount', label: '滤芯个数', promptKey: '滤芯个数',
+      onlyImageTypes: ['SKU'],
+      options: [] },
     { key: 'style', label: '背景风格', promptKey: '背景风格', global: true,
       options: [
         { display: '轻奢风', value: '轻奢风（深灰大理石哑光纹理墙面，镜面级反光出产品倒影，光影细腻，凸显产品高级质感）' },
@@ -75,6 +63,18 @@ window.EC_FIELDS = [
     // ── 以下为"品类专属"字段，options 留空；实际选项在用户选中品类后从 EC_CATALOG 注入 ──
     { key: 'install',      label: '安装方式',   promptKey: '安装方式',   options: [] },
     { key: 'shape',        label: '形态结构',   promptKey: '形态',       options: [] },
+    { key: 'composition',  label: '场景构图',   promptKey: '场景构图',   global: true,
+      options: [
+        { display: '正方形居中主体', value: '正方形1:1构图，产品居中，四周留白均匀' },
+        { display: '三分法左置', value: '三分法构图，产品偏左，右侧留白放文案' },
+        { display: '三分法右置', value: '三分法构图，产品偏右，左侧留白放文案' },
+        { display: '上下分栏', value: '上下二分构图，上半部分产品场景，下半部分功能说明' },
+        { display: '左右分栏', value: '左右二分构图，左侧产品主体，右侧卖点文案' },
+        { display: '对角线动态', value: '对角线构图，产品沿对角线斜向放置，增强动感' },
+        { display: '九宫格多图', value: '九宫格构图，多角度/多款式产品平铺展示' },
+        { display: '大特写居中', value: '超大特写构图，产品占画面80%以上，突出细节' },
+      ]
+    },
     { key: 'shotAngle',    label: '拍摄角度',   promptKey: '拍摄角度',   options: [] },
     { key: 'placement',    label: '产品摆放',   promptKey: '产品摆放',   options: [] },
     { key: 'layout',       label: '场景布局',   promptKey: '场景布局',   options: [] },

@@ -11,6 +11,7 @@ import com.elebusiness.service.ImageGenerationService;
 import com.elebusiness.service.PromptCondenser;
 import com.elebusiness.service.TaskService;
 import com.elebusiness.service.agent.GptImageAgent;
+import com.elebusiness.service.CosService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,12 +46,13 @@ public class GenerateController {
     private final GptImageAgent gptImageAgent;
     private final PromptCondenser promptCondenser;
     private final HistoryService historyService;
+    private final CosService cosService;
 
     public GenerateController(DingTalkService dingTalkService,
                               ImageGenerationService imageGenerationService,
                               AppProperties appProperties, TaskService taskService,
                               GptImageAgent gptImageAgent, PromptCondenser promptCondenser,
-                              HistoryService historyService) {
+                              HistoryService historyService, CosService cosService) {
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
         this.appProperties = appProperties;
@@ -58,6 +60,7 @@ public class GenerateController {
         this.gptImageAgent = gptImageAgent;
         this.promptCondenser = promptCondenser;
         this.historyService = historyService;
+        this.cosService = cosService;
     }
 
     /** 异步提交生成任务，立即返回 taskId，前端轮询 /api/task/{taskId} 获取进度 */
@@ -373,7 +376,16 @@ public class GenerateController {
                 if (r.startsWith("失败")) {
                     task.addResult(ControllerHelpers.result(name, "error", r, null));
                 } else {
-                    task.addResult(ControllerHelpers.result(name, "success", null, r));
+                    // COS 已配置时上传，返回 URL；否则返回本地路径（开发态兜底）
+                    String outputRef = r;
+                    if (cosService.isEnabled()) {
+                        try {
+                            outputRef = cosService.upload(new File(r), name);
+                        } catch (Exception ce) {
+                            log.warn("COS 上传失败，降级本地路径: {}", ce.getMessage());
+                        }
+                    }
+                    task.addResult(ControllerHelpers.result(name, "success", null, outputRef));
                 }
                 task.incrementProgress();
             }
@@ -458,8 +470,14 @@ public class GenerateController {
             } catch (Exception e) {
                 log.warn("inpaint 写历史失败: {}", e.getMessage());
             }
+            // COS 上传
+            String resultRef = outputPath;
+            if (cosService.isEnabled()) {
+                try { resultRef = cosService.upload(new File(outputPath), "inpaint.png"); }
+                catch (Exception ce) { log.warn("inpaint COS 上传失败: {}", ce.getMessage()); }
+            }
             return ResponseEntity.ok(Map.of(
-                "results", List.of(outputPath),
+                "results", List.of(resultRef),
                 "output_dir", outputDir,
                 "thought", "【局部重绘 · 提示词直送（未经 LLM 处理）】\n模型: gpt-image\n"
                     + "长度: " + prompt.length() + " 字\n\n【最终提示词】\n" + prompt

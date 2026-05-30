@@ -1067,62 +1067,10 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     overflow: visible !important;
 }
 
-/* ── 电商弹窗布局升级：宽屏与自动流式布局 ── */
-
-/* 1. 拓宽弹窗，给内容留出呼吸空间 */
-#ecommerceModal .modal-card {
-    width: 920px !important;
-    max-width: 95vw;
-}
-
-/* 2. 内部容器改为响应式网格布局 */
-#ecModalFieldsContainer {
-    display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
-    gap: 28px 24px !important;
-    align-items: start !important;
-}
-
-/* 3. 让"品类"、"卖点"、"构图"这类长条项始终占据整行 */
-#ecModalFieldsContainer > .config-group[style*="width:100%"],
-#ecModalFieldsContainer > .config-group[style*="width: 100%"],
-#ecModalFieldsContainer > .config-group:first-child,
-#ec-selling-container,
-#ec-composition-preview {
-    grid-column: 1 / -1 !important;
-}
-
-/* 4. 优化文字间距与输入框视觉 */
-#ecModalFieldsContainer .config-group label {
-    margin-bottom: 8px;
-    letter-spacing: 0.02em;
-    color: var(--text-muted);
-}
-
-#ecModalFieldsContainer .gf-select-header {
-    height: 40px;
-    padding: 0 16px;
-}
-
 /* 品类未选时，品类专属字段整体灰掉、不响应点击 */
 .config-group.ec-field-disabled { opacity: 0.45; pointer-events: none; }
 .config-group.ec-field-disabled .gf-select-header { background: var(--bg-workspace, #F8FAFC); cursor: not-allowed; }
 .config-group.ec-field-disabled label .ec-cat-scoped-hint { color: var(--primary); }
-
-/* 5. 卖点勾选框间距优化 */
-#ec-selling-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px !important;
-    padding: 4px 0;
-}
-
-#ec-selling-container label {
-    padding: 8px 16px !important;
-    background: var(--bg-workspace);
-    border-radius: 8px;
-    transition: all 0.2s;
-}
 
 /* ── 彻底解决底部对话被UI框遮挡的问题 ── */
 .chat-messages::after {
@@ -1456,3 +1404,461 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 .doc-toc-item:hover { color: var(--primary, #3b82f6); background: var(--primary-light, #EFF6FF); }
 .doc-toc-item.active { color: var(--primary, #3b82f6); border-left-color: var(--primary, #3b82f6); background: var(--primary-light, #EFF6FF); font-weight: 500; }
 .doc-toc-group { padding: 12px 20px 4px; font-size: 0.7rem; font-weight: 600; color: var(--text-dim, #9CA3AF); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── 电商弹窗重排版 ── */
+.ec-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 0;
+}
+.ec-section-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary, #111827);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+/* 三列字段网格 */
+.ec-fields-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    width: 100%;
+}
+.ec-field-col {
+    min-width: 0;
+}
+.ec-field-label {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted, #6B7280);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ec-cat-scoped-hint {
+    font-style: normal;
+    color: var(--primary, #3b82f6);
+    font-weight: 400;
+    margin-left: 4px;
+    font-size: 0.68rem;
+}
+/* 卖点 chip 网格 */
+.ec-selling-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 6px;
+}
+.ec-selling-grid label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    background: var(--bg-card);
+}
+.ec-selling-grid label:has(input:checked) {
+    border-color: var(--primary, #3b82f6);
+    background: var(--primary-light, #EFF6FF);
+    color: var(--primary, #3b82f6);
+    font-weight: 500;
+}
+/* 添加卖点按钮 */
+.ec-add-btn {
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.15s;
+}
+.ec-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+/* 场景构图预览 */
+.ec-composition-box {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+    padding: 8px 10px;
+    background: var(--surface-alt, #F8FAFC);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-height: 36px;
+}
+/* 图片上传框 */
+.ec-img-drop {
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 90px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: var(--surface-alt, #F8FAFC);
+    transition: border-color 0.15s, background 0.15s;
+}
+.ec-img-drop:hover { border-color: var(--primary); background: var(--primary-light, #EFF6FF); }
+.ec-img-hint {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.ec-img-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+/* 参考类别 radio 行 */
+.ec-radio-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.ec-radio-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    transition: all 0.12s;
+}
+.ec-radio-label:has(input:checked) {
+    border-color: var(--primary);
+    background: var(--primary-light, #EFF6FF);
+    color: var(--primary);
+}
+.ec-radio-label input { display: none; }
+/* 构图布局预览行 */
+.ec-preview-row {
+    display: flex;
+    gap: 8px;
+    font-size: 0.71rem;
+    line-height: 1.55;
+    color: var(--text-secondary, #374151);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+}
+.ec-preview-row:last-child { border-bottom: none; }
+.ec-preview-tag {
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--primary, #3b82f6);
+    background: var(--primary-light, #EFF6FF);
+    border-radius: 3px;
+    padding: 1px 5px;
+    height: fit-content;
+    margin-top: 1px;
+    letter-spacing: 0.02em;
+}
+.ec-preview-composition {
+    color: var(--text-dim, #9CA3AF);
+    font-size: 0.68rem;
+}
+
+/* 品类顶部横条 */
+.ec-cat-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-alt, #F8FAFC);
+}
+.ec-cat-bar-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted, #6B7280);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.ec-cat-bar .ec-cascader {
+    position: relative;
+    flex: 1;
+}
+.ec-cat-bar .ec-cascader-trigger {
+    border-radius: 6px;
+    padding: 4px 10px;
+    height: 30px;
+    font-size: 0.8rem;
+}
+
+/* 弹窗内容区间距 */
+#ecModalFieldsContainer { display: flex; flex-direction: column; gap: 0; }
+
+/* ── 响应式适配 ── */
+/* 大屏（>= 1200px）：弹窗 960px，左栏 300px，字段三列，卖点三列 */
+@media (min-width: 1200px) {
+    #ecommerceModal .modal-card { width: 960px; }
+    .ec-layout { grid-template-columns: 300px 1fr; }
+    .ec-fields-grid { grid-template-columns: repeat(3, 1fr); }
+    .ec-selling-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* 中屏（900px ~ 1199px）：弹窗 860px，左栏 260px，字段两列，卖点两列 */
+@media (min-width: 900px) and (max-width: 1199px) {
+    #ecommerceModal .modal-card { width: min(860px, 96vw); }
+    .ec-layout { grid-template-columns: 260px 1fr; }
+    .ec-fields-grid { grid-template-columns: repeat(2, 1fr); }
+    .ec-selling-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* 小屏（< 900px）：弹窗全宽，单栏堆叠，字段两列，卖点两列 */
+@media (max-width: 899px) {
+    #ecommerceModal .modal-card { width: 98vw; max-width: 98vw; }
+    .ec-layout { grid-template-columns: 1fr; }
+    .ec-col-left { max-height: none; border-right: none; border-bottom: 1px solid var(--border); }
+    .ec-col-right { max-height: none; }
+    .ec-fields-grid { grid-template-columns: repeat(2, 1fr); }
+    .ec-selling-grid { grid-template-columns: repeat(2, 1fr); }
+    .ec-imgtype-group { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ── 左右两栏主布局 ── */
+.ec-layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 0;
+    min-height: 0;
+}
+.ec-col-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    max-height: 72vh;
+}
+.ec-col-right {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+    max-height: 72vh;
+}
+.ec-panel-block {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+}
+.ec-panel-block:last-child { border-bottom: none; }
+.ec-col-left .ec-panel-block:last-child { border-bottom: none; }
+
+.ec-block-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted, #6B7280);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+}
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted, #6B7280);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+}
+.ec-block-sublabel {
+    font-size: 0.7rem;
+    color: var(--text-dim, #9CA3AF);
+    font-weight: 500;
+}
+.ec-img-sublabel {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted, #6B7280);
+    margin-bottom: 5px;
+}
+
+/* 字段三列网格（右栏用） */
+.ec-fields-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    width: 100%;
+}
+.ec-fields-grid + .ec-fields-grid {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+}
+.ec-field-col { min-width: 0; }
+.ec-field-label {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-muted, #6B7280);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ec-cat-scoped-hint {
+    font-style: normal;
+    color: var(--primary, #3b82f6);
+    font-weight: 400;
+    margin-left: 3px;
+    font-size: 0.65rem;
+}
+
+/* 卖点 chip 三列 */
+.ec-selling-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+}
+.ec-selling-grid label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+    background: var(--bg-card);
+    line-height: 1.3;
+    overflow: hidden;
+}
+.ec-selling-grid label span,
+.ec-selling-grid label > :not(input) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ec-selling-grid label:has(input:checked) {
+    border-color: var(--primary, #3b82f6);
+    background: var(--primary-light, #EFF6FF);
+    color: var(--primary, #3b82f6);
+    font-weight: 500;
+}
+
+/* 图片类型大按钮组（左栏顶部） */
+.ec-imgtype-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+.ec-imgtype-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px;
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+    background: var(--bg-card);
+    color: var(--text-muted, #6B7280);
+    user-select: none;
+}
+.ec-imgtype-btn input { display: none; }
+.ec-imgtype-btn:hover { border-color: var(--primary); color: var(--primary); }
+.ec-imgtype-btn.active {
+    border-color: var(--primary, #3b82f6);
+    background: var(--primary-light, #EFF6FF);
+    color: var(--primary, #3b82f6);
+    font-weight: 600;
+}
+
+/* 添加按钮 */
+.ec-add-btn {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    border: 1px dashed var(--border);
+    border-radius: 5px;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.12s;
+    white-space: nowrap;
+}
+.ec-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* 场景构图预览 */
+.ec-composition-box {
+    font-size: 0.71rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+    padding: 8px 10px;
+    background: var(--surface-alt, #F8FAFC);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-height: 32px;
+}
+
+/* 图片上传框 */
+.ec-img-drop {
+    border: 1.5px dashed var(--border);
+    border-radius: 7px;
+    padding: 10px 8px;
+    min-height: 72px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: var(--surface-alt, #F8FAFC);
+    transition: border-color 0.12s, background 0.12s;
+}
+.ec-img-drop:hover { border-color: var(--primary); background: var(--primary-light, #EFF6FF); }
+.ec-img-hint {
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    text-align: center;
+}
+
+/* 参考类别 radio */
+.ec-radio-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.ec-radio-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.68rem;
+    cursor: pointer;
+    padding: 2px 7px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: all 0.1s;
+    background: var(--bg-card);
+}
+.ec-radio-label:has(input:checked) {
+    border-color: var(--primary);
+    background: var(--primary-light, #EFF6FF);
+    color: var(--primary);
+}
+.ec-radio-label input { display: none; }
+
+/* 弹窗 modal-body-scroller 去掉多余 padding */
+#ecommerceModal .modal-body-scroller { padding: 0; }
+#ecommerceModal .modal-card { overflow: hidden; }
+

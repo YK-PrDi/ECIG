@@ -15,6 +15,8 @@ public class AppProperties {
     private Paths paths = new Paths();
     private Api api = new Api();
     private Proxy proxy = new Proxy();
+    private Cos cos = new Cos();
+    private Auth auth = new Auth();
 
     public Gemini getGemini() { return gemini; }
     public void setGemini(Gemini gemini) { this.gemini = gemini; }
@@ -26,6 +28,10 @@ public class AppProperties {
     public void setDingtalk(DingTalk dingtalk) { this.dingtalk = dingtalk; }
     public GptImage getGptImage() { return gptImage; }
     public void setGptImage(GptImage gptImage) { this.gptImage = gptImage; }
+    public Cos getCos() { return cos; }
+    public void setCos(Cos cos) { this.cos = cos; }
+    public Auth getAuth() { return auth; }
+    public void setAuth(Auth auth) { this.auth = auth; }
     public Paths getPaths() { return paths; }
     public void setPaths(Paths paths) { this.paths = paths; }
     public Api getApi() { return api; }
@@ -155,5 +161,31 @@ public class AppProperties {
         public void setApiKeys(java.util.List<String> apiKeys) { this.apiKeys = apiKeys; }
         public String getBaseUrl() { return baseUrl; }
         public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+    }
+
+    public static class Cos {
+        private String secretId = "";
+        private String secretKey = "";
+        private String region = "ap-guangzhou";
+        private String bucket = "graduation-project-1416091844";
+
+        public String getSecretId() { return secretId; }
+        public void setSecretId(String secretId) { this.secretId = secretId; }
+        public String getSecretKey() { return secretKey; }
+        public void setSecretKey(String secretKey) { this.secretKey = secretKey; }
+        public String getRegion() { return region; }
+        public void setRegion(String region) { this.region = region; }
+        public String getBucket() { return bucket; }
+        public void setBucket(String bucket) { this.bucket = bucket; }
+
+        public boolean isEnabled() { return secretId != null && !secretId.isBlank()
+                                         && secretKey != null && !secretKey.isBlank(); }
+    }
+
+    public static class Auth {
+        private String password = "123456";
+
+        public String getPassword() { return password; }
+        public void setPassword(String password) { this.password = password; }
     }
 }

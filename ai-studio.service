@@ -1,0 +1,22 @@
+[Unit]
+  Description=AI Studio
+  After=network.target
+
+  [Service]
+  EnvironmentFile=/www/wwwroot/ai-studio/.env
+  ExecStart=/usr/bin/java -Xmx1200m
+  -Dspring.web.resources.static-locations=file:/www/wwwroot/ai-studio/frontend/
+  -Dapp.paths.config-file=/www/wwwroot/ai-studio/data/config.json
+  -Dapp.paths.output-dir=/www/wwwroot/ai-studio/data/生成结果
+  -Dapp.paths.reference-dir=/www/wwwroot/ai-studio/data/大参考
+  -Dapp.paths.prompts-dir=/www/wwwroot/ai-studio/prompts
+  -Dapp.paths.user-data-dir=/www/wwwroot/ai-studio/data -jar /www/wwwroot/ai-studio/app.jar
+  WorkingDirectory=/www/wwwroot/ai-studio
+  Restart=always
+  RestartSec=5
+  User=root
+  StandardOutput=journal
+  StandardError=journal
+
+  [Install]
+  WantedBy=multi-user.target

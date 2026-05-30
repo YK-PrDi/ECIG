@@ -75,6 +75,19 @@ def main(argv):
         CAT_DIR    = DATA_DIR / 'categories'
         INDEX_HTML = None  # 打包态 jar 内 index.html 只读，不能 patch
         print(f'  写入目录 → {DATA_DIR}（外部用户目录）')
+
+        # 打包态：categories.js 在 resources/frontend/data/，需要先复制到 userDataDir/data/
+        # 才能让 update_categories_tree 读取并追加新品类节点
+        if not CAT_TREE.exists():
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            # sys.executable = resources/import-tool.exe，内置文件在同级 frontend/data/
+            builtin_tree = Path(sys.executable).parent / 'frontend' / 'data' / 'categories.js'
+            if builtin_tree.exists():
+                import shutil
+                shutil.copy2(builtin_tree, CAT_TREE)
+                print(f'  ✓ 已从内置复制 categories.js → {CAT_TREE}')
+            else:
+                print(f'  ⚠ 找不到内置 categories.js（{builtin_tree}），树同步将跳过')
     else:
         DATA_DIR   = PROJECT_ROOT / 'frontend' / 'data'
         CAT_TREE   = DATA_DIR / 'categories.js'
@@ -131,9 +144,12 @@ def main(argv):
         print(f'      → frontend/data/categories/{slug}.js  字段 {n_fields} | 卖点 {n_sells}')
 
         # 同步树
-        added_tree = update_categories_tree(CAT_TREE, cat_path)
-        if added_tree:
-            print(f'      ✓ 已追加叶子到 categories.js')
+        if CAT_TREE.exists():
+            added_tree = update_categories_tree(CAT_TREE, cat_path)
+            if added_tree:
+                print(f'      ✓ 已追加叶子到 categories.js')
+        else:
+            print(f'      ⚠ categories.js 不存在，跳过树同步')
         # 同步 index.html（仅源码态；打包态 jar 内只读，由前端运行时动态 import）
         if INDEX_HTML is not None:
             added_html = update_index_html(INDEX_HTML, slug)
