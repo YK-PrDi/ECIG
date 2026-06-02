@@ -41,19 +41,19 @@ mkdir -p /www/wwwroot/ai-studio/prompts
 
 ```bash
 cat > /www/wwwroot/ai-studio/.env << 'EOF'
-GEMINI_API_KEY=AIzaSyAkjAU5HUrVBDZ7VGRi1vNqAFZrQGT6ecM
-DASHSCOPE_API_KEY=sk-33bc9c1eb1c343fc9af12eb36e00481d
-SILICONFLOW_API_KEY=sk-AzCJGOInyxZkDObimhqbU4SPQ5x4Q1aQNkU62EJGrgAnyT88
-VOLCENGINE_API_KEY=34e179d9-eca6-4ba2-b05f-94a7ed1ca97b
-GPT_IMAGE_KEY_1=sk-qiIGdpLGXotiLXDKBjmQjzZpgbB2klgKnHNW1aqzx7YyLbZS
-GPT_IMAGE_KEY_2=sk-0tQ3BW9Lid0iq4cNGQIwk957N2wluOPeBsex4QgZgZ81ofSb
-GPT_IMAGE_KEY_3=sk-sxxTPqyHP6eDrjWlTgz5kttgYUKUKop6DOmCnI15DpMXdjg4
-GPT_IMAGE_KEY_4=sk-7Ei2pxbHQFZN5UweSsg2Ri6o1dnwe9qQT6qKbu61h2Hjqbhq
-COS_SECRET_ID=AKIDHhy63vd9TakkX7ViiV6e6ZFlJk5JQVUW
-COS_SECRET_KEY=1uhkhVBg5NafdT7ZpvrSr2BE6mLjvviI
+GEMINI_API_KEY=your_gemini_api_key
+DASHSCOPE_API_KEY=your_dashscope_api_key
+SILICONFLOW_API_KEY=your_siliconflow_api_key
+VOLCENGINE_API_KEY=your_volcengine_api_key
+GPT_IMAGE_KEY_1=your_gpt_image_key_1
+GPT_IMAGE_KEY_2=your_gpt_image_key_2
+GPT_IMAGE_KEY_3=your_gpt_image_key_3
+GPT_IMAGE_KEY_4=your_gpt_image_key_4
+COS_SECRET_ID=your_cos_secret_id
+COS_SECRET_KEY=your_cos_secret_key
 COS_REGION=ap-guangzhou
-COS_BUCKET=graduation-project-1416091844
-APP_PASSWORD=Real1122
+COS_BUCKET=your_cos_bucket_name
+APP_PASSWORD=your_app_password
 EOF
 chmod 600 /www/wwwroot/ai-studio/.env
 ```
