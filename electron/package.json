@@ -38,7 +38,10 @@
       { "from": "../dist/frontend",             "to": "frontend"         },
       { "from": "../prompts",                   "to": "prompts"          },
       { "from": "../大参考",                    "to": "大参考"           },
-      { "from": "../tools/dist/import-tool.exe","to": "import-tool.exe"  }
+      { "from": "../tools/dist/import-tool.exe","to": "import-tool.exe"  },
+      { "from": "../tools/pdd_listing.js",      "to": "tools/pdd_listing.js" },
+      { "from": "../tools/node_modules",        "to": "tools/node_modules"   },
+      { "from": "../tools/browsers",            "to": "tools/browsers"       }
     ],
     "directories": {
       "output": "../dist-electron"

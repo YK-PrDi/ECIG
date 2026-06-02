@@ -1,0 +1,65 @@
+{
+  "productType": "花洒",
+  "productName": "银色花洒套装",
+  "brand": "GOFU",
+  "material": "碳钢",
+  "category": "家装主材 > 卫浴用品 > 淋浴花洒套装",
+  "skuSpecType": "款式",
+  "title": "GOFU银色花洒套装碳钢带止水花洒软管浴室淋浴头套装",
+  "mainImgDir": "D:/code/ele-business-java/GF-100银色/主图",
+  "detailImgDir": "D:/code/ele-business-java/GF-100银色/详情图",
+  "whiteImgDir": "D:/code/ele-business-java/GF-100银色/白底图",
+  "discount": "9.9折",
+  "deliveryPromise": "48小时发货及揽收",
+  "cookiesPath": "D:/code/ele-business-java/tools/pdd_cookies.json",
+  "skus": [
+    {
+      "name": "银色花洒",
+      "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-100银色花洒.jpg",
+      "groupPrice": 3173,
+      "singlePrice": 1173,
+      "stock": 999,
+      "itemCode": "GF-100银色花洒"
+    },
+    {
+      "name": "花洒+软管",
+      "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-100银色花洒+银色1.5米软管.jpg",
+      "groupPrice": 3547,
+      "singlePrice": 1547,
+      "stock": 999,
+      "itemCode": "GF-100银色花洒+银色1.5米软管"
+    },
+    {
+      "name": "花洒+底座+软管",
+      "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-100银色花洒+银底座+银色1.5米软管.jpg",
+      "groupPrice": 3773,
+      "singlePrice": 1773,
+      "stock": 999,
+      "itemCode": "GF-100银色花洒+银底座+银色1.5米软管"
+    },
+    {
+      "name": "带止水花洒",
+      "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-带止水-100银色花洒.jpg",
+      "groupPrice": 3640,
+      "singlePrice": 1640,
+      "stock": 999,
+      "itemCode": "GF-带止水-100银色花洒"
+    },
+    {
+      "name": "带止水+软管",
+      "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-带止水-100银色花洒+银色1.5米软管.jpg",
+      "groupPrice": 4013,
+      "singlePrice": 2013,
+      "stock": 999,
+      "itemCode": "GF-带止水-100银色花洒+银色1.5米软管"
+    },
+    {
+      "name": "带止水+底座+软管",
+      "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-带止水-100银色花洒+银底座+银色1.5米软管.jpg",
+      "groupPrice": 4240,
+      "singlePrice": 2240,
+      "stock": 999,
+      "itemCode": "GF-带止水-100银色花洒+银底座+银色1.5米软管"
+    }
+  ]
+}

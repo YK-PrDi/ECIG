@@ -116,6 +116,48 @@ if exist "dist\frontend" rd /s /q "dist\frontend"
 mkdir "dist\frontend"
 xcopy /Y /I /E /Q "frontend\*" "dist\frontend\" > nul
 
+rem ---- 4.5/7 Playwright: install deps + download Chromium ----
+echo [4.5/7] installing Playwright and downloading Chromium ...
+where node > nul 2>&1
+if errorlevel 1 (
+    echo  [ERROR] node not on PATH. Install Node.js first.
+    pause
+    exit /b 1
+)
+rem 如果 tools\node_modules\playwright 已存在则跳过 npm install（加速重复打包）
+if not exist "tools\node_modules\playwright" (
+    echo        running npm install in tools\ ...
+    pushd tools
+    call npm init -y > nul 2>&1
+    call npm install playwright --save > nul 2>&1
+    set "NPM_ERR=%errorlevel%"
+    popd
+    if not "%NPM_ERR%"=="0" (
+        echo  [ERROR] npm install playwright failed.
+        pause
+        exit /b 1
+    )
+) else (
+    echo        tools\node_modules\playwright already exists, skipping npm install.
+)
+rem 下载 Chromium（已下载则跳过，PLAYWRIGHT_BROWSERS_PATH 指向 tools\browsers）
+set "PLAYWRIGHT_BROWSERS_PATH=%~dp0tools\browsers"
+if not exist "tools\browsers\chromium-*\chrome-win\chrome.exe" (
+    echo        downloading Chromium to tools\browsers\ ...
+    pushd tools
+    call node_modules\.bin\playwright.cmd install chromium
+    set "PW_ERR=%errorlevel%"
+    popd
+    if not "%PW_ERR%"=="0" (
+        echo  [ERROR] playwright install chromium failed.
+        pause
+        exit /b 1
+    )
+) else (
+    echo        Chromium already downloaded, skipping.
+)
+echo        Playwright ready.
+
 rem ---- 5/7 embedded JRE (jlink) ----
 if "%SKIP_JRE%"=="1" (
     echo [5/7] skipping jlink. User machine must have Java 17+ on PATH.
