@@ -164,7 +164,7 @@
         <!-- ── 无限画布区 ── -->
         <div class="canvas-panel" id="canvasPanel">
             <!-- 主渲染 canvas -->
-            <canvas id="boardCanvas"></canvas>
+            <canvas id="boardCanvas" tabindex="0"></canvas>
             <!-- 编辑模式蒙版覆盖层（双击图片后显示） -->
             <div id="editOverlay" style="display:none; position:absolute; inset:0; pointer-events:none;">
                 <canvas id="editMaskCanvas" style="position:absolute; pointer-events:all;"></canvas>
@@ -1761,6 +1761,61 @@
         // 点击空白处清除选中
         document.addEventListener('click', e => {
             if (!e.target.closest('.result-image-wrap')) clearImgSelection();
+        });
+
+        // Ctrl+C 复制选中图片到剪贴板（画布或对话框）
+        document.addEventListener('keydown', e => {
+            if (!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '')) return;
+
+            // 优先检查画布选中
+            if (typeof board !== 'undefined' && board && board.selectedId) {
+                const n = board._node(board.selectedId);
+                if (n) {
+                    e.preventDefault();
+                    fetch(n.src)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            if (!blob) return;
+                            try {
+                                navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+                                    toastCopySuccess('画布图片已复制');
+                                }).catch(() => {
+                                    window.__boardClipBlob = blob;
+                                    toastCopySuccess('图片已缓存（Ctrl+V 粘贴）');
+                                });
+                            } catch(_) {
+                                window.__boardClipBlob = blob;
+                                toastCopySuccess('图片已缓存（Ctrl+V 粘贴）');
+                            }
+                        })
+                        .catch(() => {});
+                    return;
+                }
+            }
+
+            // 其次检查对话框选中
+            if (selectedResultImgs.size > 0) {
+                e.preventDefault();
+                const url = [...selectedResultImgs][0];
+                fetch(url)
+                    .then(res => res.blob())
+                    .then(blob => {
+                        if (!blob) return;
+                        try {
+                            navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+                                toastCopySuccess('生成图片已复制');
+                            }).catch(() => {
+                                window.__boardClipBlob = blob;
+                                toastCopySuccess('图片已缓存（Ctrl+V 粘贴）');
+                            });
+                        } catch(_) {
+                            window.__boardClipBlob = blob;
+                            toastCopySuccess('图片已缓存（Ctrl+V 粘贴）');
+                        }
+                    })
+                    .catch(() => {});
+            }
         });
 
         // 🌟 2. 智能点击分发：单点预览，三连点下载
@@ -4621,13 +4676,31 @@
 
         // ── 粘贴上传（Ctrl+V）──
         document.addEventListener('paste', (e) => {
-            if (isTextOnly || currentMode !== 'custom') return;
+            if (isTextOnly) return;
+
             const items = Array.from(e.clipboardData?.items || []);
             const imageFiles = items
                 .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
                 .map(item => item.getAsFile())
                 .filter(Boolean);
-            if (imageFiles.length) handleImageDrop(imageFiles);
+
+            if (!imageFiles.length) return;
+
+            // 检测焦点是否在对话框区域
+            const activeTag = document.activeElement?.tagName || '';
+            const inDialog = ['INPUT', 'TEXTAREA'].includes(activeTag) ||
+                             document.activeElement?.closest('.input-area-wrapper, #chatMessages');
+
+            if (inDialog && currentMode === 'custom') {
+                // 焦点在对话框 + custom 模式 → 粘贴到对话框
+                handleImageDrop(imageFiles);
+            } else {
+                // 其他情况 → 粘贴到画布
+                if (typeof board !== 'undefined' && board) {
+                    imageFiles.forEach(f => board.addImage(URL.createObjectURL(f), f));
+                    toastCopySuccess('图片已粘贴到画布');
+                }
+            }
         });
 
         // ── 拖拽上传逻辑 ──
@@ -5236,14 +5309,29 @@
                     const cx = (this.canvas.width / 2 - this.cam.x) / this.scale;
                     const cy = (this.canvas.height / 2 - this.cam.y) / this.scale;
                     let x = cx - w / 2, y = cy - h / 2;
-                    let tries = 0;
-                    while (tries++ < 20 && this.nodes.some(n =>
-                        Math.abs(n.x - x) < 40 && Math.abs(n.y - y) < 40)) {
-                        x += 30; y += 30;
+                    // 矩形重叠检测
+                    const overlaps = (ax, ay, aw, ah, bx, by, bw, bh) =>
+                        ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+                    // 网格搜索不重叠位置：右移 → 换行 → 向下
+                    const gap = 16;
+                    let found = false;
+                    for (let row = 0; row < 50 && !found; row++) {
+                        for (let col = 0; col < 20 && !found; col++) {
+                            const tx = cx - w / 2 + col * (w + gap);
+                            const ty = cy - h / 2 + row * (h + gap);
+                            if (!this.nodes.some(n => overlaps(tx, ty, w, h, n.x, n.y, n.w, n.h))) {
+                                x = tx; y = ty; found = true;
+                            }
+                        }
                     }
                     const mc = document.createElement('canvas');
                     mc.width = w; mc.height = h;
-                    this.nodes.push({ id: 'n' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), img, src, file: file || null, x, y, w, h, maskCanvas: mc });
+                    const newNode = { id: 'n' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), img, src, file: file || null, x, y, w, h, maskCanvas: mc };
+                    this.nodes.push(newNode);
+                    // 自动选中新添加的图片，方便 Ctrl+C/V 操作
+                    this.selectedId = newNode.id;
+                    this.selectedIds.clear();
+                    this.selectedIds.add(newNode.id);
                     document.getElementById('boardEmptyState').style.display = 'none';
                     this._updateSidePanel();
                 };
@@ -5449,6 +5537,7 @@
 
                 // 鼠标按下
                 c.addEventListener('mousedown', e => {
+                    c.focus(); // 让画布获得焦点，使 Ctrl+C/V 生效
                     e.preventDefault(); // 始终阻止 HTML5 drag，内部拖动完全由 mousemove 控制
                     if (this.editId) return;
                     const wp = this.screenToWorld(e.clientX - c.getBoundingClientRect().left,
@@ -5621,7 +5710,7 @@
                     files.forEach(f => this.addImage(URL.createObjectURL(f), f));
                 });
 
-                // ESC 退出编辑；Ctrl+Z 撤销；Delete 删除选中图片
+                // ESC 退出编辑；Ctrl+Z 撤销；Delete 删除选中图片；Ctrl+C/V 复制粘贴
                 document.addEventListener('keydown', e => {
                     if (e.key === 'Escape' && this.editId) { this._exitEdit(); return; }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && this.editId) {
@@ -5632,12 +5721,12 @@
                         return;
                     }
                     if ((e.key === 'Delete' || e.key === 'Backspace' || e.key === 'd' || e.key === 'D') && this.selectedId && !this.editId) {
-                        // 只在焦点不在输入框时响应，避免误删
                         const tag = document.activeElement.tagName;
                         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
                         e.preventDefault();
                         this.removeSelected();
                     }
+                    // Ctrl+C/V 由全局事件统一处理
                 });
 
                 // 蒙版绘制事件（editMaskCanvas）
