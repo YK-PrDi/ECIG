@@ -1141,6 +1141,125 @@
             if (container) container.innerHTML = '<span style="color:var(--text-dim);font-size:0.85rem;">已取消</span>';
         }
 
+        // ── 图片右键菜单 ──
+        let imageContextMenu = null;
+        let currentImageContext = null;
+
+        function createImageContextMenu() {
+            if (imageContextMenu) return;
+            imageContextMenu = document.createElement('div');
+            imageContextMenu.id = 'imageContextMenu';
+            imageContextMenu.style.cssText = `
+                position: fixed;
+                z-index: 10000;
+                background: var(--bg-panel);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 6px 0;
+                min-width: 160px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+                font-size: 0.85rem;
+                display: none;
+            `;
+            imageContextMenu.innerHTML = `
+                <div class="ctx-menu-item" onclick="ctxDownloadImage()" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text-main);transition:background 0.15s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>下载图片</span>
+                </div>
+                <div class="ctx-menu-item" onclick="ctxSaveToGallery()" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text-main);transition:background 0.15s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    <span>保存到画廊</span>
+                </div>
+                <div class="ctx-menu-item" onclick="ctxCopyImageUrl()" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text-main);transition:background 0.15s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>复制图片地址</span>
+                </div>
+                <div style="height:1px;background:var(--border);margin:4px 0;"></div>
+                <div class="ctx-menu-item" onclick="ctxCopyImage()" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text-main);transition:background 0.15s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span>复制图片</span>
+                </div>
+            `;
+            // hover 效果
+            imageContextMenu.querySelectorAll('.ctx-menu-item').forEach(item => {
+                item.addEventListener('mouseenter', () => item.style.background = 'var(--primary-light)');
+                item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+            });
+            document.body.appendChild(imageContextMenu);
+            // 点击其他地方关闭
+            document.addEventListener('click', hideImageContextMenu);
+            document.addEventListener('scroll', hideImageContextMenu, true);
+        }
+
+        function showImageContextMenu(event, url, filename, pathKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            createImageContextMenu();
+            currentImageContext = { url, filename, pathKey };
+            const x = Math.min(event.clientX, window.innerWidth - 170);
+            const y = Math.min(event.clientY, window.innerHeight - 180);
+            imageContextMenu.style.left = x + 'px';
+            imageContextMenu.style.top = y + 'px';
+            imageContextMenu.style.display = 'block';
+        }
+
+        function hideImageContextMenu() {
+            if (imageContextMenu) imageContextMenu.style.display = 'none';
+        }
+
+        function ctxDownloadImage() {
+            hideImageContextMenu();
+            if (!currentImageContext) return;
+            downloadMedia(currentImageContext.url, currentImageContext.filename);
+        }
+
+        function ctxSaveToGallery() {
+            hideImageContextMenu();
+            if (!currentImageContext) return;
+            const pathKey = currentImageContext.pathKey;
+            const tempPath = (window.__pathMap || {})[pathKey];
+            if (!tempPath) { alertSafe('保存失败：路径未找到'); return; }
+            // 创建一个临时 btn 来调用 saveToGallery
+            const fakeBtn = document.createElement('button');
+            fakeBtn.style.display = 'none';
+            document.body.appendChild(fakeBtn);
+            saveToGallery(fakeBtn, tempPath).then(() => fakeBtn.remove());
+        }
+
+        function ctxCopyImageUrl() {
+            hideImageContextMenu();
+            if (!currentImageContext) return;
+            navigator.clipboard.writeText(currentImageContext.url).then(() => {
+                toastCopySuccess('图片地址已复制');
+            }).catch(() => {
+                alertSafe('复制失败，请手动复制');
+            });
+        }
+
+        function ctxCopyImage() {
+            hideImageContextMenu();
+            if (!currentImageContext) return;
+            fetch(currentImageContext.url)
+                .then(res => res.blob())
+                .then(blob => {
+                    const item = new ClipboardItem({ 'image/png': blob });
+                    navigator.clipboard.write([item]).then(() => {
+                        toastCopySuccess('图片已复制到剪贴板');
+                    }).catch(() => {
+                        alertSafe('复制图片失败，浏览器可能不支持');
+                    });
+                })
+                .catch(() => alertSafe('获取图片失败'));
+        }
+
+        function toastCopySuccess(msg) {
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:var(--primary);color:white;padding:10px 24px;border-radius:30px;z-index:9999;font-size:0.85rem;box-shadow:0 10px 25px rgba(0,0,0,0.15);';
+            toast.innerText = `✓ ${msg}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }
+
         function updateControlStates() {
             const agentSelect = document.getElementById('agentSelect');
             if (!agentSelect) return;
@@ -2509,7 +2628,7 @@
                             const promptKey = 'pr' + Math.random().toString(36).slice(2, 10);
                             window.__pathMap[promptKey] = result.prompt || '';
                             htmlContent += `<div class="result-image-wrap" data-img-url="${imgUrl}">`;
-                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="单点预览，三连点下载；Ctrl+点击多选，拖入输入框" ondragstart="onResultImgDragStart(event,'${imgUrl}')" onclick="onResultImgClick(event,'${imgUrl}','${safeName}.png')">`;
+                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="右键菜单：下载/保存/复制；单点预览，三连点下载" ondragstart="onResultImgDragStart(event,'${imgUrl}')" onclick="onResultImgClick(event,'${imgUrl}','${safeName}.png')" oncontextmenu="showImageContextMenu(event,'${imgUrl}','${safeName}.png','${pathKey}')">`;
                             htmlContent += `<div class="feedback-bar">
                                 <button class="feedback-btn" onclick="sendFeedbackByKey(this,'like','${promptKey}','${pathKey}')" title="满意">
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
