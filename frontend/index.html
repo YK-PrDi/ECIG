@@ -164,7 +164,7 @@
         <!-- ── 无限画布区 ── -->
         <div class="canvas-panel" id="canvasPanel">
             <!-- 主渲染 canvas -->
-            <canvas id="boardCanvas"></canvas>
+            <canvas id="boardCanvas" tabindex="0"></canvas>
             <!-- 编辑模式蒙版覆盖层（双击图片后显示） -->
             <div id="editOverlay" style="display:none; position:absolute; inset:0; pointer-events:none;">
                 <canvas id="editMaskCanvas" style="position:absolute; pointer-events:all;"></canvas>
@@ -1018,6 +1018,125 @@
             if (container) container.innerHTML = '<span style="color:var(--text-dim);font-size:0.85rem;">已取消</span>';
         }
 
+        // ── 图片右键菜单 ──
+        let imageContextMenu = null;
+        let currentImageContext = null;
+
+        function createImageContextMenu() {
+            if (imageContextMenu) return;
+            imageContextMenu = document.createElement('div');
+            imageContextMenu.id = 'imageContextMenu';
+            imageContextMenu.style.cssText = `
+                position: fixed;
+                z-index: 10000;
+                background: var(--bg-panel);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 6px 0;
+                min-width: 160px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+                font-size: 0.85rem;
+                display: none;
+            `;
+            imageContextMenu.innerHTML = `
+                <div class="ctx-menu-item" onclick="ctxDownloadImage()" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text-main);transition:background 0.15s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>下载图片</span>
+                </div>
+                <div class="ctx-menu-item" onclick="ctxSaveToGallery()" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text-main);transition:background 0.15s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    <span>保存到画廊</span>
+                </div>
+                <div class="ctx-menu-item" onclick="ctxCopyImageUrl()" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text-main);transition:background 0.15s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>复制图片地址</span>
+                </div>
+                <div style="height:1px;background:var(--border);margin:4px 0;"></div>
+                <div class="ctx-menu-item" onclick="ctxCopyImage()" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text-main);transition:background 0.15s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span>复制图片</span>
+                </div>
+            `;
+            // hover 效果
+            imageContextMenu.querySelectorAll('.ctx-menu-item').forEach(item => {
+                item.addEventListener('mouseenter', () => item.style.background = 'var(--primary-light)');
+                item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+            });
+            document.body.appendChild(imageContextMenu);
+            // 点击其他地方关闭
+            document.addEventListener('click', hideImageContextMenu);
+            document.addEventListener('scroll', hideImageContextMenu, true);
+        }
+
+        function showImageContextMenu(event, url, filename, pathKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            createImageContextMenu();
+            currentImageContext = { url, filename, pathKey };
+            const x = Math.min(event.clientX, window.innerWidth - 170);
+            const y = Math.min(event.clientY, window.innerHeight - 180);
+            imageContextMenu.style.left = x + 'px';
+            imageContextMenu.style.top = y + 'px';
+            imageContextMenu.style.display = 'block';
+        }
+
+        function hideImageContextMenu() {
+            if (imageContextMenu) imageContextMenu.style.display = 'none';
+        }
+
+        function ctxDownloadImage() {
+            hideImageContextMenu();
+            if (!currentImageContext) return;
+            downloadMedia(currentImageContext.url, currentImageContext.filename);
+        }
+
+        function ctxSaveToGallery() {
+            hideImageContextMenu();
+            if (!currentImageContext) return;
+            const pathKey = currentImageContext.pathKey;
+            const tempPath = (window.__pathMap || {})[pathKey];
+            if (!tempPath) { alertSafe('保存失败：路径未找到'); return; }
+            // 创建一个临时 btn 来调用 saveToGallery
+            const fakeBtn = document.createElement('button');
+            fakeBtn.style.display = 'none';
+            document.body.appendChild(fakeBtn);
+            saveToGallery(fakeBtn, tempPath).then(() => fakeBtn.remove());
+        }
+
+        function ctxCopyImageUrl() {
+            hideImageContextMenu();
+            if (!currentImageContext) return;
+            navigator.clipboard.writeText(currentImageContext.url).then(() => {
+                toastCopySuccess('图片地址已复制');
+            }).catch(() => {
+                alertSafe('复制失败，请手动复制');
+            });
+        }
+
+        function ctxCopyImage() {
+            hideImageContextMenu();
+            if (!currentImageContext) return;
+            fetch(currentImageContext.url)
+                .then(res => res.blob())
+                .then(blob => {
+                    const item = new ClipboardItem({ 'image/png': blob });
+                    navigator.clipboard.write([item]).then(() => {
+                        toastCopySuccess('图片已复制到剪贴板');
+                    }).catch(() => {
+                        alertSafe('复制图片失败，浏览器可能不支持');
+                    });
+                })
+                .catch(() => alertSafe('获取图片失败'));
+        }
+
+        function toastCopySuccess(msg) {
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:var(--primary);color:white;padding:10px 24px;border-radius:30px;z-index:9999;font-size:0.85rem;box-shadow:0 10px 25px rgba(0,0,0,0.15);';
+            toast.innerText = `✓ ${msg}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }
+
         function updateControlStates() {
             const agentSelect = document.getElementById('agentSelect');
             if (!agentSelect) return;
@@ -1519,6 +1638,61 @@
         // 点击空白处清除选中
         document.addEventListener('click', e => {
             if (!e.target.closest('.result-image-wrap')) clearImgSelection();
+        });
+
+        // Ctrl+C 复制选中图片到剪贴板（画布或对话框）
+        document.addEventListener('keydown', e => {
+            if (!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '')) return;
+
+            // 优先检查画布选中
+            if (typeof board !== 'undefined' && board && board.selectedId) {
+                const n = board._node(board.selectedId);
+                if (n) {
+                    e.preventDefault();
+                    fetch(n.src)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            if (!blob) return;
+                            try {
+                                navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+                                    toastCopySuccess('画布图片已复制');
+                                }).catch(() => {
+                                    window.__boardClipBlob = blob;
+                                    toastCopySuccess('图片已缓存（Ctrl+V 粘贴）');
+                                });
+                            } catch(_) {
+                                window.__boardClipBlob = blob;
+                                toastCopySuccess('图片已缓存（Ctrl+V 粘贴）');
+                            }
+                        })
+                        .catch(() => {});
+                    return;
+                }
+            }
+
+            // 其次检查对话框选中
+            if (selectedResultImgs.size > 0) {
+                e.preventDefault();
+                const url = [...selectedResultImgs][0];
+                fetch(url)
+                    .then(res => res.blob())
+                    .then(blob => {
+                        if (!blob) return;
+                        try {
+                            navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+                                toastCopySuccess('生成图片已复制');
+                            }).catch(() => {
+                                window.__boardClipBlob = blob;
+                                toastCopySuccess('图片已缓存（Ctrl+V 粘贴）');
+                            });
+                        } catch(_) {
+                            window.__boardClipBlob = blob;
+                            toastCopySuccess('图片已缓存（Ctrl+V 粘贴）');
+                        }
+                    })
+                    .catch(() => {});
+            }
         });
 
         // 🌟 2. 智能点击分发：单点预览，三连点下载
@@ -2385,7 +2559,7 @@
                             const promptKey = 'pr' + Math.random().toString(36).slice(2, 10);
                             window.__pathMap[promptKey] = result.prompt || '';
                             htmlContent += `<div class="result-image-wrap" data-img-url="${imgUrl}">`;
-                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="单点预览，三连点下载；Ctrl+点击多选，拖入输入框" ondragstart="onResultImgDragStart(event,'${imgUrl}')" onclick="onResultImgClick(event,'${imgUrl}','${safeName}.png')">`;
+                            htmlContent += `<img src="${imgUrl}" class="result-image" alt="${safeName}" draggable="true" title="右键菜单：下载/保存/复制；单点预览，三连点下载" ondragstart="onResultImgDragStart(event,'${imgUrl}')" onclick="onResultImgClick(event,'${imgUrl}','${safeName}.png')" oncontextmenu="showImageContextMenu(event,'${imgUrl}','${safeName}.png','${pathKey}')">`;
                             htmlContent += `<div class="feedback-bar">
                                 <button class="feedback-btn" onclick="sendFeedbackByKey(this,'like','${promptKey}','${pathKey}')" title="满意">
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
@@ -3754,13 +3928,31 @@
 
         // ── 粘贴上传（Ctrl+V）──
         document.addEventListener('paste', (e) => {
-            if (isTextOnly || currentMode !== 'custom') return;
+            if (isTextOnly) return;
+
             const items = Array.from(e.clipboardData?.items || []);
             const imageFiles = items
                 .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
                 .map(item => item.getAsFile())
                 .filter(Boolean);
-            if (imageFiles.length) handleImageDrop(imageFiles);
+
+            if (!imageFiles.length) return;
+
+            // 检测焦点是否在对话框区域
+            const activeTag = document.activeElement?.tagName || '';
+            const inDialog = ['INPUT', 'TEXTAREA'].includes(activeTag) ||
+                             document.activeElement?.closest('.input-area-wrapper, #chatMessages');
+
+            if (inDialog && currentMode === 'custom') {
+                // 焦点在对话框 + custom 模式 → 粘贴到对话框
+                handleImageDrop(imageFiles);
+            } else {
+                // 其他情况 → 粘贴到画布
+                if (typeof board !== 'undefined' && board) {
+                    imageFiles.forEach(f => board.addImage(URL.createObjectURL(f), f));
+                    toastCopySuccess('图片已粘贴到画布');
+                }
+            }
         });
 
         // ── 拖拽上传逻辑 ──
@@ -4369,14 +4561,29 @@
                     const cx = (this.canvas.width / 2 - this.cam.x) / this.scale;
                     const cy = (this.canvas.height / 2 - this.cam.y) / this.scale;
                     let x = cx - w / 2, y = cy - h / 2;
-                    let tries = 0;
-                    while (tries++ < 20 && this.nodes.some(n =>
-                        Math.abs(n.x - x) < 40 && Math.abs(n.y - y) < 40)) {
-                        x += 30; y += 30;
+                    // 矩形重叠检测
+                    const overlaps = (ax, ay, aw, ah, bx, by, bw, bh) =>
+                        ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+                    // 网格搜索不重叠位置：右移 → 换行 → 向下
+                    const gap = 16;
+                    let found = false;
+                    for (let row = 0; row < 50 && !found; row++) {
+                        for (let col = 0; col < 20 && !found; col++) {
+                            const tx = cx - w / 2 + col * (w + gap);
+                            const ty = cy - h / 2 + row * (h + gap);
+                            if (!this.nodes.some(n => overlaps(tx, ty, w, h, n.x, n.y, n.w, n.h))) {
+                                x = tx; y = ty; found = true;
+                            }
+                        }
                     }
                     const mc = document.createElement('canvas');
                     mc.width = w; mc.height = h;
-                    this.nodes.push({ id: 'n' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), img, src, file: file || null, x, y, w, h, maskCanvas: mc });
+                    const newNode = { id: 'n' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), img, src, file: file || null, x, y, w, h, maskCanvas: mc };
+                    this.nodes.push(newNode);
+                    // 自动选中新添加的图片，方便 Ctrl+C/V 操作
+                    this.selectedId = newNode.id;
+                    this.selectedIds.clear();
+                    this.selectedIds.add(newNode.id);
                     document.getElementById('boardEmptyState').style.display = 'none';
                     this._updateSidePanel();
                 };
@@ -4582,6 +4789,7 @@
 
                 // 鼠标按下
                 c.addEventListener('mousedown', e => {
+                    c.focus(); // 让画布获得焦点，使 Ctrl+C/V 生效
                     e.preventDefault(); // 始终阻止 HTML5 drag，内部拖动完全由 mousemove 控制
                     if (this.editId) return;
                     const wp = this.screenToWorld(e.clientX - c.getBoundingClientRect().left,
@@ -4754,7 +4962,7 @@
                     files.forEach(f => this.addImage(URL.createObjectURL(f), f));
                 });
 
-                // ESC 退出编辑；Ctrl+Z 撤销；Delete 删除选中图片
+                // ESC 退出编辑；Ctrl+Z 撤销；Delete 删除选中图片；Ctrl+C/V 复制粘贴
                 document.addEventListener('keydown', e => {
                     if (e.key === 'Escape' && this.editId) { this._exitEdit(); return; }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && this.editId) {
@@ -4765,12 +4973,12 @@
                         return;
                     }
                     if ((e.key === 'Delete' || e.key === 'Backspace' || e.key === 'd' || e.key === 'D') && this.selectedId && !this.editId) {
-                        // 只在焦点不在输入框时响应，避免误删
                         const tag = document.activeElement.tagName;
                         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
                         e.preventDefault();
                         this.removeSelected();
                     }
+                    // Ctrl+C/V 由全局事件统一处理
                 });
 
                 // 蒙版绘制事件（editMaskCanvas）
