@@ -17,48 +17,48 @@
       "name": "银色花洒",
       "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-100银色花洒.jpg",
       "groupPrice": 3173,
-      "singlePrice": 1173,
-      "stock": 999,
+      "singlePrice": 3273,
+      "stock": 8888,
       "itemCode": "GF-100银色花洒"
     },
     {
       "name": "花洒+软管",
       "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-100银色花洒+银色1.5米软管.jpg",
       "groupPrice": 3547,
-      "singlePrice": 1547,
-      "stock": 999,
+      "singlePrice": 3647,
+      "stock": 8888,
       "itemCode": "GF-100银色花洒+银色1.5米软管"
     },
     {
       "name": "花洒+底座+软管",
       "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-100银色花洒+银底座+银色1.5米软管.jpg",
       "groupPrice": 3773,
-      "singlePrice": 1773,
-      "stock": 999,
+      "singlePrice": 3873,
+      "stock": 8888,
       "itemCode": "GF-100银色花洒+银底座+银色1.5米软管"
     },
     {
       "name": "带止水花洒",
       "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-带止水-100银色花洒.jpg",
       "groupPrice": 3640,
-      "singlePrice": 1640,
-      "stock": 999,
+      "singlePrice": 3740,
+      "stock": 8888,
       "itemCode": "GF-带止水-100银色花洒"
     },
     {
       "name": "带止水+软管",
       "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-带止水-100银色花洒+银色1.5米软管.jpg",
       "groupPrice": 4013,
-      "singlePrice": 2013,
-      "stock": 999,
+      "singlePrice": 4113,
+      "stock": 8888,
       "itemCode": "GF-带止水-100银色花洒+银色1.5米软管"
     },
     {
       "name": "带止水+底座+软管",
       "imgDir": "D:/code/ele-business-java/GF-100银色/sku/GF-带止水-100银色花洒+银底座+银色1.5米软管.jpg",
       "groupPrice": 4240,
-      "singlePrice": 2240,
-      "stock": 999,
+      "singlePrice": 4340,
+      "stock": 8888,
       "itemCode": "GF-带止水-100银色花洒+银底座+银色1.5米软管"
     }
   ]

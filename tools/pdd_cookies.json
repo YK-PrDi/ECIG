@@ -10,6 +10,26 @@
     "sameSite": "Lax"
   },
   {
+    "name": "webp",
+    "value": "true",
+    "domain": "mms.pinduoduo.com",
+    "path": "/goods",
+    "expires": 1783015661,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "webp",
+    "value": "true",
+    "domain": "mms.pinduoduo.com",
+    "path": "/home",
+    "expires": 1783015658,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
     "name": "api_uid",
     "value": "Ck9MBmodi06ZDACMPYTwAg==",
     "domain": ".pinduoduo.com",
@@ -34,7 +54,7 @@
     "value": "6oorwcLR60MWo3MsRWba0w2yJRCl6b3r",
     "domain": ".pinduoduo.com",
     "path": "/",
-    "expires": 1811857114.943088,
+    "expires": 1812037284.102488,
     "httpOnly": true,
     "secure": true,
     "sameSite": "Lax"
@@ -44,7 +64,7 @@
     "value": "6oorwcLR60MWo3MsRWba0w2yJRCl6b3r",
     "domain": ".pinduoduo.com",
     "path": "/",
-    "expires": 1811857114.943172,
+    "expires": 1812037284.102587,
     "httpOnly": true,
     "secure": true,
     "sameSite": "None"
@@ -54,7 +74,7 @@
     "value": "8c361011-ef29-4a9c-ada1-00db0ef19652",
     "domain": ".pinduoduo.com",
     "path": "/",
-    "expires": 1811857114.943194,
+    "expires": 1812037284.102626,
     "httpOnly": true,
     "secure": true,
     "sameSite": "Lax"
@@ -64,7 +84,7 @@
     "value": "8c361011-ef29-4a9c-ada1-00db0ef19652",
     "domain": ".pinduoduo.com",
     "path": "/",
-    "expires": 1811857114.943214,
+    "expires": 1812037284.102684,
     "httpOnly": true,
     "secure": true,
     "sameSite": "None"
@@ -74,7 +94,7 @@
     "value": "a28d5935-3ca3-40a2-a2ad-9039734bfb06",
     "domain": ".pinduoduo.com",
     "path": "/",
-    "expires": 1811857114.943235,
+    "expires": 1812037284.102719,
     "httpOnly": true,
     "secure": true,
     "sameSite": "Lax"
@@ -84,24 +104,44 @@
     "value": "a28d5935-3ca3-40a2-a2ad-9039734bfb06",
     "domain": ".pinduoduo.com",
     "path": "/",
-    "expires": 1811857114.943255,
+    "expires": 1812037284.102755,
     "httpOnly": true,
     "secure": true,
     "sameSite": "None"
   },
   {
-    "name": "PASS_ID",
-    "value": "1-8HqW5xbATvQcW1RFMCLiRGacD41zYoZKex0/qvxTapUo2syZPuSl0tYTj3aAChhVVBAqzZIF15If4J7I7WMJsw_110757826_179780497",
+    "name": "mms_b84d1838",
+    "value": "3616,170,150,3693,3700,3706,3523,3660,3709,3614,3599,3658,3621,3677,3588,3254,3531,3559,3474,3475,3477,3479,3497,3687,3482,1202,1203,1204,1205,3417,1307,1305,1306,1308",
     "domain": "mms.pinduoduo.com",
     "path": "/",
-    "expires": 1781185129.191565,
+    "expires": 1789141146.834248,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "PASS_ID",
+    "value": "1-qjMhPgFRIZAJEwAqjY8uKlFQ1PFfg9yzQ9DZKhjx1WRXr80LLQSedCFVb5xuT+zF/RAH5LrOVYqwu5YQYI2yHQ_429891960_179779486",
+    "domain": "mms.pinduoduo.com",
+    "path": "/",
+    "expires": 1781361495.42314,
     "httpOnly": true,
     "secure": true,
     "sameSite": "Lax"
   },
   {
+    "name": "windows_app_shop_token_23",
+    "value": "eyJ0IjoibTVYWTNUcDdOS0hIdC9aQUJTOEJUUnQyMFE3Tzc2UFh4LzNnQjFCdW1lSTNkQ2s0RlhTT3lkV1JtSkN2QmlVdiIsInYiOjEsInMiOjIzLCJtIjo0Mjk4OTE5NjAsInUiOjE3OTc3OTQ4Nn0",
+    "domain": ".pinduoduo.com",
+    "path": "/",
+    "expires": 1780583895.526494,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
     "name": "JSESSIONID",
-    "value": "6E3044BBE53E6AC6827688D77C0187AA",
+    "value": "7754DCB74384A3107F830D806CB50155",
     "domain": "mms.pinduoduo.com",
     "path": "/",
     "expires": -1,
@@ -110,13 +150,13 @@
     "sameSite": "Lax"
   },
   {
-    "name": "windows_app_shop_token_23",
-    "value": "eyJ0IjoiWUNHODB2cENwM2pNb2lEWWIxbVNSUTNUd05CUkluZThBOFllTnREM2tBaEgyeTZ5T3NlN2pTNFlNNVFjY1RtOCIsInYiOjEsInMiOjIzLCJtIjoxMTA3NTc4MjYsInUiOjE3OTc4MDQ5N30",
-    "domain": ".pinduoduo.com",
+    "name": "x-visit-time",
+    "value": "1780501148263",
+    "domain": "mms.pinduoduo.com",
     "path": "/",
-    "expires": 1780407529.283097,
+    "expires": 1789141148.263446,
     "httpOnly": false,
-    "secure": true,
+    "secure": false,
     "sameSite": "Lax"
   }
 ]

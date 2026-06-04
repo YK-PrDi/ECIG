@@ -1232,6 +1232,9 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 }
 .ec-cascader.open .ec-cascader-panels { display: flex; }
 .ec-cascader.drop-up .ec-cascader-panels { top: auto; bottom: calc(100% + 4px); }
+/* 上新模式品类级联：用 fixed 脱离抽屉裁剪，坐标由 JS 计算 */
+#lst-cat-panels { position: fixed !important; bottom: auto !important; z-index: 99999; max-height: none !important; overflow: visible; }
+#lst-cat-panels .ec-cascader-panel { box-sizing: border-box; }
 
 .ec-cascader-panel {
     background: var(--bg-panel);
