@@ -61,22 +61,14 @@ public class GptImageAgent implements ImageGeneratorAgent {
         String baseUrl = appProperties.getGptImage().getBaseUrl();
         List<File> imageFiles = resolveImageFiles(refImagePaths);
         String size = pickSize(aspect);
-        // 总时间预算：后端单图硬上限是 5 分钟（GenerateController），这里留余量到 4 分钟。
-        // 避免某个 key 慢响应耗尽时间后才轮到下一个 key、最终撞 5 分钟被判超时。
-        final long budgetMs = 4 * 60 * 1000L;
-        final long startMs = System.currentTimeMillis();
         for (String apiKey : orderedKeys()) {
-            if (System.currentTimeMillis() - startMs > budgetMs) {
-                log.warn("GPT-Image 总耗时超 {}s 预算，停止尝试剩余 key", budgetMs / 1000);
-                break;
-            }
             boolean ok = !imageFiles.isEmpty()
                     ? generateWithImages(prompt, imageFiles, outputPath, apiKey, baseUrl, size)
                     : generateTextOnly(prompt, outputPath, apiKey, baseUrl, size);
             if (ok) return true;
             log.warn("GPT-Image key 尾号[{}] 失败，尝试下一个", apiKey.length() > 4 ? apiKey.substring(0, 4) + "***" : "***");
         }
-        log.error("GPT-Image 所有 key 均失败或超时");
+        log.error("GPT-Image 所有 key 均失败");
         return false;
     }
 
@@ -113,7 +105,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setDoOutput(true);
             conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(90_000);
+            conn.setReadTimeout(300_000);
 
             try (OutputStream os = conn.getOutputStream()) {
                 writeField(os, boundary, "model",         "gpt-image-2");
@@ -228,7 +220,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setDoOutput(true);
             conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(90_000);
+            conn.setReadTimeout(240_000);
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
