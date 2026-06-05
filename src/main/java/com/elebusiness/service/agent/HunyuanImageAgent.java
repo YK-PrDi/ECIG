@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.io.*;
 import java.nio.file.Files;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -39,11 +40,35 @@ public class HunyuanImageAgent implements ImageGeneratorAgent {
     @Override
     public String getDisplayName() { return "混元 HunyuanImage v3.0（腾讯 MaaS）"; }
 
+    /** 覆写 generateMulti，使用 aspect 参数动态计算 size */
     @Override
-    public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
+    public boolean generateMulti(String prompt, List<String> refImagePaths,
+                                 String whiteBgPath, String outputPath, String aspect) {
+        String size = pickSize(aspect);
+        log.info("混元使用 size={} (aspect={})", size, aspect);
+        String firstRef = (refImagePaths != null && !refImagePaths.isEmpty()) ? refImagePaths.get(0) : null;
+        return generateWithSize(prompt, firstRef, whiteBgPath, outputPath, size);
+    }
+
+    /** 混元 size 映射（腾讯 MaaS 格式 "1024x1024"，小写 x） */
+    private String pickSize(String aspect) {
+        if (aspect == null || "auto".equals(aspect)) return "1024x1024";
+        return switch (aspect) {
+            case "9:16", "portrait" -> "1024x1536";
+            case "16:9", "landscape" -> "1536x1024";
+            case "1:1" -> "1024x1024";
+            case "3:4" -> "1024x1365";
+            case "4:3" -> "1365x1024";
+            default -> "1024x1024";
+        };
+    }
+
+    /** 内部方法：使用指定 size 生成图片 */
+    private boolean generateWithSize(String prompt, String refImagePath, String whiteBgPath,
+                                      String outputPath, String size) {
         OkHttpClient client = buildClient();
         try {
-            String taskId = submitTask(client, prompt, refImagePath, whiteBgPath);
+            String taskId = submitTask(client, prompt, refImagePath, whiteBgPath, size);
             log.info("混元任务已提交，task_id={}", taskId);
             String imageUrl = pollTask(client, taskId);
             downloadToFile(client, imageUrl, outputPath);
@@ -55,11 +80,17 @@ public class HunyuanImageAgent implements ImageGeneratorAgent {
         }
     }
 
+    @Override
+    public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
+        return generateWithSize(prompt, refImagePath, whiteBgPath, outputPath, "1024x1024");
+    }
+
     private String submitTask(OkHttpClient client, String prompt,
-                               String refImagePath, String whiteBgPath) throws IOException {
+                               String refImagePath, String whiteBgPath, String size) throws IOException {
         ObjectNode body = objectMapper.createObjectNode()
                 .put("model", config.getModel())
-                .put("prompt", prompt);
+                .put("prompt", prompt)
+                .put("size", size);
 
         // 优先白底图，其次参考图
         String refPath = (whiteBgPath != null && !whiteBgPath.isBlank()) ? whiteBgPath : refImagePath;

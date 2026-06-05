@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.io.*;
 import java.nio.file.Files;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -36,11 +37,36 @@ public class WanImageAgent implements ImageGeneratorAgent {
     @Override
     public String getDisplayName() { return "万相 2.7 Pro（图像编辑）"; }
 
+    /** 覆写 generateMulti，使用 aspect 参数动态计算 size */
     @Override
-    public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
+    public boolean generateMulti(String prompt, List<String> refImagePaths,
+                                 String whiteBgPath, String outputPath, String aspect) {
+        String size = pickSize(aspect);
+        log.info("万相使用 size={} (aspect={})", size, aspect);
+        // 取第一张参考图（如有）
+        String firstRef = (refImagePaths != null && !refImagePaths.isEmpty()) ? refImagePaths.get(0) : null;
+        return generateWithSize(prompt, firstRef, whiteBgPath, outputPath, size);
+    }
+
+    /** DashScope size 格式为 "1024*1024"（星号），映射 aspect 到 size */
+    private String pickSize(String aspect) {
+        if (aspect == null || "auto".equals(aspect)) return config.getImageSize();
+        return switch (aspect) {
+            case "9:16", "portrait" -> "1024*1536";
+            case "16:9", "landscape" -> "1536*1024";
+            case "1:1" -> "1024*1024";
+            case "3:4" -> "1024*1365";
+            case "4:3" -> "1365*1024";
+            default -> config.getImageSize();
+        };
+    }
+
+    /** 内部方法：使用指定 size 生成图片 */
+    private boolean generateWithSize(String prompt, String refImagePath, String whiteBgPath,
+                                      String outputPath, String size) {
         OkHttpClient client = buildClient();
         try {
-            String taskId = createTask(client, prompt, refImagePath, whiteBgPath);
+            String taskId = createTask(client, prompt, refImagePath, whiteBgPath, size);
             log.info("万相任务已创建，task_id={}", taskId);
             String imageUrl = pollTask(client, taskId);
             downloadToFile(client, imageUrl, outputPath);
@@ -52,11 +78,17 @@ public class WanImageAgent implements ImageGeneratorAgent {
         }
     }
 
+    @Override
+    public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
+        // 使用配置默认 size
+        return generateWithSize(prompt, refImagePath, whiteBgPath, outputPath, config.getImageSize());
+    }
+
     /** 纯文生图，仅返回 URL（用于测试） */
     public String generateUrl(String prompt) {
         OkHttpClient client = buildClient();
         try {
-            String taskId = createTask(client, prompt, null, null);
+            String taskId = createTask(client, prompt, null, null, config.getImageSize());
             log.info("万相任务已创建，task_id={}", taskId);
             return pollTask(client, taskId);
         } catch (IOException e) {
@@ -68,7 +100,7 @@ public class WanImageAgent implements ImageGeneratorAgent {
     }
 
     private String createTask(OkHttpClient client, String prompt,
-                               String refImagePath, String whiteBgPath) throws IOException {
+                               String refImagePath, String whiteBgPath, String size) throws IOException {
         ArrayNode content = objectMapper.createArrayNode();
         addImage(content, refImagePath);
         addImage(content, whiteBgPath);
@@ -81,7 +113,7 @@ public class WanImageAgent implements ImageGeneratorAgent {
         input.set("messages", objectMapper.createArrayNode().add(message));
 
         ObjectNode parameters = objectMapper.createObjectNode()
-                .put("size", config.getImageSize())
+                .put("size", size)
                 .put("n", 1);
 
         ObjectNode body = objectMapper.createObjectNode().put("model", config.getModel());

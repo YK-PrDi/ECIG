@@ -85,11 +85,14 @@ public class GptImageAgent implements ImageGeneratorAgent {
 
     /** 按 aspect 映射到 OpenAI 支持的 size；接口支持 1024x1024 / 1024x1536 / 1536x1024 / auto */
     private String pickSize(String aspect) {
-        if (aspect == null) return "1024x1024";
+        if (aspect == null || "auto".equals(aspect)) return "auto";
         return switch (aspect) {
             case "9:16", "portrait" -> "1024x1536";
             case "16:9", "landscape" -> "1536x1024";
-            default -> "1024x1024";
+            case "1:1" -> "1024x1024";
+            case "3:4" -> "1024x1365";
+            case "4:3" -> "1365x1024";
+            default -> "auto";
         };
     }
 

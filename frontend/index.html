@@ -318,18 +318,19 @@
                                 <div class="gf-select drop-up" tabindex="0">
                                     <input type="hidden" id="customAspect" value="auto">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                        <span class="gf-select-text">不限制 (Auto)</span>
+                                        <span class="gf-select-text">自动 (Auto)</span>
                                         <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
-                                        <div class="gf-option selected" data-value="auto" onclick="selectOption(this, event)">不限制 (Auto)</div>
-                                        <div class="gf-option" data-value="1:1" onclick="selectOption(this, event)">1:1 方图</div>
-                                        <div class="gf-option" data-value="16:9" onclick="selectOption(this, event)">16:9 宽屏</div>
-                                        <div class="gf-option" data-value="9:16" onclick="selectOption(this, event)">9:16 竖屏</div>
+                                        <div class="gf-option selected" data-value="auto" onclick="selectOption(this, event)">自动 (Auto)</div>
+                                        <div class="gf-option" data-value="1:1" onclick="selectOption(this, event)">1:1 方图 (1024×1024)</div>
+                                        <div class="gf-option" data-value="16:9" onclick="selectOption(this, event)">16:9 宽屏 (1536×1024)</div>
+                                        <div class="gf-option" data-value="9:16" onclick="selectOption(this, event)">9:16 竖屏 (1024×1536)</div>
+                                        <div class="gf-option" data-value="3:4" onclick="selectOption(this, event)">3:4 竖版 (1024×1365)</div>
+                                        <div class="gf-option" data-value="4:3" onclick="selectOption(this, event)">4:3 横版 (1365×1024)</div>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="config-group" style="max-width:100px;" id="grp-custom-count">
+                            </div>                            <div class="config-group" style="max-width:100px;" id="grp-custom-count">
                                 <label>生成数量</label>
                                 <div class="gf-select drop-up" tabindex="0">
                                     <input type="hidden" id="customCount" value="1">

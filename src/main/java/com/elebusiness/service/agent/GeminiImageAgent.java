@@ -14,6 +14,7 @@ import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -55,6 +56,15 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
 
     @Override
     public String getDisplayName() { return "Gemini 3.1 Flash（图像编辑）"; }
+
+    /** Gemini 图像编辑 API 不支持指定输出尺寸（跟随参考图尺寸），aspect 仅记录日志 */
+    @Override
+    public boolean generateMulti(String prompt, List<String> refImagePaths,
+                                 String whiteBgPath, String outputPath, String aspect) {
+        log.debug("Gemini 不支持指定输出尺寸，aspect={} 将被忽略", aspect);
+        String first = (refImagePaths != null && !refImagePaths.isEmpty()) ? refImagePaths.get(0) : null;
+        return generate(prompt, first, whiteBgPath, outputPath);
+    }
 
     @Override
     public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {

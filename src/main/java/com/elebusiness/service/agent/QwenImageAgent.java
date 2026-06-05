@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.io.*;
 import java.nio.file.Files;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -43,11 +44,35 @@ public class QwenImageAgent implements ImageGeneratorAgent {
     @Override
     public String getDisplayName() { return "通义 Qwen-Image 2.0（图像编辑）"; }
 
+    /** 覆写 generateMulti，使用 aspect 参数动态计算 size */
     @Override
-    public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
+    public boolean generateMulti(String prompt, List<String> refImagePaths,
+                                 String whiteBgPath, String outputPath, String aspect) {
+        String size = pickSize(aspect);
+        log.info("Qwen-Image 使用 size={} (aspect={})", size, aspect);
+        String firstRef = (refImagePaths != null && !refImagePaths.isEmpty()) ? refImagePaths.get(0) : null;
+        return generateWithSize(prompt, firstRef, whiteBgPath, outputPath, size);
+    }
+
+    /** DashScope size 格式为 "1024*1024"（星号） */
+    private String pickSize(String aspect) {
+        if (aspect == null || "auto".equals(aspect)) return config.getImageSize();
+        return switch (aspect) {
+            case "9:16", "portrait" -> "1024*1536";
+            case "16:9", "landscape" -> "1536*1024";
+            case "1:1" -> "1024*1024";
+            case "3:4" -> "1024*1365";
+            case "4:3" -> "1365*1024";
+            default -> config.getImageSize();
+        };
+    }
+
+    /** 内部方法：使用指定 size 生成图片 */
+    private boolean generateWithSize(String prompt, String refImagePath, String whiteBgPath,
+                                      String outputPath, String size) {
         OkHttpClient client = buildClient();
         try {
-            String taskId = createTask(client, prompt, refImagePath, whiteBgPath);
+            String taskId = createTask(client, prompt, refImagePath, whiteBgPath, size);
             log.info("Qwen-Image 任务已创建，task_id={}", taskId);
             String imageUrl = pollTask(client, taskId);
             downloadToFile(client, imageUrl, outputPath);
@@ -59,8 +84,13 @@ public class QwenImageAgent implements ImageGeneratorAgent {
         }
     }
 
+    @Override
+    public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
+        return generateWithSize(prompt, refImagePath, whiteBgPath, outputPath, config.getImageSize());
+    }
+
     private String createTask(OkHttpClient client, String prompt,
-                               String refImagePath, String whiteBgPath) throws IOException {
+                               String refImagePath, String whiteBgPath, String size) throws IOException {
         ArrayNode content = objectMapper.createArrayNode();
         addImage(content, refImagePath);
         addImage(content, whiteBgPath);
@@ -72,8 +102,14 @@ public class QwenImageAgent implements ImageGeneratorAgent {
         ObjectNode input = objectMapper.createObjectNode();
         input.set("messages", objectMapper.createArrayNode().add(message));
 
+        // Qwen-Image multimodal 端点通过 parameters 传递 size
+        ObjectNode parameters = objectMapper.createObjectNode()
+                .put("size", size)
+                .put("n", 1);
+
         ObjectNode body = objectMapper.createObjectNode().put("model", MODEL);
         body.set("input", input);
+        body.set("parameters", parameters);
 
         Request request = new Request.Builder()
                 .url(CREATE_URL)
