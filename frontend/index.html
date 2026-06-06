@@ -19,6 +19,59 @@
         .sp-margin-mid  { color:#d97706;font-weight:700; }
         .sp-margin-low  { color:#dc2626;font-weight:700; }
         /* 配置抽屉折叠态 — 通过 JS 直接操作 drawerPanels max-height */
+
+        /* ── 裁剪模态框 ── */
+        #cropModal {
+            display:none; position:fixed; inset:0; z-index:9000;
+            background:rgba(0,0,0,0.72); align-items:center; justify-content:center;
+        }
+        #cropModal.open { display:flex; }
+        #cropModalBox {
+            background:#1e1e24; border-radius:16px; box-shadow:0 24px 64px rgba(0,0,0,0.6);
+            padding:20px; display:flex; flex-direction:column; gap:14px;
+            max-width:90vw; max-height:90vh; user-select:none;
+        }
+        #cropModalTitle { font-size:14px; font-weight:600; color:#e8e8f0; margin:0; }
+        #cropRatioBar { display:flex; gap:6px; flex-wrap:wrap; }
+        #cropRatioBar button {
+            padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15);
+            background:rgba(255,255,255,0.06); color:#c0c0d0; font-size:12px; cursor:pointer;
+            transition:background 0.15s, border-color 0.15s;
+        }
+        #cropRatioBar button:hover { background:rgba(255,255,255,0.12); }
+        #cropRatioBar button.active { background:#6366f1; border-color:#6366f1; color:#fff; }
+        #cropStage { position:relative; overflow:hidden; border-radius:8px; flex:1; min-height:0; }
+        #cropBgImg { display:block; max-width:70vw; max-height:60vh; opacity:0.35; pointer-events:none; }
+        #cropBox {
+            position:absolute; border:2px solid #6366f1;
+            box-shadow:0 0 0 9999px rgba(0,0,0,0.45);
+            cursor:move; box-sizing:border-box;
+        }
+        .crop-handle {
+            position:absolute; width:10px; height:10px;
+            background:#fff; border:2px solid #6366f1; border-radius:2px; box-sizing:border-box;
+        }
+        .crop-handle[data-h="nw"] { top:-5px; left:-5px; cursor:nw-resize; }
+        .crop-handle[data-h="n"]  { top:-5px; left:50%; transform:translateX(-50%); cursor:n-resize; }
+        .crop-handle[data-h="ne"] { top:-5px; right:-5px; cursor:ne-resize; }
+        .crop-handle[data-h="e"]  { top:50%; right:-5px; transform:translateY(-50%); cursor:e-resize; }
+        .crop-handle[data-h="se"] { bottom:-5px; right:-5px; cursor:se-resize; }
+        .crop-handle[data-h="s"]  { bottom:-5px; left:50%; transform:translateX(-50%); cursor:s-resize; }
+        .crop-handle[data-h="sw"] { bottom:-5px; left:-5px; cursor:sw-resize; }
+        .crop-handle[data-h="w"]  { top:50%; left:-5px; transform:translateY(-50%); cursor:w-resize; }
+        #cropSizeHint { font-size:11px; color:rgba(255,255,255,0.45); text-align:center; }
+        #cropActions { display:flex; gap:8px; justify-content:flex-end; }
+        #cropActions button { padding:7px 18px; border-radius:8px; font-size:13px; cursor:pointer; border:none; }
+        #cropCancelBtn { background:rgba(255,255,255,0.08); color:#c0c0d0; }
+        #cropCancelBtn:hover { background:rgba(255,255,255,0.14); }
+        #cropConfirmBtn { background:#6366f1; color:#fff; }
+        #cropConfirmBtn:hover { background:#4f52d9; }
+        .crop-action-btn {
+            width:100%; margin-top:6px; padding:7px 0; border-radius:8px;
+            border:1px solid rgba(99,102,241,0.5); background:rgba(99,102,241,0.12);
+            color:#a5b4fc; font-size:12px; cursor:pointer; transition:background 0.15s;
+        }
+        .crop-action-btn:hover { background:rgba(99,102,241,0.25); }
     </style>
 </head>
 
@@ -128,6 +181,10 @@
                 <div class="inpaint-side-section" id="sideInfoSection" style="display:none;">
                     <div class="section-title">已选中</div>
                     <div id="sideImgInfo" style="font-size:12px; color:var(--text-dim); line-height:1.8;"></div>
+                    <button class="crop-action-btn" onclick="_boardProxy.openCrop()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" style="vertical-align:-1px;margin-right:5px;"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+                        裁剪图片
+                    </button>
                     <div style="font-size:11px; color:var(--text-dim); margin-top:8px; line-height:1.6;">双击 → 编辑蒙版<br>Delete / D → 删除<br>拖出 → 引用到对话</div>
                 </div>
 
@@ -5176,7 +5233,7 @@
         }
 
         let board = null;
-        window._boardProxy = { clearMask: () => board && board.clearMask(), sendSelectedToChat: () => board && board.sendSelectedToChat() };
+        window._boardProxy = { clearMask: () => board && board.clearMask(), sendSelectedToChat: () => board && board.sendSelectedToChat(), openCrop: () => board && cropTool.open(board) };
 
         function toggleSidebar() {
             const sidebar = document.getElementById('mainSidebar');
@@ -5717,6 +5774,250 @@
 
     </div>
 
+
+<!-- ── 裁剪模态框 ── -->
+<div id="cropModal">
+    <div id="cropModalBox">
+        <p id="cropModalTitle">✂️ 裁剪图片</p>
+        <div id="cropRatioBar">
+            <button data-ratio="free"  class="active">自由</button>
+            <button data-ratio="1:1">1:1</button>
+            <button data-ratio="4:3">4:3</button>
+            <button data-ratio="3:4">3:4</button>
+            <button data-ratio="16:9">16:9</button>
+            <button data-ratio="9:16">9:16</button>
+            <button data-ratio="3:2">3:2</button>
+            <button data-ratio="2:3">2:3</button>
+        </div>
+        <div id="cropStage">
+            <img id="cropBgImg" alt="">
+            <div id="cropBox">
+                <div class="crop-handle" data-h="nw"></div>
+                <div class="crop-handle" data-h="n"></div>
+                <div class="crop-handle" data-h="ne"></div>
+                <div class="crop-handle" data-h="e"></div>
+                <div class="crop-handle" data-h="se"></div>
+                <div class="crop-handle" data-h="s"></div>
+                <div class="crop-handle" data-h="sw"></div>
+                <div class="crop-handle" data-h="w"></div>
+            </div>
+        </div>
+        <div id="cropSizeHint">-- × --</div>
+        <div id="cropActions">
+            <button id="cropCancelBtn">取消</button>
+            <button id="cropConfirmBtn">确认裁剪</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ── 裁剪工具 ── */
+const cropTool = (() => {
+    let _board = null;
+    let _node  = null;
+    let _ratio = 'free'; // 'free' | 'W:H'
+
+    // 裁剪框在 stage 上的位置 (px)
+    let box = { x:0, y:0, w:0, h:0 };
+    // stage 尺寸
+    let stageW = 0, stageH = 0;
+
+    const modal    = document.getElementById('cropModal');
+    const bgImg    = document.getElementById('cropBgImg');
+    const cropBox  = document.getElementById('cropBox');
+    const sizeHint = document.getElementById('cropSizeHint');
+    const ratioBar = document.getElementById('cropRatioBar');
+
+    let dragging = null; // { type:'move'|handle, h:string, sx,sy, bx,by,bw,bh }
+
+    // ── 打开 ──
+    function open(board) {
+        _board = board;
+        const id = board.selectedId;
+        _node = board._node(id);
+        if (!_node) return;
+
+        _ratio = 'free';
+        ratioBar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.ratio === 'free'));
+
+        // 先显示模态框，DOM 渲染后再读取尺寸
+        modal.classList.add('open');
+
+        const initBox = () => {
+            stageW = bgImg.offsetWidth;
+            stageH = bgImg.offsetHeight;
+            if (!stageW || !stageH) { requestAnimationFrame(initBox); return; }
+            const pad = 0.1;
+            box = { x: stageW * pad, y: stageH * pad, w: stageW * (1 - 2*pad), h: stageH * (1 - 2*pad) };
+            renderBox();
+        };
+
+        bgImg.onload = initBox;
+        bgImg.src = _node.src || _node.img.src;
+        if (bgImg.complete && bgImg.naturalWidth) requestAnimationFrame(initBox);
+    }
+
+    // ── 关闭 ──
+    function close() { modal.classList.remove('open'); _node = null; _board = null; }
+
+    // ── 渲染裁剪框位置 ──
+    function renderBox() {
+        clamp();
+        cropBox.style.left   = box.x + 'px';
+        cropBox.style.top    = box.y + 'px';
+        cropBox.style.width  = box.w + 'px';
+        cropBox.style.height = box.h + 'px';
+        // 换算到原图像素
+        const scaleX = (_node.img.naturalWidth  || _node.w) / stageW;
+        const scaleY = (_node.img.naturalHeight || _node.h) / stageH;
+        const pw = Math.round(box.w * scaleX);
+        const ph = Math.round(box.h * scaleY);
+        sizeHint.textContent = pw + ' × ' + ph + ' px';
+    }
+
+    // ── 边界约束 ──
+    function clamp() {
+        const MIN = 20;
+        if (box.w < MIN) box.w = MIN;
+        if (box.h < MIN) box.h = MIN;
+        if (box.x < 0) box.x = 0;
+        if (box.y < 0) box.y = 0;
+        if (box.x + box.w > stageW) box.x = stageW - box.w;
+        if (box.y + box.h > stageH) box.y = stageH - box.h;
+        if (box.x < 0) { box.x = 0; box.w = stageW; }
+        if (box.y < 0) { box.y = 0; box.h = stageH; }
+    }
+
+    // ── 强制比例 ──
+    function applyRatio(anchorCorner) {
+        if (_ratio === 'free') return;
+        const [rw, rh] = _ratio.split(':').map(Number);
+        const target = rw / rh;
+        const curRatio = box.w / box.h;
+        if (Math.abs(curRatio - target) < 0.001) return;
+        // 以宽度为准调整高度
+        const newH = box.w / target;
+        if (newH <= stageH) {
+            box.h = newH;
+        } else {
+            box.h = stageH;
+            box.w = box.h * target;
+        }
+    }
+
+    // ── 鼠标事件 ──
+    cropBox.addEventListener('mousedown', e => {
+        if (e.target.classList.contains('crop-handle')) return; // 由 handle 处理
+        e.preventDefault();
+        dragging = { type:'move', sx:e.clientX, sy:e.clientY, bx:box.x, by:box.y, bw:box.w, bh:box.h };
+    });
+
+    document.querySelectorAll('.crop-handle').forEach(h => {
+        h.addEventListener('mousedown', e => {
+            e.preventDefault(); e.stopPropagation();
+            dragging = { type:'handle', h:h.dataset.h, sx:e.clientX, sy:e.clientY, bx:box.x, by:box.y, bw:box.w, bh:box.h };
+        });
+    });
+
+    document.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const dx = e.clientX - dragging.sx;
+        const dy = e.clientY - dragging.sy;
+
+        if (dragging.type === 'move') {
+            box.x = dragging.bx + dx;
+            box.y = dragging.by + dy;
+        } else {
+            const d = dragging;
+            // resize by handle direction
+            if (d.h.includes('e')) { box.w = Math.max(20, d.bw + dx); }
+            if (d.h.includes('s')) { box.h = Math.max(20, d.bh + dy); }
+            if (d.h.includes('w')) { const nw = Math.max(20, d.bw - dx); box.x = d.bx + (d.bw - nw); box.w = nw; }
+            if (d.h.includes('n')) { const nh = Math.max(20, d.bh - dy); box.y = d.by + (d.bh - nh); box.h = nh; }
+            applyRatio(d.h);
+        }
+        renderBox();
+    });
+
+    document.addEventListener('mouseup', () => { dragging = null; });
+
+    // ── 比例按钮 ──
+    ratioBar.addEventListener('click', e => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        _ratio = btn.dataset.ratio;
+        ratioBar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+        applyRatio('se');
+        renderBox();
+    });
+
+    // ── 取消 ──
+    document.getElementById('cropCancelBtn').addEventListener('click', close);
+    modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+    // ── 确认裁剪 ──
+    document.getElementById('cropConfirmBtn').addEventListener('click', () => {
+        if (!_node || !_board) return;
+
+        const natW = _node.img.naturalWidth  || _node.w;
+        const natH = _node.img.naturalHeight || _node.h;
+        const scaleX = natW / stageW;
+        const scaleY = natH / stageH;
+
+        // 原图像素裁剪区域
+        const cx = Math.round(box.x * scaleX);
+        const cy = Math.round(box.y * scaleY);
+        const cw = Math.round(box.w * scaleX);
+        const ch = Math.round(box.h * scaleY);
+
+        // 绘制裁剪结果到离屏 canvas
+        const off = document.createElement('canvas');
+        off.width  = cw;
+        off.height = ch;
+        off.getContext('2d').drawImage(_node.img, cx, cy, cw, ch, 0, 0, cw, ch);
+
+        off.toBlob(blob => {
+            if (!blob) return;
+            const url  = URL.createObjectURL(blob);
+            const file = new File([blob], 'cropped.png', { type: 'image/png' });
+
+            // 原图节点快照（close() 会清空 _node）
+            const origNode = _node;
+            const brd = _board;
+            close();
+
+            // 手动构造节点，确保放在原图右侧（onload 内赋坐标，不依赖 rAF）
+            const img2 = new Image();
+            img2.crossOrigin = 'anonymous';
+            img2.onload = () => {
+                const maxW = Math.min(400, brd.canvas.width * 0.4);
+                const sc   = Math.min(1, maxW / cw);
+                const dw   = Math.round(cw * sc);
+                const dh   = Math.round(ch * sc);
+                const mc   = document.createElement('canvas');
+                mc.width = dw; mc.height = dh;
+                const newNode = {
+                    id: 'n' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                    img: img2, src: url, file,
+                    x: origNode.x + origNode.w + 16,
+                    y: origNode.y,
+                    w: dw, h: dh,
+                    maskCanvas: mc
+                };
+                brd.nodes.push(newNode);
+                brd.selectedId = newNode.id;
+                brd.selectedIds.clear();
+                brd.selectedIds.add(newNode.id);
+                document.getElementById('boardEmptyState').style.display = 'none';
+                brd._updateSidePanel();
+            };
+            img2.src = url;
+        }, 'image/png');
+    });
+
+    return { open, close };
+})();
+</script>
 </body>
 
 </html>
