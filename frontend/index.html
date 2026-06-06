@@ -260,7 +260,7 @@
                                 d="M4.5 15.5L5.5 18.5L8.5 19.5L5.5 20.5L4.5 23.5L3.5 20.5L0.5 19.5L3.5 18.5L4.5 15.5Z" />
                         </svg>
                     </div>
-                    <h2>果敢执行，果然很行</h2>
+                    <h2>挥刃即图，创意无界</h2>
                     <p>开启您的 AI 创想之旅</p>
                     <div class="suggestion-grid">
                         <div class="suggestion-card"
@@ -2332,7 +2332,8 @@
                 formData.append('agentId', agentId);
                 formData.append('sessionId', SESSION_ID);
                 formData.append('mode', 'kaipin');
-                const focusLabel = {cost:'成本与量产', premium:'颜值与溢价', disruptive:'颠覆性创新', custom:'自定义'}[focus];
+                formData.append('aspect', 'auto'); // 开品模式默认自动比例，适合场景图
+                const focusLabel = KP_FOCUS_LABELS[focus] || KP_FOCUS_LABELS.cost;
                 appendMessage('user',
                     `[开品模式] 模型: ${agentId}\n产品 A: ${a}\n产品 B: ${b}` +
                     `\n卖点: ${sel}` +
@@ -3885,23 +3886,32 @@
             return [`${lockLine}${refCatLine}${intro}\n参数：${params.join('；')}。\n${negative}`];
         }
 
+        // 开品模式常量映射（避免重复定义）
+        const KP_FOCUS_LABELS = {
+            cost: '成本与量产',
+            premium: '颜值与溢价',
+            disruptive: '颠覆性创新',
+            custom: '自定义'
+        };
+        const KP_FOCUS_PROMPTS = {
+            cost: '【方案侧重·成本与量产】CMF 与结构在不牺牲核心功能的前提下尽量降低成本与开模难度；优先采用注塑/钣金等成熟工艺；颜色与材质走简洁实用风。',
+            premium: '【方案侧重·颜值与溢价】放大造型语言的高端感；CMF 选择高级材质（拉丝金属/真皮/木纹/陶瓷釉面）；表面工艺精致；体现"摆在客厅当艺术品也不违和"的格调。',
+            disruptive: '【方案侧重·颠覆性创新】允许突破常规结构去拥抱产品 B 的造型；可加入隐藏机构、模块化、可拆解、智能化等新颖设计语言；视觉冲击优先。',
+            custom: '' // 由用户动态填写
+        };
+        const KP_STYLE_PROMPTS = {
+            dopamine: '【视觉风格·多巴胺】高饱和撞色（柠檬黄/珊瑚红/薄荷绿）；圆润边角；活泼趣味造型细节；色彩大胆跳跃，充满视觉能量感；场景道具也选用高饱和色彩。',
+            wood: '【视觉风格·木元素】产品本体的外壳/主体部分改为原木材质（橡木/胡桃木/竹材纹理）；金属或塑料区域用木纹饰面替代；保留产品功能细节；暖米色与原木棕色调，体现温润自然感。',
+            cartoon: '【视觉风格·卡通】产品造型圆润可爱化；色彩亮丽柔和；增加拟人化趣味细节；场景配以简洁卡通风格背景元素；整体呈现亲切活泼的儿童/年轻用户氛围。',
+            ins: '【视觉风格·ins 风】清新奶油色系（象牙白/浅粉/哑光米灰）；柔和弥散光；干净留白构图；产品与鲜花/绿植/咖啡等生活道具搭配；小红书/Instagram 高颜值打卡风格。',
+            minimal: '【视觉风格·极简】背景纯净（白/浅灰/米）；产品居中大量留白；去除一切多余装饰；线条简洁；色彩克制（单色或双色）；体现"少即是多"的设计哲学。',
+            cyberpunk: '【视觉风格·赛博朋克】深色背景配霓虹灯光（紫/青/粉）；发光线条与光效；金属质感与电路纹路；高对比度；呈现科技感十足的未来都市氛围。',
+        };
+
         // 开品模式：构造跨界开品设计师 prompt
         // 角色 + 产品 A 功能描述 + 产品 B 造型描述 + 卖点 + 方案侧重 + 通用一致性约束
         function buildKaiPinPrompt(productA, productB, selling, focus, userReq, style) {
-            const focusMap = {
-                cost: '【方案侧重·成本与量产】CMF 与结构在不牺牲核心功能的前提下尽量降低成本与开模难度；优先采用注塑/钣金等成熟工艺；颜色与材质走简洁实用风。',
-                premium: '【方案侧重·颜值与溢价】放大造型语言的高端感；CMF 选择高级材质（拉丝金属/真皮/木纹/陶瓷釉面）；表面工艺精致；体现"摆在客厅当艺术品也不违和"的格调。',
-                disruptive: '【方案侧重·颠覆性创新】允许突破常规结构去拥抱产品 B 的造型；可加入隐藏机构、模块化、可拆解、智能化等新颖设计语言；视觉冲击优先。',
-                custom: '' // custom 分支由 buildKaiPinPrompt 调用方动态拼接 kpFocusCustom 文本，留空字符串即可
-            };
-            const styleMap = {
-                dopamine: '【视觉风格·多巴胺】高饱和撞色（柠檬黄/珊瑚红/薄荷绿）；圆润边角；活泼趣味造型细节；色彩大胆跳跃，充满视觉能量感；场景道具也选用高饱和色彩。',
-                wood: '【视觉风格·木元素】产品本体的外壳/主体部分改为原木材质（橡木/胡桃木/竹材纹理）；金属或塑料区域用木纹饰面替代；保留产品功能细节；暖米色与原木棕色调，体现温润自然感。',
-                cartoon: '【视觉风格·卡通】产品造型圆润可爱化；色彩亮丽柔和；增加拟人化趣味细节；场景配以简洁卡通风格背景元素；整体呈现亲切活泼的儿童/年轻用户氛围。',
-                ins: '【视觉风格·ins 风】清新奶油色系（象牙白/浅粉/哑光米灰）；柔和弥散光；干净留白构图；产品与鲜花/绿植/咖啡等生活道具搭配；小红书/Instagram 高颜值打卡风格。',
-                minimal: '【视觉风格·极简】背景纯净（白/浅灰/米）；产品居中大量留白；去除一切多余装饰；线条简洁；色彩克制（单色或双色）；体现"少即是多"的设计哲学。',
-                cyberpunk: '【视觉风格·赛博朋克】深色背景配霓虹灯光（紫/青/粉）；发光线条与光效；金属质感与电路纹路；高对比度；呈现科技感十足的未来都市氛围。',
-            };
+            // 使用全局常量 KP_FOCUS_PROMPTS 和 KP_STYLE_PROMPTS（定义在本函数上方）
             const role = '【角色】跨界开品设计师 (Hybrid Product Designer)：15 年硬件产品开品经验，擅长"借壳上市"——保留成熟市场的功能内核（产品 A），套用另一个流行领域的造型语言（产品 B），创造既有销量保障又有视觉新鲜感的爆款新品。坚信最好的创新不是从零创造，而是跨界基因重组；所有创意基于供应链可实现、成本可控的前提；造型改变必须服务于功能体验或情感价值。';
             const refHint = '如给出 2 张参考图：第 1 张是产品 A（功能本体，提供产品类目/结构/接口/操作逻辑），第 2 张是产品 B（造型灵感，仅提供造型语言/线条比例/CMF/风格氛围）。请综合理解后生成新概念产品在真实使用场景中的高清渲染图。';
             // 改 #3：从"高清电商主图"改为"使用场景图"，强制产品在真实使用环境中而非孤立白底
@@ -3911,13 +3921,13 @@
             // 改强：negative 段加"无白底""无并列拼贴"
             const neg   = '【禁止·开品】worst quality, blurry, jpeg artifacts；deformed, distorted, asymmetrical, bad anatomy；plastic toy look, uncanny valley；direct copy of branded design, brand logo, watermark, text；non-functional design, physics defying, floating parts, broken connections；harsh lighting, overexposed, heavy shadows；no isolated white background, no studio backdrop, no plain seamless background, no e-commerce style isolated render, no product catalog photo；do not place product A and product B side by side or as a composite collage; the output must be ONE single new product that organically merges A function with B form language；不要把产品 A 与产品 B 简单拼贴并列展示，必须是融合后的"新产品"单体。';
             // custom 分支：把用户填写的自定义文案直接作为方案侧重（留空则不加这段）
-            let focusText = focusMap[focus] || focusMap.cost;
+            let focusText = KP_FOCUS_PROMPTS[focus] || KP_FOCUS_PROMPTS.cost;
             if (focus === 'custom') {
                 const customText = (document.getElementById('kpFocusCustom')?.value || '').trim();
                 focusText = customText ? `【方案侧重·自定义】${customText}` : '';
             }
             // 视觉风格
-            let styleText = styleMap[style] || '';
+            let styleText = KP_STYLE_PROMPTS[style] || '';
             if (style === 'custom') {
                 const customStyle = (document.getElementById('kpStyleCustom')?.value || '').trim();
                 styleText = customStyle ? `【视觉风格·自定义】${customStyle}` : '';
@@ -4235,6 +4245,10 @@
             { id: 'doc-ec-selling',   label: '卖点配置',   section: 'doc-ec-detail' },
             { id: 'doc-ec-imagetype', label: '图片类型',   section: 'doc-ec-detail' },
             { id: 'doc-ec-fields',    label: '专属字段',   section: 'doc-ec-detail' },
+            { group: '开品模式' },
+            { id: 'doc-kaipin-input',  label: '产品输入',   section: 'doc-kaipin-detail' },
+            { id: 'doc-kaipin-focus',  label: '方案侧重',   section: 'doc-kaipin-detail' },
+            { id: 'doc-kaipin-style',  label: '视觉风格',   section: 'doc-kaipin-detail' },
             { group: '参考图' },
             { id: 'doc-refimg-upload',   label: '上传方式',   section: 'doc-refimg' },
             { id: 'doc-refimg-category', label: '参考类别',   section: 'doc-refimg' },
@@ -5565,6 +5579,9 @@
                         <li><strong>产品类目</strong> — 点击"选择类目"按钮，从树状菜单中选择，支持搜索。选中后系统会自动补充该品类的风格约束。</li>
                         <li><strong>上传图片</strong> — 拖拽或点击上传区域，支持多张。上传后图片作为参考底图，AI 会在保持产品一致性的前提下重绘场景。</li>
                         <li><strong>局部编辑</strong> — 在左侧面板上传底图后，用画笔涂抹需要修改的区域，再描述修改内容，AI 只改涂抹区域。</li>
+                        <li><strong>图片比例</strong> — 支持 6 种比例：自动（auto）、1:1 方图、16:9 宽屏、9:16 竖屏、3:4 竖版、4:3 横版。默认自动，由 AI 根据参考图或场景决定。</li>
+                        <li><strong>生成数量</strong> — 下拉选择 1-4 张，默认 1 张。</li>
+                        <li><strong>重绘幅度</strong> — 0-1 之间，控制重绘强度。数值越大，AI 发挥空间越大；数值越小，越贴近原图。默认 0.5。</li>
                     </ul>
 
                     <h2 class="doc-h2" id="doc-mode-ec">电商模式</h2>
@@ -5574,15 +5591,21 @@
                         <li><strong>卖点</strong> — 从预设卖点中单选，或点"➕ 添加卖点"自定义。每个卖点对应一套场景构图描述，直接影响生图结果。</li>
                         <li><strong>图片类型</strong> — 主图（默认）/ SKU / 详情页。SKU 和详情页需要先上传参考主图。</li>
                         <li><strong>参考图 / 产品图</strong> — 在配置弹窗底部上传，生图时优先于聊天区上传的图片。</li>
+                        <li><strong>生成数量</strong> — 下拉选择 1-4 张，默认 4 张。</li>
                     </ul>
 
                     <h2 class="doc-h2" id="doc-mode-kaipin">开品模式</h2>
                     <p class="doc-p">跨界开品设计师模式。输入产品 A（功能参考）和产品 B（造型参考），AI 生成融合两者特点的新品设计方案图。</p>
                     <ul class="doc-ul">
-                        <li>A / B 两侧各可上传图片或填写文字描述，至少填一侧。</li>
-                        <li><strong>卖点</strong> — 必填，描述新品的核心卖点，直接影响设计方向。</li>
+                        <li><strong>产品 A / B</strong> — 两侧各需提供材料（文字或图片至少其一），两者都不能为空。可只填文字、只传图片、或两者都给。</li>
+                        <li><strong>核心卖点</strong> — 必填，描述新品的核心卖点，直接影响设计方向。</li>
                         <li><strong>方案侧重</strong> — 成本量产 / 颜值溢价 / 颠覆创新 / 自定义，决定 AI 的设计取向。</li>
+                        <li><strong>视觉风格</strong> — 可选，预设 6 种风格：多巴胺、木元素、卡通、ins 风、极简、赛博朋克。也可自定义风格描述。</li>
+                        <li><strong>生成张数</strong> — 输入 1-50，默认 1 张。</li>
                     </ul>
+                    <div class="doc-tip">
+                        <strong>模型限制</strong> — Gemini 为图像编辑模型，需要参考图才能生成。开品模式如不上传图片，请选择 GPT-Image / 万相 / 通义 / 混元 等支持纯文生图的模型。
+                    </div>
 
                     <h2 class="doc-h2" id="doc-mode-video">视频模式</h2>
                     <p class="doc-p">基于文字描述或参考图生成短视频（8 秒，720p）。适合制作产品展示视频、场景动态图。</p>
@@ -5627,7 +5650,54 @@
                     <p class="doc-p">选中品类后会出现品类专属字段（标注"· 品类专属"），这些字段直接影响生图 prompt，建议按实际产品填写。部分字段仅在特定图片类型下生效（标注"· 仅 主图/SKU"等）。</p>
                 </section>
 
-                <!-- § 4 参考图使用 -->
+                <!-- § 4 开品模式详解 -->
+                <section id="doc-kaipin-detail" class="doc-section">
+                    <h1 class="doc-h1">开品模式详解</h1>
+
+                    <h2 class="doc-h2" id="doc-kaipin-input">产品输入</h2>
+                    <p class="doc-p">开品模式需要提供两个产品的信息，AI 会融合两者的特点生成新概念产品：</p>
+                    <table class="doc-table">
+                        <thead><tr><th>输入项</th><th>作用</th><th>是否必填</th></tr></thead>
+                        <tbody>
+                            <tr><td>产品 A · 功能本体</td><td>提供产品的功能结构、使用场景、核心组件</td><td>文字或图片至少其一</td></tr>
+                            <tr><td>产品 B · 造型灵感</td><td>提供造型语言、线条比例、CMF、风格氛围</td><td>文字或图片至少其一</td></tr>
+                            <tr><td>核心卖点</td><td>驱动场景与文案，决定产品定位</td><td>必填</td></tr>
+                        </tbody>
+                    </table>
+
+                    <div class="doc-tip">
+                        <strong>纯文生图</strong> — 如不上传图片，请选择 GPT-Image / 万相 / 通义 / 混元 等支持纯文生图的模型。Gemini 需要参考图才能生成。
+                    </div>
+
+                    <h2 class="doc-h2" id="doc-kaipin-focus">方案侧重</h2>
+                    <p class="doc-p">方案侧重决定 AI 的设计取向，影响材质选择、工艺路线、成本控制等：</p>
+                    <table class="doc-table">
+                        <thead><tr><th>侧重方向</th><th>设计策略</th></tr></thead>
+                        <tbody>
+                            <tr><td>成本与量产</td><td>优先成熟工艺（注塑/钣金），降低开模难度，简洁实用风</td></tr>
+                            <tr><td>颜值与溢价</td><td>高级材质（拉丝金属/真皮/木纹），精致工艺，艺术品格调</td></tr>
+                            <tr><td>颠覆性创新</td><td>突破常规结构，隐藏机构/模块化/智能化，视觉冲击优先</td></tr>
+                            <tr><td>自定义</td><td>自由填写设计方向，如"极简北欧风、可上墙安装"</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2 class="doc-h2" id="doc-kaipin-style">视觉风格</h2>
+                    <p class="doc-p">可选的视觉风格预设，为产品增加特定的视觉氛围：</p>
+                    <table class="doc-table">
+                        <thead><tr><th>风格</th><th>特点</th></tr></thead>
+                        <tbody>
+                            <tr><td>多巴胺</td><td>高饱和撞色（柠檬黄/珊瑚红/薄荷绿），圆润边角，活泼趣味</td></tr>
+                            <tr><td>木元素</td><td>原木材质纹理（橡木/胡桃木/竹材），暖米色与原木棕色调</td></tr>
+                            <tr><td>卡通</td><td>圆润可爱化，亮丽柔和色彩，拟人化趣味细节</td></tr>
+                            <tr><td>ins 风</td><td>清新奶油色系（象牙白/浅粉/哑光米灰），柔和弥散光</td></tr>
+                            <tr><td>极简</td><td>纯净背景（白/浅灰/米），大量留白，线条简洁</td></tr>
+                            <tr><td>赛博朋克</td><td>深色背景配霓虹灯光（紫/青/粉），发光线条，金属质感</td></tr>
+                            <tr><td>自定义</td><td>自由填写风格描述，如"日式侘寂、Y2K 千禧"</td></tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <!-- § 5 参考图使用 -->
                 <section id="doc-refimg" class="doc-section">
                     <h1 class="doc-h1">参考图使用</h1>
 
