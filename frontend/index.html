@@ -675,17 +675,21 @@
         let currentMode = 'standard';
         const __pollTimers = new Map(); // taskId -> { pollTimer, elapsedTimer, seenCount }
 
-        // Phase 2：每个浏览器一个稳定 sessionId，存 localStorage；服务端按它分组对话/生图历史
-        const SESSION_ID = (function () {
+        // Phase 2：SESSION_ID 从服务端获取，实现跨浏览器会话的历史记录共享
+        let SESSION_ID = 'sess_default';  // 初始值，启动时从服务端获取
+
+        async function initSession() {
             try {
-                let s = localStorage.getItem('eb_session_id');
-                if (!s) {
-                    s = 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-                    localStorage.setItem('eb_session_id', s);
+                const res = await fetch('/api/session/current');
+                if (res.ok) {
+                    const data = await res.json();
+                    SESSION_ID = data.sessionId || 'sess_default';
+                    console.log('[session] 从服务端获取 SESSION_ID:', SESSION_ID);
                 }
-                return s;
-            } catch (_) { return 'sess_default'; }
-        })();
+            } catch (e) {
+                console.warn('[session] 获取 session 失败，使用默认值:', e.message);
+            }
+        }
         let droppedFiles = [];
         let isTextOnly = false;
         window.pendingMask = null;
@@ -1306,6 +1310,8 @@
         })();
 
         async function initApp() {
+            // 初始化 session（从服务端获取 SESSION_ID）
+            await initSession();
             await loadAgents();
             // 拉取磁盘上额外的品类 slug（用户导入产物 + 打包态外部目录）；按需 dynamic import
             await loadExtraCategoryScripts();
