@@ -5813,9 +5813,15 @@
 <script>
 /* ── 裁剪工具 ── */
 const cropTool = (() => {
+    // L1: 常量提取，便于维护
+    const CROP_MIN_SIZE = 20;       // 最小裁剪框尺寸
+    const CROP_INIT_PAD = 0.1;      // 初始裁剪框边距比例
+    const CROP_MAX_RETRY = 100;     // initBox 最大重试次数
+
     let _board = null;
     let _node  = null;
     let _ratio = 'free'; // 'free' | 'W:H'
+    let _retryCount = 0; // M3: 重试计数器
 
     // 裁剪框在 stage 上的位置 (px)
     let box = { x:0, y:0, w:0, h:0 };
@@ -5838,6 +5844,7 @@ const cropTool = (() => {
         if (!_node) return;
 
         _ratio = 'free';
+        _retryCount = 0; // M3: 重置计数器
         ratioBar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.ratio === 'free'));
 
         // 先显示模态框，DOM 渲染后再读取尺寸
@@ -5846,9 +5853,17 @@ const cropTool = (() => {
         const initBox = () => {
             stageW = bgImg.offsetWidth;
             stageH = bgImg.offsetHeight;
-            if (!stageW || !stageH) { requestAnimationFrame(initBox); return; }
-            const pad = 0.1;
-            box = { x: stageW * pad, y: stageH * pad, w: stageW * (1 - 2*pad), h: stageH * (1 - 2*pad) };
+            if (!stageW || !stageH) {
+                _retryCount++;
+                if (_retryCount > CROP_MAX_RETRY) {
+                    console.error('裁剪工具初始化失败：图片尺寸获取超时');
+                    close();
+                    return;
+                }
+                requestAnimationFrame(initBox);
+                return;
+            }
+            box = { x: stageW * CROP_INIT_PAD, y: stageH * CROP_INIT_PAD, w: stageW * (1 - 2*CROP_INIT_PAD), h: stageH * (1 - 2*CROP_INIT_PAD) };
             renderBox();
         };
 
@@ -5858,10 +5873,18 @@ const cropTool = (() => {
     }
 
     // ── 关闭 ──
-    function close() { modal.classList.remove('open'); _node = null; _board = null; }
+    function close() {
+        modal.classList.remove('open');
+        // H2: 移除全局事件监听器，防止内存泄漏
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        _node = null;
+        _board = null;
+    }
 
     // ── 渲染裁剪框位置 ──
     function renderBox() {
+        if (!_node) return; // H1: 防止空指针
         clamp();
         cropBox.style.left   = box.x + 'px';
         cropBox.style.top    = box.y + 'px';
@@ -5877,19 +5900,15 @@ const cropTool = (() => {
 
     // ── 边界约束 ──
     function clamp() {
-        const MIN = 20;
-        if (box.w < MIN) box.w = MIN;
-        if (box.h < MIN) box.h = MIN;
-        if (box.x < 0) box.x = 0;
-        if (box.y < 0) box.y = 0;
-        if (box.x + box.w > stageW) box.x = stageW - box.w;
-        if (box.y + box.h > stageH) box.y = stageH - box.h;
-        if (box.x < 0) { box.x = 0; box.w = stageW; }
-        if (box.y < 0) { box.y = 0; box.h = stageH; }
+        const MIN = CROP_MIN_SIZE;
+        box.w = Math.max(MIN, Math.min(box.w, stageW));
+        box.h = Math.max(MIN, Math.min(box.h, stageH));
+        box.x = Math.max(0, Math.min(box.x, stageW - box.w));
+        box.y = Math.max(0, Math.min(box.y, stageH - box.h));
     }
 
     // ── 强制比例 ──
-    function applyRatio(anchorCorner) {
+    function applyRatio() {
         if (_ratio === 'free') return;
         const [rw, rh] = _ratio.split(':').map(Number);
         const target = rw / rh;
@@ -5919,7 +5938,8 @@ const cropTool = (() => {
         });
     });
 
-    document.addEventListener('mousemove', e => {
+    // H2: 提取为命名函数，便于移除监听器
+    function onMouseMove(e) {
         if (!dragging) return;
         const dx = e.clientX - dragging.sx;
         const dy = e.clientY - dragging.sy;
@@ -5930,16 +5950,19 @@ const cropTool = (() => {
         } else {
             const d = dragging;
             // resize by handle direction
-            if (d.h.includes('e')) { box.w = Math.max(20, d.bw + dx); }
-            if (d.h.includes('s')) { box.h = Math.max(20, d.bh + dy); }
-            if (d.h.includes('w')) { const nw = Math.max(20, d.bw - dx); box.x = d.bx + (d.bw - nw); box.w = nw; }
-            if (d.h.includes('n')) { const nh = Math.max(20, d.bh - dy); box.y = d.by + (d.bh - nh); box.h = nh; }
-            applyRatio(d.h);
+            if (d.h.includes('e')) { box.w = Math.max(CROP_MIN_SIZE, d.bw + dx); }
+            if (d.h.includes('s')) { box.h = Math.max(CROP_MIN_SIZE, d.bh + dy); }
+            if (d.h.includes('w')) { const nw = Math.max(CROP_MIN_SIZE, d.bw - dx); box.x = d.bx + (d.bw - nw); box.w = nw; }
+            if (d.h.includes('n')) { const nh = Math.max(CROP_MIN_SIZE, d.bh - dy); box.y = d.by + (d.bh - nh); box.h = nh; }
+            applyRatio();
         }
         renderBox();
-    });
+    }
 
-    document.addEventListener('mouseup', () => { dragging = null; });
+    function onMouseUp() { dragging = null; }
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
 
     // ── 比例按钮 ──
     ratioBar.addEventListener('click', e => {
@@ -5947,7 +5970,7 @@ const cropTool = (() => {
         if (!btn) return;
         _ratio = btn.dataset.ratio;
         ratioBar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
-        applyRatio('se');
+        applyRatio();
         renderBox();
     });
 
@@ -6010,6 +6033,13 @@ const cropTool = (() => {
                 brd.selectedIds.add(newNode.id);
                 document.getElementById('boardEmptyState').style.display = 'none';
                 brd._updateSidePanel();
+                // M4: 图片加载完成后释放 Blob URL，避免内存泄漏
+                URL.revokeObjectURL(url);
+            };
+            img2.onerror = () => {
+                // M4: 加载失败也要释放
+                URL.revokeObjectURL(url);
+                console.error('裁剪结果图片加载失败');
             };
             img2.src = url;
         }, 'image/png');
