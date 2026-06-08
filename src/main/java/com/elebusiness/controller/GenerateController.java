@@ -193,6 +193,64 @@ public class GenerateController {
         return ResponseEntity.ok(Map.of("taskId", task.getId()));
     }
 
+    /** 开品模式第一步：上传产品图 + 分析提示词，返回可编辑结构化卡片字段。 */
+    @PostMapping("/api/product_analyze")
+    public ResponseEntity<Map<String, Object>> productAnalyze(
+            @RequestParam(value = "image", required = false) MultipartFile image,
+            @RequestParam(value = "prompt", defaultValue = "") String prompt,
+            @RequestParam(value = "promptBase64", required = false) String promptBase64,
+            @RequestParam(value = "agentId", defaultValue = "gemini") String agentId) {
+        prompt = decodePrompt(prompt, promptBase64);
+        if (prompt == null || prompt.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请输入分析提示词"));
+        }
+
+        File imageTmp = null;
+        try {
+            if (image != null && !image.isEmpty()) {
+                String suffix = ".jpg";
+                String original = image.getOriginalFilename();
+                if (original != null) {
+                    String lower = original.toLowerCase(Locale.ROOT);
+                    if (lower.endsWith(".png")) suffix = ".png";
+                    else if (lower.endsWith(".webp")) suffix = ".webp";
+                    else if (lower.endsWith(".gif")) suffix = ".gif";
+                }
+                imageTmp = File.createTempFile("product_analyze_", suffix);
+                image.transferTo(imageTmp);
+            }
+            List<Map<String, String>> fields = imageGenerationService.analyzeProductText(prompt, imageTmp, agentId);
+            return ResponseEntity.ok(Map.of("fields", fields));
+        } catch (Exception e) {
+            log.error("product_analyze 失败: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        } finally {
+            if (imageTmp != null && imageTmp.exists()) imageTmp.delete();
+        }
+    }
+
+    private String decodePrompt(String prompt, String promptBase64) {
+        if (promptBase64 != null && !promptBase64.isBlank()) {
+            try {
+                return new String(Base64.getDecoder().decode(promptBase64), StandardCharsets.UTF_8);
+            } catch (Exception ignored) {}
+        }
+        return normalizeMultipartText(prompt);
+    }
+
+    private String normalizeMultipartText(String value) {
+        if (value == null) return "";
+        if (!(value.contains("Ã") || value.contains("Â") || value.contains("ä")
+                || value.contains("å") || value.contains("ç") || value.contains("ï¿½"))) {
+            return value;
+        }
+        try {
+            return new String(value.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
+        } catch (Exception ignored) {
+            return value;
+        }
+    }
+
     @PostMapping("/api/custom_generate")
     public ResponseEntity<Map<String, Object>> customGenerate(
             @RequestParam(value = "images", required = false) List<MultipartFile> images,

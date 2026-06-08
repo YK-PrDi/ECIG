@@ -283,6 +283,42 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
 .msg-video video { width: 100%; border-radius: 12px; margin-top: 8px; display: block; }
 .msg-video a { display: inline-block; margin-top: 8px; font-size: 0.8rem; color: #4F46E5; text-decoration: none; font-weight: 500; }
 .msg-video a:hover { text-decoration: underline; }
+.analysis-cards-wrap { width: min(720px, 100%); }
+.analysis-cards-title { font-size: 0.82rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px; }
+.analysis-cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+.analysis-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--bg-card);
+}
+.analysis-card label {
+    font-weight: 600;
+    font-size: 0.8rem;
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-main);
+}
+.analysis-card textarea {
+    width: 100%;
+    min-height: 72px;
+    max-height: 180px;
+    resize: vertical;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-panel);
+    color: var(--text-main);
+    font-size: 0.82rem;
+    line-height: 1.55;
+}
+.analysis-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 .msg-images { max-width: 100%; }
 .msg-images-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-top: 12px; align-items: start; }
 .result-image {
