@@ -29,7 +29,8 @@ public class ImageGenerationService {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class);
     private static final String DEFAULT_AGENT_ID = "gpt-image";
-    private static final String DOUBAO_ANALYSIS_MODEL = "doubao-seed-2-0-lite-260215";
+    private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private static final String GEMINI_ANALYSIS_MODEL = "gemini-2.5-flash";
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
 
     private final AppProperties appProperties;
@@ -59,21 +60,21 @@ public class ImageGenerationService {
     }
 
     /**
-     * 开品模式第一步：复用自定义模式的豆包视觉分析思路，按用户输入动态拆成结构化卡片。
-     * 豆包负责从 prompt 中动态识别维度名称，并只返回 JSON 数组。
+     * 开品模式第一步：复用 Gemini 的文字/视觉能力，按用户输入动态拆成结构化卡片。
+     * Gemini 负责从 prompt 中动态识别维度名称，并只返回 JSON 数组。
      */
     public List<Map<String, String>> analyzeProductText(String prompt, File imageFile, String agentId) {
         if (prompt == null || prompt.isBlank()) {
             return List.of();
         }
         try {
-            List<Map<String, String>> fields = parseAnalysisFields(requestDoubaoAnalysis(prompt, imageFile, false));
+            List<Map<String, String>> fields = parseAnalysisFields(requestGeminiAnalysis(prompt, imageFile, false));
             if (looksLikeRefusal(fields)) {
-                log.warn("豆包开品分析返回拒绝式结果，改用强约束提示词重试");
-                fields = parseAnalysisFields(requestDoubaoAnalysis(prompt, imageFile, true));
+                log.warn("Gemini 开品分析返回拒绝式结果，改用强约束提示词重试");
+                fields = parseAnalysisFields(requestGeminiAnalysis(prompt, imageFile, true));
             }
             if (looksLikeRefusal(fields)) {
-                log.warn("豆包强约束重试仍返回拒绝式结果，使用本地维度兜底生成可编辑卡片");
+                log.warn("Gemini 强约束重试仍返回拒绝式结果，使用本地维度兜底生成可编辑卡片");
                 fields = buildFallbackAnalysisFields(prompt);
             }
             return fields;
@@ -83,40 +84,276 @@ public class ImageGenerationService {
         }
     }
 
-    private String requestDoubaoAnalysis(String prompt, File imageFile, boolean strictRetry) throws IOException {
-        String apiKey = appProperties.getVolcengine().getApiKey();
+    /**
+     * 开品模式融合分析：基于产品 A/B、卖点、方案侧重、视觉风格，综合生成结构化分析卡片。
+     * 这是两步流程的第一步，返回可编辑卡片供用户确认后二次生图。
+     *
+     * @param productA   产品 A 的文字描述
+     * @param productB   产品 B 的文字描述
+     * @param selling    核心卖点
+     * @param focus      方案侧重（cost/premium/disruptive/custom）
+     * @param focusText  自定义方案侧重文本（focus=custom 时使用）
+     * @param style      视觉风格（dopamine/wood/cartoon/ins/minimal/cyberpunk/custom）
+     * @param styleText  自定义视觉风格文本（style=custom 时使用）
+     * @param imageA     产品 A 参考图（可选）
+     * @param imageB     产品 B 参考图（可选）
+     * @return 结构化分析卡片 [{key, value}, ...]
+     */
+    public List<Map<String, String>> analyzeKaiPin(
+            String productA, String productB, String selling,
+            String focus, String focusText, String style, String styleText,
+            File imageA, File imageB) {
+
+        try {
+            // 构建综合分析 prompt
+            String analysisPrompt = buildKaiPinAnalysisPrompt(productA, productB, selling, focus, focusText, style, styleText);
+
+            // 调用 Gemini 分析（支持双图）
+            List<Map<String, String>> fields = parseAnalysisFields(
+                    requestGeminiKaiPinAnalysis(analysisPrompt, imageA, imageB, false));
+
+            // 检查拒绝式结果，重试
+            if (looksLikeRefusal(fields)) {
+                log.warn("开品融合分析返回拒绝式结果，改用强约束提示词重试");
+                fields = parseAnalysisFields(
+                        requestGeminiKaiPinAnalysis(analysisPrompt, imageA, imageB, true));
+            }
+
+            // 最终兜底
+            if (looksLikeRefusal(fields) || fields.isEmpty()) {
+                log.warn("开品融合分析重试仍失败，使用本地维度兜底");
+                fields = buildFallbackKaiPinFields(productA, productB, selling, focus, style);
+            }
+
+            return fields;
+        } catch (Exception e) {
+            log.error("开品融合分析失败: {}", e.getMessage(), e);
+            // 异常时返回兜底卡片
+            return buildFallbackKaiPinFields(productA, productB, selling, focus, style);
+        }
+    }
+
+    /**
+     * 构建开品融合分析的 prompt
+     */
+    private String buildKaiPinAnalysisPrompt(
+            String productA, String productB, String selling,
+            String focus, String focusText, String style, String styleText) {
+
+        // 方案侧重文本
+        String focusPrompt = switch (focus) {
+            case "cost" -> "【方案侧重】成本与量产：CMF 与结构在不牺牲核心功能的前提下尽量降低成本与开模难度；优先采用注塑/钣金等成熟工艺；颜色与材质走简洁实用风。";
+            case "premium" -> "【方案侧重】颜值与溢价：放大造型语言的高端感；CMF 选择高级材质（拉丝金属/真皮/木纹/陶瓷釉面）；表面工艺精致；体现“摆在客厅当艺术品也不违和”的格调。";
+            case "disruptive" -> "【方案侧重】颠覆性创新：允许突破常规结构去拥抱产品 B 的造型；可加入隐藏机构、模块化、可拆解、智能化等新颖设计语言；视觉冲击优先。";
+            case "custom" -> focusText != null && !focusText.isBlank()
+                    ? "【方案侧重·自定义】" + focusText
+                    : "【方案侧重】（用户未指定，请根据产品特性自行判断合适的设计取向）";
+            default -> "【方案侧重】成本与量产：CMF 与结构在不牺牲核心功能的前提下尽量降低成本与开模难度；优先采用注塑/钣金等成熟工艺；颜色与材质走简洁实用风。";
+        };
+
+        // 视觉风格文本
+        String stylePrompt = switch (style) {
+            case "dopamine" -> "【视觉风格】多巴胺：高饱和撞色（柠檬黄/珊瑚红/薄荷绿）；圆润边角；活泼趣味造型细节；色彩大胆跳跃，充满视觉能量感；场景道具也选用高饱和色彩。";
+            case "wood" -> "【视觉风格】木元素：产品本体的外壳/主体部分改为原木材质（橡木/胡桃木/竹材纹理）；金属或塑料区域用木纹饰面替代；保留产品功能细节；暖米色与原木棕色调，体现温润自然感。";
+            case "cartoon" -> "【视觉风格】卡通：产品造型圆润可爱化；色彩亮丽柔和；增加拟人化趣味细节；场景配以简洁卡通风格背景元素；整体呈现亲切活泼的儿童/年轻用户氛围。";
+            case "ins" -> "【视觉风格】ins 风：清新奶油色系（象牙白/浅粉/哑光米灰）；柔和弥散光；干净留白构图；产品与鲜花/绿植/咖啡等生活道具搭配；小红书/Instagram 高颜值打卡风格。";
+            case "minimal" -> "【视觉风格】极简：背景纯净（白/浅灰/米）；产品居中大量留白；去除一切多余装饰；线条简洁；色彩克制（单色或双色）；体现“少即是多”的设计哲学。";
+            case "cyberpunk" -> "【视觉风格】赛博朋克：深色背景配霓虹灯光（紫/青/粉）；发光线条与光效；金属质感与电路纹路；高对比度；呈现科技感十足的未来都市氛围。";
+            case "custom" -> styleText != null && !styleText.isBlank()
+                    ? "【视觉风格·自定义】" + styleText
+                    : "";
+            default -> ""; // 不指定风格
+        };
+
+        return """
+                你是资深跨界开品设计师，擅长把产品 A 的功能内核与产品 B 的造型语言融合，生成新概念产品。
+
+                请分析以下输入，并输出结构化的设计分析卡片：
+
+                【产品 A · 功能本体】
+                %s
+
+                【产品 B · 造型灵感】
+                %s
+
+                【核心卖点】
+                %s
+
+                %s
+                %s
+
+                输出要求：
+                1. 从设计角度动态提取维度，推荐维度：产品定位、融合方向、造型语言、材质工艺、功能布局、使用场景、视觉氛围。
+                2. 每个维度的 value 要具体描述可落地的设计特征，便于后续直接生成产品使用场景图。
+                3. 融合 A 的功能特点与 B 的造型特点，生成有创新性的新概念产品描述。
+                4. 输出必须是严格 JSON 数组，格式：[{"key":"维度名","value":"分析内容"}]。
+                5. 只输出 JSON，不要 markdown，不要代码块，不要解释。
+                """.formatted(
+                productA == null || productA.isBlank() ? "（文字未提供，请从参考图中提取功能特征）" : productA,
+                productB == null || productB.isBlank() ? "（文字未提供，请从参考图中提取造型特征）" : productB,
+                selling == null || selling.isBlank() ? "（未提供卖点，请根据产品特性自行提炼）" : selling,
+                focusPrompt,
+                stylePrompt.isEmpty() ? "" : stylePrompt
+        );
+    }
+
+    /**
+     * 调用 Gemini 进行开品融合分析（支持双图）
+     */
+    private String requestGeminiKaiPinAnalysis(String prompt, File imageA, File imageB, boolean strictRetry) throws IOException {
+        String apiKey = appProperties.getGemini().getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException("豆包 API Key 未配置");
+            throw new IllegalStateException("Gemini API Key 未配置");
         }
 
         ObjectNode root = objectMapper.createObjectNode();
-        root.put("model", resolveDoubaoAnalysisModel());
-        ArrayNode inputs = root.putArray("input");
-        ObjectNode message = inputs.addObject();
-        message.put("role", "user");
-        ArrayNode content = message.putArray("content");
-        if (imageFile != null && imageFile.exists() && imageFile.isFile()) {
-            byte[] bytes = Files.readAllBytes(imageFile.toPath());
-            content.addObject()
-                    .put("type", "input_image")
-                    .put("image_url", "data:" + getMimeType(imageFile.getName()) + ";base64,"
-                            + Base64.getEncoder().encodeToString(bytes));
+        ObjectNode systemInstruction = root.putObject("systemInstruction");
+        String systemText = "你是资深跨界开品设计师，擅长把产品 A 的功能内核与产品 B 的造型语言融合。你必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。";
+        if (strictRetry) {
+            systemText += "\n\n重要：本轮不是资料完整性诊断。即使部分信息缺失，也必须基于已有信息输出可编辑分析卡片，禁止输出“异常说明”“请补充信息”“无法分析”。";
         }
-        content.addObject().put("type", "input_text").put("text", buildProductAnalysisPrompt(prompt, imageFile != null, strictRetry));
+        systemInstruction.putArray("parts").addObject().put("text", systemText);
+
+        ArrayNode contents = root.putArray("contents");
+        ObjectNode content = contents.addObject();
+        content.put("role", "user");
+        ArrayNode parts = content.putArray("parts");
+        parts.addObject().put("text", prompt);
+
+        // 添加产品 A 图片
+        if (imageA != null && imageA.exists() && imageA.isFile()) {
+            byte[] bytesA = Files.readAllBytes(imageA.toPath());
+            parts.addObject()
+                    .putObject("inlineData")
+                    .put("mimeType", getMimeType(imageA.getName()))
+                    .put("data", Base64.getEncoder().encodeToString(bytesA));
+        }
+
+        // 添加产品 B 图片
+        if (imageB != null && imageB.exists() && imageB.isFile()) {
+            byte[] bytesB = Files.readAllBytes(imageB.toPath());
+            parts.addObject()
+                    .putObject("inlineData")
+                    .put("mimeType", getMimeType(imageB.getName()))
+                    .put("data", Base64.getEncoder().encodeToString(bytesB));
+        }
+
+        ObjectNode generationConfig = root.putObject("generationConfig");
+        generationConfig.put("temperature", 0.3);
+        generationConfig.put("maxOutputTokens", 4000);
+        generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
 
         Request request = new Request.Builder()
-                .url(normalizeBaseUrl(appProperties.getVolcengine().getBaseUrl()) + "/responses")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
+                .url(GEMINI_BASE_URL + GEMINI_ANALYSIS_MODEL + ":generateContent?key=" + apiKey)
                 .post(RequestBody.create(root.toString(), JSON_TYPE))
                 .build();
 
         try (Response response = buildAnalysisClient().newCall(request).execute()) {
             String body = response.body() != null ? response.body().string() : "";
             if (!response.isSuccessful()) {
-                throw new RuntimeException("豆包分析失败(" + response.code() + "): " + body);
+                throw new RuntimeException("Gemini 开品融合分析失败(" + response.code() + "): " + body);
             }
-            return extractDoubaoOutputText(body);
+            return extractGeminiOutputText(body);
+        }
+    }
+
+    /**
+     * 开品融合分析的本地兜底卡片
+     */
+    private List<Map<String, String>> buildFallbackKaiPinFields(
+            String productA, String productB, String selling, String focus, String style) {
+
+        String subjectA = productA != null && !productA.isBlank()
+                ? productA.substring(0, Math.min(50, productA.length()))
+                : "产品 A";
+        String subjectB = productB != null && !productB.isBlank()
+                ? productB.substring(0, Math.min(50, productB.length()))
+                : "产品 B";
+
+        List<Map<String, String>> fields = new ArrayList<>();
+
+        fields.add(Map.of("key", "产品定位",
+                "value", "以" + subjectA + "的功能内核为核心，融合" + subjectB + "的造型语言，生成面向年轻/科技人群的新概念产品。"));
+
+        fields.add(Map.of("key", "融合方向",
+                "value", "保留" + subjectA + "的核心功能结构和操作逻辑，将" + subjectB + "的线条比例、视觉语言、材质感迁移到新产品外形。"));
+
+        fields.add(Map.of("key", "造型语言",
+                "value", "整体轮廓参考" + subjectB + "，边角过渡明确，主次结构层级清晰，视觉重心稳定，呈现可制造的真实产品尺度。"));
+
+        fields.add(Map.of("key", "材质工艺",
+                "value", "表面材质结合" + focus + "取向，可选哑光/亮面/金属/塑胶等质感对比，边缘收口干净，工艺细节精致。"));
+
+        fields.add(Map.of("key", "功能布局",
+                "value", "功能区域清晰分层，操作区、支撑区、核心工作区有明确边界，结构服务于实际使用动作，人机交互直观。"));
+
+        fields.add(Map.of("key", "使用场景",
+                "value", "放置在真实使用场景中展示，环境干净克制，光影自然，画面突出产品主体及其与用户生活方式的关系。"));
+
+        if (selling != null && !selling.isBlank()) {
+            fields.add(Map.of("key", "核心卖点呈现",
+                    "value", selling + " — 在画面中通过产品姿态、环境道具或视觉符号强化这一卖点。"));
+        }
+
+        if (style != null && !style.isBlank()) {
+            String styleDesc = switch (style) {
+                case "dopamine" -> "高饱和撞色、活泼趣味造型细节";
+                case "wood" -> "原木材质纹理、温润自然色调";
+                case "cartoon" -> "圆润可爱化、拟人化趣味细节";
+                case "ins" -> "清新奶油色系、柔和弥散光";
+                case "minimal" -> "纯净背景、大量留白、线条简洁";
+                case "cyberpunk" -> "霓虹灯光、金属质感、高对比度";
+                default -> "";
+            };
+            if (!styleDesc.isBlank()) {
+                fields.add(Map.of("key", "视觉氛围",
+                        "value", styleDesc + "，整体呈现符合目标人群审美的视觉调性。"));
+            }
+        }
+
+        return fields;
+    }
+
+    private String requestGeminiAnalysis(String prompt, File imageFile, boolean strictRetry) throws IOException {
+        String apiKey = appProperties.getGemini().getApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("Gemini API Key 未配置");
+        }
+
+        ObjectNode root = objectMapper.createObjectNode();
+        ObjectNode systemInstruction = root.putObject("systemInstruction");
+        systemInstruction.putArray("parts").addObject().put("text",
+                "你是资深工业设计与电商开品分析师。你必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。");
+
+        ArrayNode contents = root.putArray("contents");
+        ObjectNode content = contents.addObject();
+        content.put("role", "user");
+        ArrayNode parts = content.putArray("parts");
+        parts.addObject().put("text", buildProductAnalysisPrompt(prompt, imageFile != null, strictRetry));
+        if (imageFile != null && imageFile.exists() && imageFile.isFile()) {
+            byte[] bytes = Files.readAllBytes(imageFile.toPath());
+            parts.addObject()
+                    .putObject("inlineData")
+                    .put("mimeType", getMimeType(imageFile.getName()))
+                    .put("data", Base64.getEncoder().encodeToString(bytes));
+        }
+
+        ObjectNode generationConfig = root.putObject("generationConfig");
+        generationConfig.put("temperature", 0.2);
+        generationConfig.put("maxOutputTokens", 4000);
+        generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
+
+        Request request = new Request.Builder()
+                .url(GEMINI_BASE_URL + GEMINI_ANALYSIS_MODEL + ":generateContent?key=" + apiKey)
+                .post(RequestBody.create(root.toString(), JSON_TYPE))
+                .build();
+
+        try (Response response = buildAnalysisClient().newCall(request).execute()) {
+            String body = response.body() != null ? response.body().string() : "";
+            if (!response.isSuccessful()) {
+                throw new RuntimeException("Gemini 分析失败(" + response.code() + "): " + body);
+            }
+            return extractGeminiOutputText(body);
         }
     }
 
@@ -271,25 +508,23 @@ public class ImageGenerationService {
         return builder.build();
     }
 
-    private String extractDoubaoOutputText(String responseBody) throws IOException {
+    private String extractGeminiOutputText(String responseBody) throws IOException {
         JsonNode root = objectMapper.readTree(responseBody);
-        JsonNode output = root.path("output");
-        if (output.isArray()) {
-            for (JsonNode item : output) {
-                if (!"message".equals(item.path("type").asText())) continue;
-                JsonNode content = item.path("content");
-                if (!content.isArray()) continue;
-                for (JsonNode part : content) {
+        StringBuilder texts = new StringBuilder();
+        JsonNode candidates = root.path("candidates");
+        if (candidates.isArray()) {
+            for (JsonNode candidate : candidates) {
+                JsonNode parts = candidate.path("content").path("parts");
+                if (!parts.isArray()) continue;
+                for (JsonNode part : parts) {
                     String text = part.path("text").asText("");
-                    if ("output_text".equals(part.path("type").asText()) && !text.isBlank()) {
-                        return text.trim();
-                    }
+                    if (!text.isBlank()) texts.append(text);
                 }
             }
         }
-        String fallback = root.path("output_text").asText("");
-        if (!fallback.isBlank()) return fallback.trim();
-        throw new IOException("豆包未返回文本内容: " + responseBody);
+        String out = texts.toString().trim();
+        if (!out.isBlank()) return out;
+        throw new IOException("Gemini 未返回文本内容: " + responseBody);
     }
 
     private String buildProductAnalysisPrompt(String prompt, boolean hasImage, boolean strictRetry) {
@@ -307,7 +542,7 @@ public class ImageGenerationService {
                 subjectHint.isBlank() ? "按用户原文自行识别" : subjectHint) : "";
         return """
                 你是资深工业设计与电商开品分析师。
-                请像自定义模式里的豆包图片分析一样理解输入，再按用户要求拆成可编辑的开品分析卡片。
+                请参考自定义模式的图片分析思路理解输入，再按用户要求拆成可编辑的开品分析卡片。
 
                 本次是否上传图片：%s
                 用户分析提示词：
@@ -398,7 +633,7 @@ public class ImageGenerationService {
         String json = stripJsonFence(rawText);
         JsonNode root = objectMapper.readTree(json);
         if (!root.isArray()) {
-            throw new IOException("豆包未返回 JSON 数组: " + rawText);
+            throw new IOException("Gemini 未返回 JSON 数组: " + rawText);
         }
         List<Map<String, String>> fields = new ArrayList<>();
         for (JsonNode item : root) {
@@ -409,24 +644,9 @@ public class ImageGenerationService {
             }
         }
         if (fields.isEmpty()) {
-            throw new IOException("豆包返回的分析字段为空: " + rawText);
+            throw new IOException("Gemini 返回的分析字段为空: " + rawText);
         }
         return fields;
-    }
-
-    private String resolveDoubaoAnalysisModel() {
-        String configured = appProperties.getVolcengine().getModel();
-        if (configured != null && configured.startsWith("doubao-seed-")) {
-            return configured;
-        }
-        return DOUBAO_ANALYSIS_MODEL;
-    }
-
-    private String normalizeBaseUrl(String baseUrl) {
-        String url = (baseUrl == null || baseUrl.isBlank())
-                ? "https://ark.cn-beijing.volces.com/api/v3"
-                : baseUrl.trim();
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     private String stripJsonFence(String text) {

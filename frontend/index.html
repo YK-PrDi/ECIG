@@ -456,19 +456,83 @@
                             </div>
                         </div>
 
-                        <!-- 开品模式：结构化分析 + 卡片编辑 + 二次生图 -->
+                        <!-- 开品模式：跨界开品设计师 -->
                         <div id="productConfig" class="panel-view">
-                            <div class="config-group" style="width:100%; align-items:flex-start; gap:10px;">
-                                <div style="font-size:0.78rem;color:var(--text-dim);line-height:1.6;padding:8px 10px;background:var(--primary-light);border-radius:6px;">
-                                    开品模式分两步：先拖入产品图并输入要分析的维度，系统生成可编辑分析卡片；确认卡片后再点击卡片里的“生成图片”完成二次生图。
+                            <div class="kp-inline-panel">
+                                <div class="kp-inline-head">
+                                    <div>
+                                        <label>开品方案配置</label>
+                                        <span>产品 A 的功能内核 + 产品 B 的造型语言</span>
+                                    </div>
+                                    <div id="kpStatusBadge" class="kp-status-badge">当前：未配置</div>
                                 </div>
-                                <label>产品图</label>
-                                <div style="font-size:0.72rem;color:var(--text-dim);line-height:1.5;">
-                                    直接拖拽图片到输入区，或点击下方图片上传按钮；这里复用自定义模式的图片池和预览区。
-                                </div>
-                                <label>分析提示词示例</label>
-                                <div style="font-size:0.72rem;color:var(--text-dim);line-height:1.5;">
-                                    从几何结构、体量感、功能分区、材质工艺、使用场景角度分析这个产品，并给出适合二次生图的视觉描述。
+
+                                <div class="kp-inline-grid">
+                                    <div class="kp-inline-section kp-product-section">
+                                        <div class="kp-section-title">产品输入</div>
+                                        <div class="kp-product-row">
+                                            <div class="kp-modal-field">
+                                                <label>产品 A · 功能本体</label>
+                                                <input type="text" id="kpProductA" placeholder="如：手持挂烫机；水箱小、底板易刮花衣服" oninput="confirmKaiPinSettings()">
+                                                <div id="kpDropA" class="ec-img-drop kp-img-drop" onclick="document.getElementById('kpFileA').click()">
+                                                    <input type="file" id="kpFileA" accept="image/*" style="display:none" onchange="kpHandleFile('A', this)">
+                                                    <div id="kpThumbA" style="display:none"></div>
+                                                    <span id="kpHintA" class="ec-img-hint">上传 A 图</span>
+                                                </div>
+                                            </div>
+                                            <div class="kp-modal-field">
+                                                <label>产品 B · 造型灵感</label>
+                                                <input type="text" id="kpProductB" placeholder="如：几何折痕、不锈钢外骨骼、硬核工业风" oninput="confirmKaiPinSettings()">
+                                                <div id="kpDropB" class="ec-img-drop kp-img-drop" onclick="document.getElementById('kpFileB').click()">
+                                                    <input type="file" id="kpFileB" accept="image/*" style="display:none" onchange="kpHandleFile('B', this)">
+                                                    <div id="kpThumbB" style="display:none"></div>
+                                                    <span id="kpHintB" class="ec-img-hint">上传 B 图</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="kp-inline-section kp-strategy-section">
+                                        <div class="kp-section-title">策略</div>
+                                        <div class="kp-modal-field">
+                                            <label>一句广告语 / 目标人群 <span class="kp-required">*</span></label>
+                                            <input type="text" id="kpSelling" required placeholder="如：像艺术品一样省电的空调；目标人群：科技极客 + 颜值党" oninput="confirmKaiPinSettings()">
+                                        </div>
+                                        <div class="kp-inline-options">
+                                            <div class="kp-modal-field">
+                                                <label>方案侧重</label>
+                                                <div class="ec-imgtype-group kp-option-grid">
+                                                    <label class="ec-imgtype-btn active"><input type="radio" name="kpFocus" value="cost" checked onchange="kpToggleCustomFocus();confirmKaiPinSettings()"><span>量产</span></label>
+                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpFocus" value="premium" onchange="kpToggleCustomFocus();confirmKaiPinSettings()"><span>溢价</span></label>
+                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpFocus" value="disruptive" onchange="kpToggleCustomFocus();confirmKaiPinSettings()"><span>创新</span></label>
+                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpFocus" value="custom" onchange="kpToggleCustomFocus();confirmKaiPinSettings()"><span>自定义</span></label>
+                                                </div>
+                                                <input type="text" id="kpFocusCustom" class="kp-custom-input" placeholder="自定义方案侧重" style="display:none" oninput="confirmKaiPinSettings()">
+                                            </div>
+                                            <div class="kp-modal-field">
+                                                <label>视觉风格</label>
+                                                <div class="ec-imgtype-group kp-option-grid kp-style-grid">
+                                                    <label class="ec-imgtype-btn active"><input type="radio" name="kpStyle" value="" checked onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>不指定</span></label>
+                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="dopamine" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>多巴胺</span></label>
+                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="wood" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>木元素</span></label>
+                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="minimal" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>极简</span></label>
+                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="cyberpunk" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>赛博</span></label>
+                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="custom" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>自定义</span></label>
+                                                </div>
+                                                <input type="text" id="kpStyleCustom" class="kp-custom-input" placeholder="自定义视觉风格描述" style="display:none" oninput="confirmKaiPinSettings()">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="kp-inline-section kp-output-section">
+                                        <div class="kp-section-title">输出</div>
+                                        <div class="kp-modal-field kp-count-row">
+                                            <label>生成张数</label>
+                                            <input type="number" id="kpCount" min="1" max="50" value="1" oninput="confirmKaiPinSettings()">
+                                            <span>1-50</span>
+                                        </div>
+                                        <div id="kpSummaryPreview" class="kp-summary-preview"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1816,6 +1880,11 @@
                 input.placeholder = '描述您希望分析的产品维度...';
                 sendBtn.className = 'btn-send custom';
                 sidebar.classList.add('minimized');
+                kpRenderThumb('A');
+                kpRenderThumb('B');
+                kpToggleCustomFocus();
+                kpToggleStyleCustom();
+                confirmKaiPinSettings();
             } else {
                 input.placeholder = '用文字描述视频内容、场景、动态效果...';
                 sendBtn.className = 'btn-send video';
@@ -2146,7 +2215,7 @@
                 // 覆盖 agentId，确保纯文生图时不用 gemini
                 formData.set('agentId', effectiveAgentId);
 
-                formData.append('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
+                formData.set('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
                 formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
                 formData.append('count', String(parseInt(document.getElementById('customCount')?.value, 10) || 1));
                 formData.append('sessionId', SESSION_ID);
@@ -2264,36 +2333,54 @@
                 }
 
             } else if (currentMode === 'product') {
-                if (!prompt) return alertSafe('请输入要分析的产品维度，例如：从几何结构、体量感、材质工艺角度分析', 'promptInput');
+                // 开品模式融合分析流程：第一步分析 → 第二步生图
+                const a = (document.getElementById('kpProductA')?.value || '').trim();
+                const b = (document.getElementById('kpProductB')?.value || '').trim();
+                const sel = (document.getElementById('kpSelling')?.value || '').trim();
+                const focus = document.querySelector('input[name="kpFocus"]:checked')?.value || 'cost';
+                const focusText = (document.getElementById('kpFocusCustom')?.value || '').trim();
+                const style = document.querySelector('input[name="kpStyle"]:checked')?.value || '';
+                const styleText = (document.getElementById('kpStyleCustom')?.value || '').trim();
+                const count = parseInt(document.getElementById('kpCount')?.value, 10) || 1;
 
+                // 验证：A/B 至少各有一个（文字或图片）
+                const hasA = !!a || !!window.kpRefA;
+                const hasB = !!b || !!window.kpRefB;
+                if (!hasA || !hasB) {
+                    alert('开品模式需要给 A 和 B 各提供材料：每边可以填文字、传图片、或两者都给');
+                    return;
+                }
+                if (!sel) {
+                    alert('开品模式需要填写"核心卖点 / 一句广告语"（必填）');
+                    return;
+                }
+
+                // 用户消息：显示 A/B 和卖点
+                const aLabel = a ? a.substring(0, 30) + (a.length > 30 ? '...' : '') : '（图片）';
+                const bLabel = b ? b.substring(0, 30) + (b.length > 30 ? '...' : '') : '（图片）';
+                const headline = `[开品分析] 产品 A: ${aLabel}\n产品 B: ${bLabel}\n卖点: ${sel.substring(0, 40)}${sel.length > 40 ? '...' : ''}`;
+                appendMessage('user', headline);
+
+                // 第一步：调用融合分析接口
                 const formData = new FormData();
-                if (droppedFiles.length > 0) {
-                    formData.append('image', droppedFiles[0]);
-                } else if (sessionImagePath) {
-                    try {
-                        const blob = await fetch(toImgUrl(sessionImagePath)).then(r => r.blob());
-                        formData.append('image', new File([blob], 'session_base.jpg', { type: blob.type || 'image/jpeg' }));
-                    } catch (_) {}
-                }
-                formData.append('prompt', prompt);
-                formData.append('promptBase64', base64Utf8(prompt));
-                formData.append('agentId', agentId);
-
-                if (droppedFiles.length > 0) {
-                    const imgDataUrl = await new Promise(res => {
-                        const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(droppedFiles[0]);
-                    });
-                    appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>[开品分析] ${escHtml(prompt)}</span>`, true);
-                } else {
-                    appendMessage('user', `[开品分析]\n${prompt}`);
-                }
+                if (window.kpRefA) formData.append('imageA', window.kpRefA);
+                if (window.kpRefB) formData.append('imageB', window.kpRefB);
+                formData.append('productA', a);
+                formData.append('productB', b);
+                formData.append('selling', sel);
+                formData.append('focus', focus);
+                if (focusText) formData.append('focusText', focusText);
+                formData.append('style', style);
+                if (styleText) formData.append('styleText', styleText);
 
                 try {
                     promptInput.value = '';
-                    const resp = await fetch('/api/product_analyze', { method: 'POST', body: formData });
+                    const resp = await fetch('/api/kaipin_analyze', { method: 'POST', body: formData });
                     const data = await resp.json();
                     if (!resp.ok || data.error) throw new Error(data.error || '分析失败');
-                    renderAnalysisCards(data.fields || []);
+
+                    // 渲染分析卡片（带上原始参数，供二次生图使用）
+                    renderKaiPinAnalysisCards(data.fields || [], { a, b, sel, focus, focusText, style, styleText, count, agentId });
                 } catch (e) {
                     appendMessage('ai', '开品分析失败：' + e.message);
                 }
@@ -2505,6 +2592,161 @@
                     </div>
                 </div>
             `, true);
+        }
+
+        /**
+         * 渲染开品模式融合分析卡片（带原始参数，支持二次生图）
+         * @param fields 分析结果 [{key, value}, ...]
+         * @param params 原始参数 { a, b, sel, focus, focusText, style, styleText, count, agentId }
+         */
+        function renderKaiPinAnalysisCards(fields, params) {
+            if (!Array.isArray(fields) || fields.length === 0) {
+                appendMessage('ai', '融合分析未返回有效维度，请补充产品描述后重试。');
+                return;
+            }
+
+            // 保存分析字段和原始参数
+            window.__analysisFields = fields.map(f => ({
+                key: String(f.key || '').trim(),
+                value: String(f.value || '').trim()
+            })).filter(f => f.key && f.value);
+
+            if (window.__analysisFields.length === 0) {
+                appendMessage('ai', '分析结果为空，请补充产品信息后重试。');
+                return;
+            }
+
+            // 保存原始参数供二次生图使用
+            window.__kaipinParams = params;
+
+            const cards = window.__analysisFields.map((f, i) => `
+                <div class="analysis-card" data-index="${i}">
+                    <label>${escHtml(f.key)}</label>
+                    <textarea>${escHtml(f.value)}</textarea>
+                </div>
+            `).join('');
+
+            // 显示方案侧重和视觉风格标签
+            const focusLabels = { cost: '成本与量产', premium: '颜值与溢价', disruptive: '颠覆性创新', custom: params.focusText || '自定义' };
+            const styleLabels = { '': '不指定', dopamine: '多巴胺', wood: '木元素', cartoon: '卡通', ins: 'ins 风', minimal: '极简', cyberpunk: '赛博朋克', custom: params.styleText || '自定义' };
+            const focusLabel = focusLabels[params.focus] || params.focus;
+            const styleLabel = styleLabels[params.style] || params.style;
+
+            appendMessage('ai', `
+                <div class="analysis-cards-wrap">
+                    <div class="analysis-cards-title">🚀 开品融合分析结果</div>
+                    <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px;padding:6px 8px;background:var(--surface);border-radius:4px;">
+                        <strong>方案侧重：</strong>${escHtml(focusLabel)} &nbsp;|&nbsp;
+                        <strong>视觉风格：</strong>${escHtml(styleLabel)} &nbsp;|&nbsp;
+                        <strong>生成张数：</strong>${params.count}
+                    </div>
+                    <div class="analysis-cards-container">${cards}</div>
+                    <div class="analysis-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn-primary" onclick="submitKaiPinGenerate(this)">生成图片</button>
+                        <button class="btn-secondary" onclick="clearAnalysisCards()">取消</button>
+                    </div>
+                </div>
+            `, true);
+        }
+
+        /**
+         * 提交开品模式二次生图（基于编辑后的分析卡片）
+         */
+        async function submitKaiPinGenerate(btn) {
+            if (window.__taskSubmitting) return;
+
+            const wrap = btn.closest('.analysis-cards-wrap');
+            const cards = Array.from(wrap?.querySelectorAll('.analysis-card') || []);
+
+            // 收集编辑后的卡片内容
+            const lines = cards.map(card => {
+                const ta = card.querySelector('textarea');
+                const idx = Number(card.dataset.index);
+                const key = (window.__analysisFields && window.__analysisFields[idx]?.key)
+                    || card.querySelector('label')?.textContent || '';
+                const value = (ta?.value || '').trim();
+                return value ? `${key}：${value}` : '';
+            }).filter(Boolean);
+
+            if (lines.length === 0) {
+                alertSafe('请至少保留一个分析卡片内容');
+                return;
+            }
+
+            const params = window.__kaipinParams || {};
+            const agentId = params.agentId || document.getElementById('agentSelect')?.value || 'gpt-image';
+
+            // 构建融合生图 prompt
+            const prompt = [
+                '【开品模式·融合设计】',
+                '基于以下结构化分析生成新概念产品的使用场景图。画面应突出产品主体，结构合理、可制造、材质清晰、光影真实。',
+                ...lines,
+                '【禁止】低清晰度、畸变、漂浮部件、不可制造结构、品牌 logo、水印、纯文字海报。'
+            ].join('\n');
+
+            window.__taskSubmitting = true;
+            const oldText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '提交中...';
+
+            try {
+                const formData = new FormData();
+
+                // 添加原始参考图（如果有）
+                if (window.kpRefA) formData.append('images', window.kpRefA);
+                if (window.kpRefB) formData.append('images', window.kpRefB);
+
+                formData.append('prompt', prompt);
+                formData.append('count', String(Math.min(50, Math.max(1, params.count || 1))));
+                formData.append('agentId', agentId);
+                formData.append('sessionId', SESSION_ID);
+                formData.append('mode', 'kaipin');
+                formData.append('aspect', 'auto');
+
+                // 保存分析卡片到 configJson
+                formData.append('configJson', JSON.stringify({
+                    type: 'kaipin_cards',
+                    fields: lines.map(line => {
+                        const idx = line.indexOf('：');
+                        return { key: line.slice(0, idx), value: line.slice(idx + 1) };
+                    }),
+                    focus: params.focus,
+                    style: params.style
+                }));
+
+                appendMessage('user', `[开品生成] 模型: ${agentId}\n${lines.length} 个分析维度 → ${params.count || 1} 张图`);
+                captureLastGen('/api/custom_generate', formData, `[开品模式] ${lines.length} 维度`);
+
+                const resp = await fetch('/api/custom_generate', { method: 'POST', body: formData });
+                const data = await resp.json();
+                if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
+
+                insertProgressCard(data.taskId);
+                startPolling(data.taskId);
+            } catch (e) {
+                appendMessage('ai', '开品生成失败：' + (e.message || e));
+                btn.disabled = false;
+                btn.textContent = oldText;
+                window.__taskSubmitting = false;
+                return;
+            }
+
+            btn.textContent = '已提交';
+            window.__taskSubmitting = false;
+        }
+
+        /**
+         * 清除分析卡片
+         */
+        function clearAnalysisCards() {
+            window.__analysisFields = null;
+            window.__kaipinParams = null;
+            // 移除最后一条 AI 消息（分析卡片）
+            const messages = document.getElementById('chatMessages');
+            const aiMessages = messages?.querySelectorAll('.message.ai');
+            if (aiMessages && aiMessages.length > 0) {
+                aiMessages[aiMessages.length - 1].remove();
+            }
         }
 
         async function submitAnalysisGenerate(btn) {
@@ -4006,17 +4248,24 @@
         function kpRenderThumb(slot) {
             const file = slot === 'A' ? window.kpRefA : window.kpRefB;
             const div = document.getElementById('kpThumb' + slot);
+            const hint = document.getElementById('kpHint' + slot);
             if (!div) return;
-            if (!file) { div.style.display = 'none'; div.innerHTML = ''; return; }
+            if (!file) {
+                div.style.display = 'none';
+                div.innerHTML = '';
+                if (hint) hint.style.display = '';
+                return;
+            }
             const url = URL.createObjectURL(file);
             div.innerHTML = `
-                <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);">
-                    <img src="${url}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" alt="${slot}">
-                    <span style="font-size:0.72rem;color:var(--text-dim);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${file.name}</span>
-                    <span onclick="kpClearFile('${slot}')" style="cursor:pointer;color:var(--text-dim);padding:0 4px;font-size:0.85rem;" title="移除">✕</span>
+                <div style="display:flex;align-items:center;gap:8px;width:100%;">
+                    <img src="${url}" style="width:42px;height:42px;object-fit:cover;border-radius:6px;" alt="${slot}">
+                    <span style="font-size:0.72rem;color:var(--text-dim);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(file.name)}</span>
+                    <button type="button" onclick="event.stopPropagation();kpClearFile('${slot}')" style="border:none;background:transparent;color:var(--text-dim);cursor:pointer;padding:4px;" title="移除">×</button>
                 </div>
             `;
             div.style.display = 'block';
+            if (hint) hint.style.display = 'none';
         }
         function kpClearFile(slot) {
             if (slot === 'A') window.kpRefA = null; else window.kpRefB = null;
@@ -4026,12 +4275,23 @@
             const focus = document.querySelector('input[name="kpFocus"]:checked')?.value || 'cost';
             const inp = document.getElementById('kpFocusCustom');
             if (inp) inp.style.display = (focus === 'custom') ? 'block' : 'none';
+            kpSyncRadioActive('kpFocus');
         }
 
         function kpToggleStyleCustom() {
             const style = document.querySelector('input[name="kpStyle"]:checked')?.value || '';
             const inp = document.getElementById('kpStyleCustom');
             if (inp) inp.style.display = (style === 'custom') ? 'block' : 'none';
+            kpSyncRadioActive('kpStyle');
+        }
+
+        function kpSyncRadioActive(name) {
+            const panel = document.getElementById('productConfig');
+            if (!panel) return;
+            panel.querySelectorAll(`input[name="${name}"]`).forEach(input => {
+                const btn = input.closest('.ec-imgtype-btn');
+                if (btn) btn.classList.toggle('active', input.checked);
+            });
         }
 
         // ── 文件选择框（图片 / 文件夹）──
@@ -4159,7 +4419,7 @@
                     const input = document.getElementById('promptInput');
                     if (!input.value) {
                         input.placeholder = currentMode === 'product'
-                            ? "描述您希望分析的产品维度..."
+                            ? "可选：填写附加要求或风格补充..."
                             : "描述你的需求，点发送后豆包将分析图片...";
                     }
                     input.focus();
@@ -4617,6 +4877,39 @@
             }
 
             closeEcommerceModal();
+        }
+
+        function confirmKaiPinSettings() {
+            const a = (document.getElementById('kpProductA')?.value || '').trim();
+            const b = (document.getElementById('kpProductB')?.value || '').trim();
+            const selling = (document.getElementById('kpSelling')?.value || '').trim();
+            const focus = document.querySelector('input[name="kpFocus"]:checked')?.value || 'cost';
+            const style = document.querySelector('input[name="kpStyle"]:checked')?.value || '';
+            const statusBadge = document.getElementById('kpStatusBadge');
+            const summary = document.getElementById('kpSummaryPreview');
+
+            const hasA = !!a || !!window.kpRefA;
+            const hasB = !!b || !!window.kpRefB;
+            const ready = hasA || hasB || !!selling;
+            const focusLabels = { cost: '成本与量产', premium: '颜值与溢价', disruptive: '颠覆性创新', custom: '自定义' };
+            const styleLabels = { '': '不指定', dopamine: '多巴胺', wood: '木元素', cartoon: '卡通', ins: 'ins 风', minimal: '极简', cyberpunk: '赛博朋克', custom: '自定义' };
+
+            if (ready) {
+                statusBadge.innerHTML = `<span style="color:#10B981">● 已就绪</span>`;
+                summary.style.display = 'block';
+                const parts = [];
+                if (hasA) parts.push(`<b>产品 A：</b>${escHtml(a || '已上传参考图')}`);
+                if (hasB) parts.push(`<b>产品 B：</b>${escHtml(b || '已上传参考图')}`);
+                if (selling) parts.push(`<b>卖点：</b>${escHtml(selling)}`);
+                parts.push(`<b>侧重：</b>${focusLabels[focus] || focus}`);
+                parts.push(`<b>风格：</b>${styleLabels[style] || style}`);
+                summary.innerHTML = parts.join('<br>');
+            } else {
+                statusBadge.innerHTML = `<span>未配置</span>`;
+                summary.style.display = 'none';
+            }
+
+            syncChatPadding();
         }
 
         function openProxyModal() {

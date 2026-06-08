@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -229,6 +231,77 @@ public class GenerateController {
         }
     }
 
+    /**
+     * 开品模式融合分析：基于产品 A/B、卖点、方案侧重、视觉风格，综合生成结构化分析卡片。
+     * 这是两步流程的第一步，返回可编辑卡片供用户确认后二次生图。
+     */
+    @PostMapping("/api/kaipin_analyze")
+    public ResponseEntity<Map<String, Object>> kaipinAnalyze(
+            @RequestParam(value = "imageA", required = false) MultipartFile imageA,
+            @RequestParam(value = "imageB", required = false) MultipartFile imageB,
+            @RequestParam(value = "productA", defaultValue = "") String productA,
+            @RequestParam(value = "productB", defaultValue = "") String productB,
+            @RequestParam(value = "selling", defaultValue = "") String selling,
+            @RequestParam(value = "focus", defaultValue = "cost") String focus,
+            @RequestParam(value = "focusText", required = false) String focusText,
+            @RequestParam(value = "style", defaultValue = "") String style,
+            @RequestParam(value = "styleText", required = false) String styleText) {
+
+        // 参数规范化
+        productA = normalizeMultipartText(productA);
+        productB = normalizeMultipartText(productB);
+        selling = normalizeMultipartText(selling);
+        if (focusText != null) focusText = normalizeMultipartText(focusText);
+        if (styleText != null) styleText = normalizeMultipartText(styleText);
+
+        // 验证：A/B 至少各有一个（文字或图片）
+        boolean hasA = (productA != null && !productA.isBlank()) || (imageA != null && !imageA.isEmpty());
+        boolean hasB = (productB != null && !productB.isBlank()) || (imageB != null && !imageB.isEmpty());
+        if (!hasA || !hasB) {
+            return ResponseEntity.badRequest().body(Map.of("error", "产品 A 和 B 都需要提供材料（文字或图片至少其一）"));
+        }
+        if (selling == null || selling.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "核心卖点是必填项"));
+        }
+
+        File imageATmp = null;
+        File imageBTmp = null;
+        try {
+            // 保存上传的图片到临时文件
+            if (imageA != null && !imageA.isEmpty()) {
+                String suffixA = getSuffix(imageA.getOriginalFilename());
+                imageATmp = File.createTempFile("kaipin_A_", suffixA);
+                imageA.transferTo(imageATmp);
+            }
+            if (imageB != null && !imageB.isEmpty()) {
+                String suffixB = getSuffix(imageB.getOriginalFilename());
+                imageBTmp = File.createTempFile("kaipin_B_", suffixB);
+                imageB.transferTo(imageBTmp);
+            }
+
+            // 调用融合分析服务
+            List<Map<String, String>> fields = imageGenerationService.analyzeKaiPin(
+                    productA, productB, selling, focus, focusText, style, styleText, imageATmp, imageBTmp);
+
+            return ResponseEntity.ok(Map.of("fields", fields));
+        } catch (Exception e) {
+            log.error("kaipin_analyze 失败: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        } finally {
+            if (imageATmp != null && imageATmp.exists()) imageATmp.delete();
+            if (imageBTmp != null && imageBTmp.exists()) imageBTmp.delete();
+        }
+    }
+
+    private String getSuffix(String filename) {
+        if (filename == null) return ".jpg";
+        String lower = filename.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) return ".png";
+        if (lower.endsWith(".webp")) return ".webp";
+        if (lower.endsWith(".gif")) return ".gif";
+        return ".jpg";
+    }
+
     private String decodePrompt(String prompt, String promptBase64) {
         if (promptBase64 != null && !promptBase64.isBlank()) {
             try {
@@ -364,6 +437,7 @@ public class GenerateController {
         final boolean pairFinal = pairImages;
         final List<String> promptsFinal = promptList;
         final List<String> thoughtsFinal = thoughts;
+        final String requestedAspect = normalizeAspect(aspect);
 
         taskService.submit(task, () -> {
             ExecutorService executor = imageGenerationService.getExecutor();
@@ -374,13 +448,14 @@ public class GenerateController {
                 for (int i = 0; i < pairNFinal; i++) {
                     final File refI = pairRefsFinal.get(i);
                     final String promptFinal = promptsFinal.get(i);
+                    final String aspectForRef = resolveAutoAspect(requestedAspect, List.of(refI));
                     for (int c = 0; c < count; c++) {
                         final int n = idx[0]++;
                         final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "失败: 已取消";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, agentId, aspect);
+                                    promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, agentId, aspectForRef);
                             return ok ? outputPath : "失败: 生成未返回图片";
                         }, executor));
                     }
@@ -394,7 +469,7 @@ public class GenerateController {
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "失败: 已取消";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, List.of(), null, outputPath, agentId, aspect);
+                                    promptFinal, List.of(), null, outputPath, agentId, requestedAspect);
                             return ok ? outputPath : "失败: 生成未返回图片";
                         }, executor));
                     }
@@ -403,6 +478,10 @@ public class GenerateController {
                 List<String> allRefs = new ArrayList<>();
                 allRefs.add(refFinal.getAbsolutePath());
                 for (File wf : whiteFinal) allRefs.add(wf.getAbsolutePath());
+                List<File> refsForAspect = new ArrayList<>();
+                refsForAspect.add(refFinal);
+                refsForAspect.addAll(whiteFinal);
+                final String aspectForRefs = resolveAutoAspect(requestedAspect, refsForAspect);
                 for (String p : promptsFinal) {
                     for (int i = 0; i < count; i++) {
                         final int n = idx[0]++;
@@ -412,7 +491,7 @@ public class GenerateController {
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "失败: 已取消";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, refsFinal, null, outputPath, agentId, aspect);
+                                    promptFinal, refsFinal, null, outputPath, agentId, aspectForRefs);
                             return ok ? outputPath : "失败: 生成未返回图片";
                         }, executor));
                     }
@@ -478,6 +557,57 @@ public class GenerateController {
         }
 
         return ResponseEntity.ok(Map.of("taskId", task.getId(), "output_dir", outputDir));
+    }
+
+    private String normalizeAspect(String aspect) {
+        if (aspect == null || aspect.isBlank()) return "auto";
+        return aspect.trim();
+    }
+
+    /**
+     * 自定义模式的“自动”应尽量跟随参考图比例，而不是落回模型默认方图。
+     * 用户显式选择 1:1 / 9:16 / 16:9 等比例时不改动，电商详情页强制 9:16 也不受影响。
+     */
+    private String resolveAutoAspect(String requestedAspect, List<File> refs) {
+        String normalized = normalizeAspect(requestedAspect);
+        if (!"auto".equalsIgnoreCase(normalized)) return normalized;
+        if (refs == null || refs.isEmpty()) return "auto";
+
+        for (File ref : refs) {
+            if (ref == null || !ref.exists() || !ref.isFile()) continue;
+            try {
+                BufferedImage image = ImageIO.read(ref);
+                if (image == null || image.getWidth() <= 0 || image.getHeight() <= 0) continue;
+                String inferred = nearestAspect(image.getWidth(), image.getHeight());
+                log.info("自定义模式 auto 尺寸按参考图推断为 {} ({}x{}, file={})",
+                        inferred, image.getWidth(), image.getHeight(), ref.getName());
+                return inferred;
+            } catch (Exception e) {
+                log.warn("读取参考图尺寸失败，保持 auto: {}", e.getMessage());
+            }
+        }
+        return "auto";
+    }
+
+    private String nearestAspect(int width, int height) {
+        double ratio = width / (double) height;
+        Map<String, Double> candidates = new LinkedHashMap<>();
+        candidates.put("1:1", 1.0);
+        candidates.put("16:9", 16.0 / 9.0);
+        candidates.put("9:16", 9.0 / 16.0);
+        candidates.put("4:3", 4.0 / 3.0);
+        candidates.put("3:4", 3.0 / 4.0);
+
+        String best = "1:1";
+        double bestDelta = Double.MAX_VALUE;
+        for (Map.Entry<String, Double> entry : candidates.entrySet()) {
+            double delta = Math.abs(Math.log(ratio / entry.getValue()));
+            if (delta < bestDelta) {
+                bestDelta = delta;
+                best = entry.getKey();
+            }
+        }
+        return best;
     }
 
     @PostMapping("/api/inpaint")

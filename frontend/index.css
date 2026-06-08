@@ -388,6 +388,165 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 .panel-view.active { display: flex; animation: slideUpIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 .panel-view.exit { display: flex; position: absolute; left: 24px; right: 24px; animation: slideDownOut 0.3s forwards; pointer-events: none; }
 
+.kp-required { color: #dc2626; }
+.kp-inline-panel {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.kp-inline-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+}
+.kp-inline-head label {
+    display: block;
+    margin-bottom: 2px;
+}
+.kp-inline-head span {
+    display: block;
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.4;
+}
+.kp-status-badge {
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+.kp-inline-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.25fr);
+    gap: 10px;
+    align-items: stretch;
+}
+.kp-inline-section {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-alt, #F8FAFC);
+}
+.kp-section-title {
+    margin-bottom: 8px;
+    color: var(--text-muted, #6B7280);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.kp-product-row,
+.kp-inline-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+.kp-modal-intro {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-alt, #F8FAFC);
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+.kp-modal-intro strong {
+    color: var(--text-main);
+    white-space: nowrap;
+}
+.kp-modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin-bottom: 10px;
+}
+.kp-modal-field:last-child { margin-bottom: 0; }
+.kp-modal-field label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.kp-modal-field input[type="text"],
+.kp-modal-field input[type="number"],
+#productConfig .kp-custom-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-panel);
+    color: var(--text-main);
+    font-size: 0.78rem;
+}
+.kp-img-drop {
+    min-height: 52px;
+    margin-top: 2px;
+    padding: 8px;
+}
+.kp-option-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+}
+.kp-style-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.kp-output-section {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+.kp-output-section .kp-section-title {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+}
+.kp-count-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 0;
+}
+.kp-count-row input {
+    width: 74px;
+    flex: 0 0 auto;
+}
+.kp-count-row span {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+}
+.kp-summary-preview {
+    display: none;
+    max-height: 78px;
+    overflow: auto;
+    padding: 8px;
+    border-radius: 6px;
+    background: var(--bg-panel);
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    line-height: 1.45;
+}
+#productConfig .ec-imgtype-btn {
+    min-height: 30px;
+    padding: 6px 5px;
+    font-size: 0.72rem;
+}
+@media (max-width: 899px) {
+    .kp-inline-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+    .kp-inline-grid { grid-template-columns: 1fr; }
+    .kp-output-section { grid-template-columns: 1fr; }
+    .kp-product-row,
+    .kp-inline-options { grid-template-columns: 1fr; }
+    .kp-option-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kp-modal-intro { align-items: flex-start; flex-direction: column; gap: 4px; }
+}
+
 .config-group { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .config-group label { font-size: 0.7rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
 
@@ -1711,14 +1870,6 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: 12px;
-}
-    gap: 6px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--text-muted, #6B7280);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 10px;
 }
 .ec-block-sublabel {
     font-size: 0.7rem;
