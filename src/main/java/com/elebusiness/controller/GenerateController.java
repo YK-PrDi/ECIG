@@ -513,6 +513,7 @@ public class GenerateController {
             @RequestParam(value = "mode", defaultValue = "custom") String mode,
             @RequestParam(value = "multiPrompt", defaultValue = "false") boolean multiPrompt,
             @RequestParam(value = "configJson", required = false) String configJson,
+            @RequestParam(value = "promptGroups", required = false) String promptGroups,
             MultipartHttpServletRequest request) {
 
         // 不能用 @RequestParam List<String> prompts —— Spring 会按英文逗号自动拆分
@@ -592,13 +593,42 @@ public class GenerateController {
                 "自定义模式生成/" + timestamp).getAbsolutePath();
         new File(outputDir).mkdirs();
 
+        // 解析 promptGroups（批量生图分组配对）：[{promptIdx, imageIndices:[..]}, ...]
+        // 非空时走分组分支：第 promptIdx 条 prompt 用 imageIndices 指向的图片子集。
+        List<int[]> groupImageIdx = new ArrayList<>(); // 每条 prompt 对应的 image 索引数组
+        List<Integer> groupPromptIdx = new ArrayList<>();
+        boolean useGroups = promptGroups != null && !promptGroups.isBlank();
+        if (useGroups) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode arr =
+                        new com.fasterxml.jackson.databind.ObjectMapper().readTree(promptGroups);
+                for (com.fasterxml.jackson.databind.JsonNode g : arr) {
+                    int pIdx = g.path("promptIdx").asInt(0);
+                    com.fasterxml.jackson.databind.JsonNode ii = g.path("imageIndices");
+                    int[] idxs = new int[ii.size()];
+                    for (int k = 0; k < ii.size(); k++) idxs[k] = ii.get(k).asInt();
+                    groupPromptIdx.add(pIdx);
+                    groupImageIdx.add(idxs);
+                }
+            } catch (Exception e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "promptGroups 解析失败: " + e.getMessage()));
+            }
+        }
+
         // multipart 必须在请求线程内落盘，提交到异步任务前先把上传文件持久化
         File refTempFile = null;
         List<File> whiteTempFiles = new ArrayList<>();
         List<File> pairRefs        = new ArrayList<>();
+        List<File> groupFiles      = new ArrayList<>(); // promptGroups 模式：所有 image 按索引落盘
         if (hasImages) {
             try {
-                if (pairImages) {
+                if (useGroups) {
+                    for (int i = 0; i < images.size(); i++) {
+                        File gf = File.createTempFile("grp_" + i + "_", ".jpg");
+                        images.get(i).transferTo(gf);
+                        groupFiles.add(gf);
+                    }
+                } else if (pairImages) {
                     for (int i = 0; i < images.size(); i++) {
                         File pr = File.createTempFile("pair_" + i + "_", ".jpg");
                         images.get(i).transferTo(pr);
@@ -620,7 +650,9 @@ public class GenerateController {
         }
 
         int pairN = pairImages ? Math.min(pairRefs.size(), promptList.size()) : 0;
-        int total = pairImages ? (pairN * requestedCount) : (promptList.size() * requestedCount);
+        int total = useGroups ? (groupPromptIdx.size() * requestedCount)
+                  : pairImages ? (pairN * requestedCount)
+                  : (promptList.size() * requestedCount);
 
         GenerationTask task = taskService.createTask(total);
         final File refFinal = refTempFile;
@@ -631,6 +663,10 @@ public class GenerateController {
         final boolean pairFinal = pairImages;
         final List<String> promptsFinal = promptList;
         final List<String> thoughtsFinal = thoughts;
+        final boolean useGroupsFinal = useGroups;
+        final List<File> groupFilesFinal = groupFiles;
+        final List<int[]> groupImageIdxFinal = groupImageIdx;
+        final List<Integer> groupPromptIdxFinal = groupPromptIdx;
         final String requestedAspect = normalizeAspect(aspect);
         final int countFinal = requestedCount;
 
@@ -639,7 +675,31 @@ public class GenerateController {
             List<CompletableFuture<String>> futures = new ArrayList<>();
             int[] idx = {1};
 
-            if (pairFinal && hasImagesFinal) {
+            if (useGroupsFinal) {
+                // 批量分组：第 g 组用 promptsFinal[promptIdx] + imageIndices 指向的图片子集
+                for (int g = 0; g < groupPromptIdxFinal.size(); g++) {
+                    int pIdx = groupPromptIdxFinal.get(g);
+                    final String promptFinal = (pIdx >= 0 && pIdx < promptsFinal.size())
+                            ? promptsFinal.get(pIdx) : promptsFinal.get(0);
+                    final List<String> refsFinal = new ArrayList<>();
+                    for (int imgIdx : groupImageIdxFinal.get(g)) {
+                        if (imgIdx >= 0 && imgIdx < groupFilesFinal.size())
+                            refsFinal.add(groupFilesFinal.get(imgIdx).getAbsolutePath());
+                    }
+                    final String aspectForGroup = resolveAutoAspect(requestedAspect,
+                            refsFinal.stream().map(File::new).toList());
+                    for (int c = 0; c < countFinal; c++) {
+                        final int n = idx[0]++;
+                        final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
+                        futures.add(CompletableFuture.supplyAsync(() -> {
+                            if (task.isCancelled()) return "失败: 已取消";
+                            boolean ok = imageGenerationService.generateImageMulti(
+                                    promptFinal, refsFinal, null, outputPath, generationAgentId, aspectForGroup);
+                            return ok ? outputPath : "失败: 生成未返回图片";
+                        }, executor));
+                    }
+                }
+            } else if (pairFinal && hasImagesFinal) {
                 for (int i = 0; i < pairNFinal; i++) {
                     final File refI = pairRefsFinal.get(i);
                     final String promptFinal = promptsFinal.get(i);

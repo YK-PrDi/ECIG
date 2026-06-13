@@ -38,12 +38,15 @@ public class ImageGenerationService {
     private final Random random = new Random();
     private final ExecutorService executor;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final PromptTemplateLoader promptTemplateLoader;
 
-    public ImageGenerationService(AppProperties appProperties, List<ImageGeneratorAgent> agents) {
+    public ImageGenerationService(AppProperties appProperties, List<ImageGeneratorAgent> agents,
+                                  PromptTemplateLoader promptTemplateLoader) {
         this.appProperties = appProperties;
         this.agentMap = new LinkedHashMap<>();
         agents.forEach(a -> agentMap.put(a.getId(), a));
         this.executor = Executors.newFixedThreadPool(appProperties.getApi().getMaxConcurrent());
+        this.promptTemplateLoader = promptTemplateLoader;
         log.info("已注册智能体: {}，并发数: {}", agentMap.keySet(), appProperties.getApi().getMaxConcurrent());
     }
 
@@ -180,7 +183,7 @@ public class ImageGenerationService {
             default -> ""; // 不指定风格
         };
 
-        return """
+        String template = promptTemplateLoader.load("prompt/kai-pin-analysis-user.txt", """
                 你是“产品外观设计分析师 + 电商开品视觉策略师”。
                 当前开品模式只做单个产品的外观设计结构化分析。请严格按照下面这条内置 Excel 提示词执行：
                 提示词：请对这个产品从几何结构、体量感（轻盈/厚重/悬浮感）、仿生学元素、模块化程度（一体成型 / 可拆卸 / 堆叠式设计）、主色调、辅色、风格标签（科技极简/复古怀旧/赛博朋克/可爱治愈）的角度进行产品外观设计分析。
@@ -207,7 +210,8 @@ public class ImageGenerationService {
                 8. 风格标签：只能从“科技极简、复古怀旧、赛博朋克、可爱治愈”中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用“、”连接。
                 9. 如果用户补充了卖点或目标人群，几何结构和仿生学元素两个字段必须说明这些外观特征如何支撑卖点；但固定选项字段仍只能输出选项词。
                 10. 输出必须是严格 JSON 数组，格式：[{"key":"维度名","value":"分析内容"}]。不要 markdown，不要代码块，不要解释。
-                """.formatted(
+                """);
+        return template.formatted(
                 productA == null || productA.isBlank() ? "（未提供文字，请优先从上传图片分析产品外观）" : productA,
                 selling == null || selling.isBlank() ? "（未提供，按图片外观自行提炼设计取向）" : selling,
                 productB == null || productB.isBlank() ? "" : "补充描述：" + productB,
@@ -226,7 +230,7 @@ public class ImageGenerationService {
 
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode systemInstruction = root.putObject("systemInstruction");
-        String systemText = "你是产品外观设计分析师和电商开品视觉策略师。你必须严格按照固定 7 个维度分析产品外观：几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签。体量感只能从轻盈/厚重/悬浮感中选择；模块化程度只能从一体成型/可拆卸/堆叠式设计中选择；风格标签只能从科技极简/复古怀旧/赛博朋克/可爱治愈中选择。必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。";
+        String systemText = promptTemplateLoader.load("prompt/kai-pin-analysis-system.txt", "kai-pin-analysis system fallback");
         if (strictRetry) {
             systemText += "\n\n重要：本轮不是资料完整性诊断。即使图片或文字信息不完整，也必须输出这 7 个固定字段，禁止输出“异常说明”“请补充信息”“无法分析”。固定选项字段只输出选项词，不要写解释。";
         }
@@ -307,7 +311,7 @@ public class ImageGenerationService {
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode systemInstruction = root.putObject("systemInstruction");
         systemInstruction.putArray("parts").addObject().put("text",
-                "你是资深工业设计与电商爆品开品分析师。你必须先观察图片证据，再严格拓写用户输入中的卖点，将其扩展为用户痛点、功能利益、购买理由和可视化证明方式，输出能直接用于二次生图的结构化卡片。每个卡片都要回扣卖点如何被证明或放大。必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。");
+                promptTemplateLoader.load("prompt/kai-pin-fusion-system.txt", "kai-pin-fusion system fallback"));
 
         ArrayNode contents = root.putArray("contents");
         ObjectNode content = contents.addObject();
@@ -350,7 +354,7 @@ public class ImageGenerationService {
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode systemInstruction = root.putObject("systemInstruction");
         systemInstruction.putArray("parts").addObject().put("text",
-                "你是资深电商产品视觉分析师和 AI 生图提示词导演。你的任务是看懂白底产品图，把用户的短描述、风格要求和隐含卖点扩写成可直接用于图片生成的中文提示词。必须严格保持产品主体来自白底图，不能改变产品结构、比例、颜色、材质、logo 和识别特征。");
+                promptTemplateLoader.load("prompt/custom-analysis-system.txt", "custom-analysis system fallback"));
 
         ArrayNode contents = root.putArray("contents");
         ObjectNode content = contents.addObject();
@@ -389,7 +393,7 @@ public class ImageGenerationService {
     }
 
     private String buildCustomPromptAnalysisPrompt(String prompt, int count, boolean hasImage) {
-        return """
+        String template = promptTemplateLoader.load("prompt/custom-analysis-user.txt", """
                 本次是否上传白底产品图: %s
                 用户对话/描述/风格要求:
                 %s
@@ -418,7 +422,8 @@ public class ImageGenerationService {
                 3. 多段之间必须差异化: 本图卖点、本图风格、场景构图、道具、镜头角度或光影至少变化 3 项。
                 4. 产品一致性字段每段都要出现, 且要基于白底图可见信息重新罗列, 不能只写“保持一致”。
                 5. 禁止空泛词堆叠, 比如“高端、精致、好看、实用”; 必须转成可见结构、材质反光、操作动作、场景痛点或对比证据。
-                """.formatted(hasImage ? "是" : "否", prompt == null || prompt.isBlank() ? "无" : prompt, count);
+                """);
+        return template.formatted(hasImage ? "是" : "否", prompt == null || prompt.isBlank() ? "无" : prompt, count);
     }
 
     public boolean generateImage(String prompt, String refImagePath,
@@ -604,7 +609,7 @@ public class ImageGenerationService {
                 后端已识别产品对象提示：%s
                 """.formatted(dimensionHint.isBlank() ? "按用户原文自行提取" : dimensionHint,
                 subjectHint.isBlank() ? "按用户原文自行识别" : subjectHint) : "";
-        return """
+        String template = promptTemplateLoader.load("prompt/product-analysis-user.txt", """
                 你是资深工业设计与电商爆品开品分析师。
                 请参考自定义模式的图片分析思路理解输入：先看图像证据，再拆结构和卖点，最后把分析写成可编辑、可二次生图的卡片。
 
@@ -621,7 +626,8 @@ public class ImageGenerationService {
                 6. 卖点必须严格拓写：即使用户没有单独写卖点，也要从产品结构、使用痛点、视觉差异中提炼购买理由；每个动态维度都要说明该维度如何证明、放大或承接卖点。
                 7. value 要能直接拼入后续生图提示词，聚焦可观察的结构、比例、体量、材质、功能线索、使用场景、镜头角度、光影或造型语言，并把卖点转成画面证据。
                 8. 即使没有图片，也必须基于用户文字做结构化拆解；不要要求补充资料。
-                """.formatted(hasImage ? "是" : "否", prompt, strictText);
+                """);
+        return template.formatted(hasImage ? "是" : "否", prompt, strictText);
     }
 
     private String extractDimensionHint(String prompt) {

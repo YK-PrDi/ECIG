@@ -38,6 +38,8 @@ public class SessionService {
     public SessionService(AppProperties appProperties) {
         this.appProperties = appProperties;
         this.objectMapper = new ObjectMapper();
+        this.objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        this.objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
     }
 
@@ -173,8 +175,10 @@ public class SessionService {
                         log.info("加载 session 配置成功，当前 session: {}", currentSessionId);
                     }
                 } catch (IOException e) {
-                    log.warn("读取 session 配置失败，将使用默认值: {}", e.getMessage());
+                    log.warn("读取 session 配置失败，将使用默认值并覆盖损坏文件: {}", e.getMessage());
+                    try { sessionFile.delete(); } catch (Exception ignored) {}
                     createDefaultSession();
+                    save(); // 立即写回干净默认值，避免下次启动重复报错
                 }
             } else {
                 createDefaultSession();

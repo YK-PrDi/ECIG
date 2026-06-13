@@ -1,0 +1,10 @@
+{
+  "currentSessionId" : "sess_default",
+  "sessions" : {
+    "sess_default" : {
+      "name" : "默认会话",
+      "createdAt" : "2026-06-13T18:16:43.202400300Z",
+      "lastActiveAt" : "2026-06-13T18:16:43.202400300Z"
+    }
+  }
+}
