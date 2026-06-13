@@ -14,6 +14,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -29,25 +30,55 @@ public class GptImageAgent implements ImageGeneratorAgent {
         this.appProperties = appProperties;
     }
 
-    /** 返回所有 key 的列表，前两个优先（稳定 key），其余按顺序追加 */
     private List<String> orderedKeys() {
         List<String> keys = appProperties.getGptImage().getApiKeys();
         if (keys == null || keys.isEmpty()) return List.of();
-        return new java.util.ArrayList<>(keys); // yml 中前两个即为优先 key
+        return new ArrayList<>(keys);
+    }
+
+    private String baseUrlForKey(String apiKey) {
+        Map<String, String> overrides = appProperties.getGptImage().getKeyBaseUrls();
+        String configured = overrides != null ? overrides.get(apiKey) : null;
+        if (configured != null && !configured.isBlank()) {
+            return trimTrailingSlash(configured);
+        }
+        return trimTrailingSlash(appProperties.getGptImage().getBaseUrl());
+    }
+
+    private String trimTrailingSlash(String url) {
+        if (url == null || url.isBlank()) return "https://api.linapi.net";
+        String out = url.trim();
+        while (out.endsWith("/")) {
+            out = out.substring(0, out.length() - 1);
+        }
+        return out;
+    }
+
+    private String maskKey(String apiKey) {
+        if (apiKey == null || apiKey.length() <= 6) return "***";
+        return apiKey.substring(0, 4) + "***";
     }
 
     @Override
-    public String getId() { return "gpt-image"; }
+    public String getId() {
+        return "gpt-image";
+    }
 
     @Override
-    public String getDisplayName() { return "GPT-Image 2"; }
+    public String getDisplayName() {
+        return "GPT-Image 2";
+    }
 
     @Override
     public boolean generate(String prompt, String refImagePath, String whiteBgPath, String outputPath) {
-        return generateMulti(prompt,
+        return generateMulti(
+                prompt,
                 (whiteBgPath != null && !whiteBgPath.isBlank()) ? List.of(whiteBgPath)
                         : (refImagePath != null && !refImagePath.isBlank()) ? List.of(refImagePath) : List.of(),
-                null, outputPath, null);
+                null,
+                outputPath,
+                null
+        );
     }
 
     @Override
@@ -58,22 +89,25 @@ public class GptImageAgent implements ImageGeneratorAgent {
             log.error("GPT-Image API Key 未配置");
             return false;
         }
-        String baseUrl = appProperties.getGptImage().getBaseUrl();
+
         List<File> imageFiles = resolveImageFiles(refImagePaths);
         String size = pickSize(aspect);
         for (String apiKey : orderedKeys()) {
+            String baseUrl = baseUrlForKey(apiKey);
+            log.info("GPT-Image 尝试 key [{}], baseUrl={}", maskKey(apiKey), baseUrl);
             boolean ok = !imageFiles.isEmpty()
                     ? generateWithImages(prompt, imageFiles, outputPath, apiKey, baseUrl, size)
                     : generateTextOnly(prompt, outputPath, apiKey, baseUrl, size);
             if (ok) return true;
-            log.warn("GPT-Image key 尾号[{}] 失败，尝试下一个", apiKey.length() > 4 ? apiKey.substring(0, 4) + "***" : "***");
+            log.warn("GPT-Image key [{}] 失败，尝试下一个", maskKey(apiKey));
         }
+
         log.error("GPT-Image 所有 key 均失败");
         return false;
     }
 
     private List<File> resolveImageFiles(List<String> paths) {
-        List<File> out = new java.util.ArrayList<>();
+        List<File> out = new ArrayList<>();
         if (paths == null) return out;
         for (String p : paths) {
             if (p == null || p.isBlank()) continue;
@@ -83,20 +117,18 @@ public class GptImageAgent implements ImageGeneratorAgent {
         return out;
     }
 
-    /** 按 aspect 映射到 OpenAI 支持的 size；接口支持 1024x1024 / 1024x1536 / 1536x1024 / auto */
     private String pickSize(String aspect) {
         if (aspect == null || "auto".equals(aspect)) return "auto";
         return switch (aspect) {
             case "9:16", "portrait" -> "1024x1536";
             case "16:9", "landscape" -> "1536x1024";
             case "1:1" -> "1024x1024";
-            case "3:4" -> "1024x1365";
-            case "4:3" -> "1365x1024";
+            case "3:4" -> "1024x1360";
+            case "4:3" -> "1360x1024";
             default -> "auto";
         };
     }
 
-    /** 有图片时调用 /v1/images/edits，所有图片以 image[] 形式一并提交 */
     private boolean generateWithImages(String prompt, List<File> imageFiles, String outputPath,
                                        String apiKey, String baseUrl, String size) {
         try {
@@ -111,20 +143,20 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setReadTimeout(300_000);
 
             try (OutputStream os = conn.getOutputStream()) {
-                writeField(os, boundary, "model",         "gpt-image-2");
-                writeField(os, boundary, "prompt",        prompt != null ? prompt : "product photo on clean background");
-                writeField(os, boundary, "size",          size);
-                writeField(os, boundary, "quality",       "high");
+                writeField(os, boundary, "model", "gpt-image-2");
+                writeField(os, boundary, "prompt", prompt != null ? prompt : "product photo on clean background");
+                writeField(os, boundary, "size", size);
+                writeField(os, boundary, "quality", "high");
                 writeField(os, boundary, "output_format", "jpeg");
-                // OpenAI edits 接口接受 image[] 数组：单图字段名 "image"，多图统一用 "image[]"
                 String fieldName = imageFiles.size() == 1 ? "image" : "image[]";
-                for (File f : imageFiles) writeFile(os, boundary, fieldName, f);
+                for (File f : imageFiles) {
+                    writeFile(os, boundary, fieldName, f);
+                }
                 os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
             }
 
             int status = conn.getResponseCode();
             String respBody;
-            // try-with-resources 关 stream，conn.disconnect() 不保证关闭内部流（B 阶段审查 #4）
             try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
                 respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
             } finally {
@@ -143,25 +175,33 @@ public class GptImageAgent implements ImageGeneratorAgent {
         }
     }
 
-    /** 局部重绘：image + mask → /v1/images/edits，失败自动 fallback 到其他 key */
     public boolean generateWithMask(String prompt, File imageFile, File maskFile, String outputPath) {
+        return generateWithMask(prompt, imageFile, maskFile, outputPath, "auto");
+    }
+
+    public boolean generateWithMask(String prompt, File imageFile, File maskFile, String outputPath, String aspect) {
         List<String> keys = appProperties.getGptImage().getApiKeys();
         if (keys == null || keys.isEmpty()) {
             log.error("GPT-Image API Key 未配置");
             return false;
         }
-        String baseUrl = appProperties.getGptImage().getBaseUrl();
+
+        String size = pickSize(aspect);
+        log.info("GPT-Image inpaint 使用 size={} (aspect={})", size, aspect);
         for (String apiKey : orderedKeys()) {
-            boolean ok = doGenerateWithMask(prompt, imageFile, maskFile, outputPath, apiKey, baseUrl);
+            String baseUrl = baseUrlForKey(apiKey);
+            log.info("GPT-Image inpaint 尝试 key [{}], baseUrl={}", maskKey(apiKey), baseUrl);
+            boolean ok = doGenerateWithMask(prompt, imageFile, maskFile, outputPath, apiKey, baseUrl, size);
             if (ok) return true;
-            log.warn("GPT-Image inpaint key 尾号[{}] 失败，尝试下一个", apiKey.length() > 4 ? apiKey.substring(0, 4) + "***" : "***");
+            log.warn("GPT-Image inpaint key [{}] 失败，尝试下一个", maskKey(apiKey));
         }
+
         log.error("GPT-Image inpaint 所有 key 均失败");
         return false;
     }
 
     private boolean doGenerateWithMask(String prompt, File imageFile, File maskFile,
-                                       String outputPath, String apiKey, String baseUrl) {
+                                       String outputPath, String apiKey, String baseUrl, String size) {
         try {
             String boundary = "----GptImageBoundary" + Long.toHexString(System.currentTimeMillis());
             URL url = new URL(baseUrl + "/v1/images/edits");
@@ -174,19 +214,18 @@ public class GptImageAgent implements ImageGeneratorAgent {
             conn.setReadTimeout(240_000);
 
             try (OutputStream os = conn.getOutputStream()) {
-                writeField(os, boundary, "model",         "gpt-image-2");
-                writeField(os, boundary, "prompt",        prompt != null ? prompt : "");
-                writeField(os, boundary, "size",          "1024x1024");
-                writeField(os, boundary, "quality",       "high");
+                writeField(os, boundary, "model", "gpt-image-2");
+                writeField(os, boundary, "prompt", prompt != null ? prompt : "");
+                writeField(os, boundary, "size", size);
+                writeField(os, boundary, "quality", "high");
                 writeField(os, boundary, "output_format", "jpeg");
-                writeFile(os,  boundary, "image",         imageFile);
-                writeFile(os,  boundary, "mask",          maskFile);
+                writeFile(os, boundary, "image", imageFile);
+                writeFile(os, boundary, "mask", maskFile);
                 os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
             }
 
             int status = conn.getResponseCode();
             String respBody;
-            // try-with-resources 关 stream，conn.disconnect() 不保证关闭内部流（B 阶段审查 #4）
             try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
                 respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
             } finally {
@@ -197,6 +236,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
                 log.error("GPT-Image inpaint 失败 ({}): {}", status, respBody);
                 return false;
             }
+
             return saveFromResponse(respBody, outputPath);
         } catch (Exception e) {
             log.error("GPT-Image inpaint 异常: {}", e.getMessage(), e);
@@ -204,15 +244,14 @@ public class GptImageAgent implements ImageGeneratorAgent {
         }
     }
 
-    /** 无图片时调用 /v1/images/generations */
     private boolean generateTextOnly(String prompt, String outputPath, String apiKey, String baseUrl, String size) {
         try {
             Map<String, Object> payload = Map.of(
-                "model",         "gpt-image-2",
-                "prompt",        prompt != null ? prompt : "product photo",
-                "size",          size,
-                "quality",       "high",
-                "output_format", "jpeg"
+                    "model", "gpt-image-2",
+                    "prompt", prompt != null ? prompt : "product photo",
+                    "size", size,
+                    "quality", "high",
+                    "output_format", "jpeg"
             );
 
             String jsonBody = mapper.writeValueAsString(payload);
@@ -231,7 +270,6 @@ public class GptImageAgent implements ImageGeneratorAgent {
 
             int status = conn.getResponseCode();
             String respBody;
-            // try-with-resources 关 stream，conn.disconnect() 不保证关闭内部流（B 阶段审查 #4）
             try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
                 respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
             } finally {
@@ -260,7 +298,8 @@ public class GptImageAgent implements ImageGeneratorAgent {
         }
 
         Map<String, Object> item = data.get(0);
-        new File(outputPath).getParentFile().mkdirs();
+        File parent = new File(outputPath).getParentFile();
+        if (parent != null) parent.mkdirs();
 
         if (item.containsKey("b64_json")) {
             byte[] imgBytes = Base64.getDecoder().decode((String) item.get("b64_json"));
@@ -281,8 +320,8 @@ public class GptImageAgent implements ImageGeneratorAgent {
 
     private void writeField(OutputStream os, String boundary, String name, String value) throws Exception {
         String part = "--" + boundary + "\r\n"
-            + "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n"
-            + value + "\r\n";
+                + "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n"
+                + value + "\r\n";
         os.write(part.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -290,8 +329,8 @@ public class GptImageAgent implements ImageGeneratorAgent {
         String filename = file.getName();
         String mime = filename.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
         String header = "--" + boundary + "\r\n"
-            + "Content-Disposition: form-data; name=\"" + fieldName + "\"; filename=\"" + filename + "\"\r\n"
-            + "Content-Type: " + mime + "\r\n\r\n";
+                + "Content-Disposition: form-data; name=\"" + fieldName + "\"; filename=\"" + filename + "\"\r\n"
+                + "Content-Type: " + mime + "\r\n\r\n";
         os.write(header.getBytes(StandardCharsets.UTF_8));
         os.write(Files.readAllBytes(file.toPath()));
         os.write("\r\n".getBytes(StandardCharsets.UTF_8));
@@ -302,12 +341,14 @@ public class GptImageAgent implements ImageGeneratorAgent {
             HttpURLConnection conn = (HttpURLConnection) new URL(imgUrl).openConnection();
             conn.setConnectTimeout(15_000);
             conn.setReadTimeout(60_000);
-            new File(outputPath).getParentFile().mkdirs();
+            File parent = new File(outputPath).getParentFile();
+            if (parent != null) parent.mkdirs();
             try (InputStream in = conn.getInputStream();
                  FileOutputStream fos = new FileOutputStream(outputPath)) {
                 in.transferTo(fos);
+            } finally {
+                conn.disconnect();
             }
-            conn.disconnect();
             log.info("GPT-Image 生成成功 (url) -> {}", outputPath);
             return true;
         } catch (Exception e) {

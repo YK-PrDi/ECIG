@@ -156,11 +156,14 @@ public class AppProperties {
     public static class GptImage {
         private java.util.List<String> apiKeys = new java.util.ArrayList<>();
         private String baseUrl = "https://api.linapi.net";
+        private java.util.Map<String, String> keyBaseUrls = new java.util.LinkedHashMap<>();
 
         public java.util.List<String> getApiKeys() { return apiKeys; }
         public void setApiKeys(java.util.List<String> apiKeys) { this.apiKeys = apiKeys; }
         public String getBaseUrl() { return baseUrl; }
         public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public java.util.Map<String, String> getKeyBaseUrls() { return keyBaseUrls; }
+        public void setKeyBaseUrls(java.util.Map<String, String> keyBaseUrls) { this.keyBaseUrls = keyBaseUrls; }
     }
 
     public static class Cos {

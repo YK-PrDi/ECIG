@@ -288,6 +288,7 @@
                         </button>
                         <div id="drawerPanels" style="width:100%;overflow:hidden;transition:max-height 0.3s cubic-bezier(0.4,0,0.2,1),opacity 0.25s;max-height:2000px;opacity:1;">
                         <div id="standardConfig" class="panel-view active">
+                            <input type="hidden" id="stdBgStyle" value="tech-blue">
                             <div class="config-group" style="min-width:150px;" id="grp-aspect">
                                 <label>图片比例</label>
                                 <div class="gf-select drop-up" tabindex="0">
@@ -363,6 +364,21 @@
                         </div>
 
                         <div id="customConfig" class="panel-view">
+                            <div class="config-group" style="min-width:220px;flex:1.2;display:flex;flex-direction:column;gap:4px;">
+                                <label>白底产品图 <span style="color:#EF4444;">*</span></label>
+                                <div style="font-size:0.72rem;color:var(--text-dim);line-height:1.45;padding:7px 10px;border:1px dashed var(--border);border-radius:6px;background:var(--surface-alt,#F8FAFC);">
+                                    自定义模式必须先上传 1 张白底产品图，AI 会以这张图作为产品主体进行分析和改图；不支持空文本直接生成。
+                                </div>
+                            </div>
+                            <div class="config-group custom-style-panel">
+                                <label>改图风格</label>
+                                <input type="hidden" id="customStyle" value="original">
+                                <button type="button" class="custom-style-trigger" onclick="openCustomStyleModal()">
+                                    <span id="customStyleSwatch" class="custom-style-swatch bg-original"></span>
+                                    <span id="customStyleText">原图延展</span>
+                                    <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </button>
+                            </div>
                             <div class="config-group" style="flex-direction:column; gap:4px;" id="grp-category">
                                 <label>产品类目</label>
                                 <div class="gf-select-header" onclick="openCustomCatModal()" style="cursor:pointer;">
@@ -461,79 +477,39 @@
                             <div class="kp-inline-panel">
                                 <div class="kp-inline-head">
                                     <div>
-                                        <label>开品方案配置</label>
-                                        <span>产品 A 的功能内核 + 产品 B 的造型语言</span>
+                                        <label>开品模式</label>
+                                        <span>上传白底产品图，选择素材库创意后融合生成</span>
                                     </div>
                                     <div id="kpStatusBadge" class="kp-status-badge">当前：未配置</div>
                                 </div>
 
-                                <div class="kp-inline-grid">
-                                    <div class="kp-inline-section kp-product-section">
-                                        <div class="kp-section-title">产品输入</div>
-                                        <div class="kp-product-row">
-                                            <div class="kp-modal-field">
-                                                <label>产品 A · 功能本体</label>
-                                                <input type="text" id="kpProductA" placeholder="如：手持挂烫机；水箱小、底板易刮花衣服" oninput="confirmKaiPinSettings()">
-                                                <div id="kpDropA" class="ec-img-drop kp-img-drop" onclick="document.getElementById('kpFileA').click()">
-                                                    <input type="file" id="kpFileA" accept="image/*" style="display:none" onchange="kpHandleFile('A', this)">
-                                                    <div id="kpThumbA" style="display:none"></div>
-                                                    <span id="kpHintA" class="ec-img-hint">上传 A 图</span>
-                                                </div>
-                                            </div>
-                                            <div class="kp-modal-field">
-                                                <label>产品 B · 造型灵感</label>
-                                                <input type="text" id="kpProductB" placeholder="如：几何折痕、不锈钢外骨骼、硬核工业风" oninput="confirmKaiPinSettings()">
-                                                <div id="kpDropB" class="ec-img-drop kp-img-drop" onclick="document.getElementById('kpFileB').click()">
-                                                    <input type="file" id="kpFileB" accept="image/*" style="display:none" onchange="kpHandleFile('B', this)">
-                                                    <div id="kpThumbB" style="display:none"></div>
-                                                    <span id="kpHintB" class="ec-img-hint">上传 B 图</span>
-                                                </div>
-                                            </div>
+                                <div class="kp-inline-section kp-drawer-simple">
+                                    <div class="kp-modal-field kp-product-main">
+                                        <label>白底产品图 / 产品描述</label>
+                                        <input type="text" id="kpProductA" placeholder="如：手持挂烫机、桌面音箱、香薰机..." oninput="confirmKaiPinSettings()">
+                                        <div id="kpDropA" class="ec-img-drop kp-img-drop" onclick="document.getElementById('kpFileA').click()">
+                                            <input type="file" id="kpFileA" accept="image/*" style="display:none" onchange="kpHandleFile('A', this)">
+                                            <div id="kpThumbA" style="display:none"></div>
+                                            <span id="kpHintA" class="ec-img-hint">上传白底产品图</span>
                                         </div>
                                     </div>
-
-                                    <div class="kp-inline-section kp-strategy-section">
-                                        <div class="kp-section-title">策略</div>
-                                        <div class="kp-modal-field">
-                                            <label>一句广告语 / 目标人群 <span class="kp-required">*</span></label>
-                                            <input type="text" id="kpSelling" required placeholder="如：像艺术品一样省电的空调；目标人群：科技极客 + 颜值党" oninput="confirmKaiPinSettings()">
-                                        </div>
-                                        <div class="kp-inline-options">
-                                            <div class="kp-modal-field">
-                                                <label>方案侧重</label>
-                                                <div class="ec-imgtype-group kp-option-grid">
-                                                    <label class="ec-imgtype-btn active"><input type="radio" name="kpFocus" value="cost" checked onchange="kpToggleCustomFocus();confirmKaiPinSettings()"><span>量产</span></label>
-                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpFocus" value="premium" onchange="kpToggleCustomFocus();confirmKaiPinSettings()"><span>溢价</span></label>
-                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpFocus" value="disruptive" onchange="kpToggleCustomFocus();confirmKaiPinSettings()"><span>创新</span></label>
-                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpFocus" value="custom" onchange="kpToggleCustomFocus();confirmKaiPinSettings()"><span>自定义</span></label>
-                                                </div>
-                                                <input type="text" id="kpFocusCustom" class="kp-custom-input" placeholder="自定义方案侧重" style="display:none" oninput="confirmKaiPinSettings()">
-                                            </div>
-                                            <div class="kp-modal-field">
-                                                <label>视觉风格</label>
-                                                <div class="ec-imgtype-group kp-option-grid kp-style-grid">
-                                                    <label class="ec-imgtype-btn active"><input type="radio" name="kpStyle" value="" checked onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>不指定</span></label>
-                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="dopamine" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>多巴胺</span></label>
-                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="wood" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>木元素</span></label>
-                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="minimal" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>极简</span></label>
-                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="cyberpunk" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>赛博</span></label>
-                                                    <label class="ec-imgtype-btn"><input type="radio" name="kpStyle" value="custom" onchange="kpToggleStyleCustom();confirmKaiPinSettings()"><span>自定义</span></label>
-                                                </div>
-                                                <input type="text" id="kpStyleCustom" class="kp-custom-input" placeholder="自定义视觉风格描述" style="display:none" oninput="confirmKaiPinSettings()">
-                                            </div>
-                                        </div>
+                                    <div class="kp-modal-field">
+                                        <label>补充要求</label>
+                                        <input type="text" id="kpSelling" placeholder="可选：目标人群、卖点、风格偏好..." oninput="confirmKaiPinSettings()">
                                     </div>
-
-                                    <div class="kp-inline-section kp-output-section">
-                                        <div class="kp-section-title">输出</div>
-                                        <div class="kp-modal-field kp-count-row">
-                                            <label>生成张数</label>
-                                            <input type="number" id="kpCount" min="1" max="50" value="1" oninput="confirmKaiPinSettings()">
-                                            <span>1-50</span>
+                                    <div class="kp-library-entry">
+                                        <div class="kp-library-state">
+                                            <span>素材库引用</span>
+                                            <strong id="kpDbSelectCount">未选择</strong>
                                         </div>
-                                        <div id="kpSummaryPreview" class="kp-summary-preview"></div>
+                                        <button type="button" class="kp-open-library-btn" onclick="openKaiPinMaterialDb()">
+                                            <span>打开素材库页面</span>
+                                            <small>采集素材、生成提示词、选择数据库引用</small>
+                                        </button>
                                     </div>
                                 </div>
+                                <div id="kpSummaryPreview" class="kp-summary-preview"></div>
+                                <textarea id="kpGuidePrompt" class="kp-guide-textarea" style="display:none;" aria-hidden="true">提示词：请对这个产品从几何结构、体量感（轻盈/厚重/悬浮感）、仿生学元素、模块化程度（一体成型 / 可拆卸 / 堆叠式设计）、主色调、辅色、风格标签（科技极简/复古怀旧/赛博朋克/可爱治愈）的角度进行产品外观设计分析</textarea>
                             </div>
                         </div>
 
@@ -671,6 +647,119 @@
             const d = document.createElement('div');
             d.textContent = str;
             return d.innerHTML;
+        }
+
+        const STD_BG_STYLES = {
+            'tech-blue': {
+                label: '科技蓝',
+                prompt: '背景风格为科技蓝：冷色调蓝白渐变、干净未来感、轻微发光线条、玻璃质感平台、精密科技产品棚拍光效，突出理性、高端、智能。'
+            },
+            'girl-pink': {
+                label: '少女粉',
+                prompt: '背景风格为少女粉：柔和粉白渐变、轻盈治愈氛围、细腻柔光、圆润道具、干净甜美但不过度幼稚，突出亲和、精致、好用。'
+            },
+            'premium-gray': {
+                label: '高级灰',
+                prompt: '背景风格为高级灰：浅灰到炭灰的层次背景、克制留白、柔和阴影、高端商业摄影质感，突出品质、专业、耐看。'
+            },
+            'natural-green': {
+                label: '自然绿',
+                prompt: '背景风格为自然绿：低饱和植物绿、自然光、清爽生活方式场景、木质或石材细节，突出环保、健康、舒适。'
+            },
+            'sunset-orange': {
+                label: '暖阳橙',
+                prompt: '背景风格为暖阳橙：暖橙色夕阳光感、温暖渐变、柔和高光和长阴影，突出活力、温度、生活幸福感。'
+            },
+            'cyber-black': {
+                label: '赛博黑',
+                prompt: '背景风格为赛博黑：深色背景、蓝紫霓虹边缘光、金属反射、未来都市科技氛围，突出先锋、酷感、强视觉冲击。'
+            }
+        };
+
+        const CUSTOM_IMAGE_STYLES = {
+            original: {
+                label: '原图延展',
+                prompt: '【自定义改图风格】以白底产品图为主体基准，不强行套用夸张风格；根据用户需求自然扩写场景、光影、材质和卖点表达，保持产品外形、颜色、结构细节高度一致。'
+            },
+            'tech-blue': {
+                label: '科技蓝',
+                prompt: '【自定义改图风格·科技蓝】画面采用蓝白科技感背景、冷色调高光、玻璃/金属质感平台和精密商业棚拍布光，突出智能、高端、理性、专业。'
+            },
+            'girl-pink': {
+                label: '少女粉',
+                prompt: '【自定义改图风格·少女粉】画面采用柔和粉白色调、轻盈治愈氛围、圆润道具、细腻柔光和干净背景，突出亲和、精致、甜美但不过度幼稚。'
+            },
+            'premium-gray': {
+                label: '高级灰',
+                prompt: '【自定义改图风格·高级灰】画面采用浅灰到炭灰的层次背景、克制留白、柔和阴影和高端商业摄影质感，突出品质、专业、耐看和高客单价感。'
+            },
+            'natural-green': {
+                label: '自然绿',
+                prompt: '【自定义改图风格·自然绿】画面采用低饱和植物绿、自然光、清爽生活方式场景、木质或石材细节，突出环保、健康、舒适和生活方式价值。'
+            },
+            'sunset-orange': {
+                label: '暖阳橙',
+                prompt: '【自定义改图风格·暖阳橙】画面采用暖橙夕阳光感、温暖渐变、柔和高光和长阴影，突出活力、温度、生活幸福感和情绪感染力。'
+            }
+        };
+
+        function selectStdBgStyle(btn) {
+            const panel = btn.closest('#standardConfig');
+            panel?.querySelectorAll('.std-bg-card').forEach(el => el.classList.remove('active'));
+            btn.classList.add('active');
+            const input = document.getElementById('stdBgStyle');
+            if (input) input.value = btn.dataset.value || 'tech-blue';
+        }
+
+        function openCustomStyleModal() {
+            const modal = document.getElementById('customStyleModal');
+            if (modal) modal.classList.add('show');
+        }
+
+        function closeCustomStyleModal() {
+            const modal = document.getElementById('customStyleModal');
+            if (modal) modal.classList.remove('show');
+        }
+
+        function selectCustomStyle(btn) {
+            document.querySelectorAll('#customStyleModal .custom-style-card').forEach(el => el.classList.remove('active'));
+            btn.classList.add('active');
+            const value = btn.dataset.value || 'original';
+            const input = document.getElementById('customStyle');
+            if (input) input.value = value;
+            const info = CUSTOM_IMAGE_STYLES[value] || CUSTOM_IMAGE_STYLES.original;
+            const text = document.getElementById('customStyleText');
+            if (text) text.textContent = info.label;
+            const swatch = document.getElementById('customStyleSwatch');
+            if (swatch) swatch.className = `custom-style-swatch bg-${value}`;
+            closeCustomStyleModal();
+        }
+
+        function getCustomStyleInfo() {
+            const key = document.getElementById('customStyle')?.value || 'original';
+            return CUSTOM_IMAGE_STYLES[key] || CUSTOM_IMAGE_STYLES.original;
+        }
+
+        function buildCustomStylePrompt() {
+            return getCustomStyleInfo().prompt;
+        }
+
+        function buildStdAutoPrompt(userPrompt) {
+            const key = document.getElementById('stdBgStyle')?.value || 'tech-blue';
+            const style = STD_BG_STYLES[key] || STD_BG_STYLES['tech-blue'];
+            const extra = (userPrompt || '').trim();
+            return [
+                '【自动生图】请以用户上传的产品图片为唯一产品主体，保持产品外形、比例、材质、颜色、结构细节和识别特征高度一致。',
+                style.prompt,
+                '请自动扩写画面细节：根据产品可见结构推断合适的摆放角度、接触阴影、反射、高光、景深、镜头焦段和商业摄影布光；背景服务于产品，不遮挡主体。',
+                '画面要求：单一清晰产品主体，电商主图级质感，高清真实，构图稳定，边缘干净，产品完整可见。',
+                extra ? `用户补充要求：${extra}` : '',
+                '禁止：改变产品主体造型、额外生成多个无关产品、错乱结构、文字海报、水印、logo、低清晰度、畸变、过曝。'
+            ].filter(Boolean).join('\n');
+        }
+
+        function resolveImageAgentId(agentId) {
+            return agentId === 'gemini' ? 'gpt-image' : (agentId || 'gpt-image');
         }
 
         function base64Utf8(str) {
@@ -964,131 +1053,225 @@
         function renderCatLevel() {}
         function selectCat() {}
 
-        // ── 豆包图片分析 & 批量生图 ──
-        const DOUBAO_API_KEY = '34e179d9-eca6-4ba2-b05f-94a7ed1ca97b';
-        const DOUBAO_MODEL = 'doubao-seed-2-0-lite-260215';
-        const DOUBAO_ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3/responses';
-
-        async function analyzeWithDoubao(base64List, userPrompt, count) {
-            const imageInputs = base64List.map(b64 => ({
-                type: 'input_image',
-                image_url: b64.startsWith('data:') ? b64 : `data:image/jpeg;base64,${b64}`
-            }));
-            const payload = {
-                model: DOUBAO_MODEL,
-                input: [{ role: 'user', content: [
-                    ...imageInputs,
-                    { type: 'input_text', text:
-                        `请分析以上图片，结合用户描述："${userPrompt || '无'}"，` +
-                        `生成 ${count} 段适合AI生图的中文提示词，每段不超过150字，段与段之间用"---"分隔，不要加序号。` }
-                ]}]
-            };
-            const res = await fetch(DOUBAO_ENDPOINT, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${DOUBAO_API_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+        // ── Gemini 图片分析 & 批量生图 ──
+        async function analyzeWithGemini(files, userPrompt, count) {
+            const fd = new FormData();
+            files.forEach(f => fd.append('images', f));
+            fd.append('prompt', userPrompt || '');
+            fd.append('count', String(count || 1));
+            const res = await fetch('/api/custom_analyze', { method: 'POST', body: fd });
             const data = await res.json();
-            return data?.output?.find(o => o.type === 'message')
-                ?.content?.find(c => c.type === 'output_text')?.text || '';
+            if (!res.ok || data.error) throw new Error(data.error || 'Gemini 分析失败');
+            return data.text || '';
         }
 
-        function splitDoubaoResult(text, count) {
+        function splitAnalysisResult(text, count) {
             const parts = text.split(/\n?---\n?/).map(s => s.trim()).filter(Boolean);
-            while (parts.length < count) parts.push('');
+            if (!parts.length) {
+                throw new Error('Gemini 未返回可用分析内容');
+            }
+            const fallback = parts[parts.length - 1];
+            while (parts.length < count) {
+                parts.push(`${fallback}\n请生成第 ${parts.length + 1} 张差异化画面：保持产品主体与白底图一致，换一个可见卖点证明方式、场景道具、构图角度或光影表达。`);
+            }
             return parts.slice(0, count);
+        }
+
+        function buildCustomFallbackSegments(userPrompt, customStylePrompt, count) {
+            const base = [
+                '【安装方式】根据白底产品图中可见的底部、背部、握持区或接触面，推断适合台置、手持、壁挂、夹持或免安装使用；生成时必须保持产品主体与白底图一致，固定点、承重点和接触面要真实可信。',
+                '【形态结构】产品主体保持白底图一致，锁定外轮廓、体块比例、边角转折、接口/按键/开孔、支撑件和功能区层级；不改变颜色、结构、材质和识别特征。',
+                '【背景风格/视觉基调】结合用户要求和所选风格设计背景，空间干净、有商业摄影质感，背景只服务产品卖点表达，不能遮挡或抢走主体。',
+                '【材质/工艺】根据白底图可见材质拓写哑光、亮面、金属、塑胶、玻璃、硅胶、喷涂、倒角、接缝、纹理和反光差异，让产品看起来真实可制造。',
+                '【卖点场景构图】严格拓写用户卖点，把痛点、功能利益、购买理由转成画面证据；包含具体使用场景、道具或动作、产品状态、镜头角度、全貌/局部质感和光影策略。'
+            ].join('\n');
+            const extra = [userPrompt, customStylePrompt].filter(Boolean).join('\n');
+            const safeCount = Math.max(1, parseInt(count, 10) || 1);
+            return Array.from({ length: safeCount }, (_, i) => [
+                base,
+                extra ? `用户要求：${extra}` : '',
+                safeCount > 1 ? `差异化要求：这是第 ${i + 1} 张，换一个场景构图、镜头角度、道具组合或光影调性，但产品主体必须保持一致。` : ''
+            ].filter(Boolean).join('\n'));
         }
 
         let _doubaoConfirmed = false;
 
         async function triggerDoubaoInline() {
             const files = [...droppedFiles];
+            if (files.length === 0) {
+                alert('自定义模式需要先上传 1 张白底产品图。请点击“图片”或拖拽 / 粘贴白底图后再发送。');
+                return;
+            }
             const userPrompt = document.getElementById('promptInput').value.trim();
             const count = parseInt(document.getElementById('customCount')?.value, 10) || 1;
+            const customStylePrompt = buildCustomStylePrompt();
+            const doubaoUserPrompt = [userPrompt, customStylePrompt].filter(Boolean).join('\n');
+            const customStyleLabel = getCustomStyleInfo().label;
 
             const containerId = 'doubao-inline-' + Date.now();
-            appendMessage('ai', `<div id="${containerId}" style="min-width:280px;width:100%;"><div style="color:var(--text-dim);font-size:0.85rem;">⏳ 豆包分析中...</div></div>`, true);
-            // 让豆包气泡更宽，不受 75% 限制
+            appendMessage('ai', `
+                <div id="${containerId}" class="doubao-panel">
+                    <div class="doubao-loading">Gemini 分析中...</div>
+                </div>
+            `, true);
             const bubble = document.getElementById(containerId)?.closest('.msg-bubble');
-            if (bubble) bubble.style.maxWidth = '90%';
+            if (bubble) bubble.classList.add('msg-wide');
 
             let result = '';
+            let analysisFallbackReason = '';
             try {
-                const base64List = await Promise.all(files.map(f => new Promise(res => {
-                    const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(f);
-                })));
-                result = await analyzeWithDoubao(base64List, userPrompt, count);
+                result = await analyzeWithGemini(files, doubaoUserPrompt, count);
             } catch(e) {
-                console.warn('豆包调用失败', e);
-                result = userPrompt || '';
+                console.warn('Gemini 分析调用失败', e);
+                analysisFallbackReason = e.message || String(e);
             }
 
-            const segments = splitDoubaoResult(result, count);
+            let segments;
+            if (analysisFallbackReason) {
+                segments = buildCustomFallbackSegments(userPrompt, customStylePrompt, count);
+            } else {
+                try {
+                    segments = splitAnalysisResult(result, count);
+                } catch (e) {
+                    analysisFallbackReason = e.message || String(e);
+                    segments = buildCustomFallbackSegments(userPrompt, customStylePrompt, count);
+                }
+            }
             const container = document.getElementById(containerId);
             if (!container) return;
             container.innerHTML = `
-                <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:12px;">豆包分析完成，共 ${segments.length} 段，可编辑后发送：</div>
-                ${segments.map((seg, i) => `
-                    <div style="margin-bottom:12px; background:var(--bg-panel); padding:8px 10px; border-radius:8px; border:1px solid var(--border);">
-                        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:6px;font-weight:500;">第 ${i+1} 张</div>
-                        <textarea class="doubao-ta" data-index="${i}"
-                            style="display:block;width:100%;min-height:56px;padding:6px;border:1px solid rgba(128,128,128,0.2);
-                            border-radius:6px;font-size:0.8rem;resize:vertical;line-height:1.5;
-                            background:var(--bg);color:var(--text-main);box-sizing:border-box;">${seg.trim()}</textarea>
-                    </div>`).join('')}
-                <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
-                    <button onclick="cancelDoubaoInline('${containerId}')"
-                        style="padding:6px 16px;border:1px solid var(--border);border-radius:8px;
-                        background:transparent;color:var(--text-main);font-size:0.85rem;cursor:pointer;">取消</button>
-                    <button id="btn-${containerId}" onclick="confirmDoubaoInline('${containerId}')"
-                        style="padding:6px 16px;background:var(--primary);color:#fff;border:none;
-                        border-radius:8px;font-size:0.85rem;cursor:pointer;">发送生图</button>
+                <div class="doubao-panel-head">
+                    <div>
+                        <div class="doubao-panel-title">${analysisFallbackReason ? '直接生图提示词' : 'Gemini 分析结果'}</div>
+                        <div class="doubao-panel-subtitle">风格：${escHtml(customStyleLabel)}；共 ${segments.length} 段，${analysisFallbackReason ? `Gemini 分析失败，已降级为可编辑提示词：${escHtml(analysisFallbackReason)}` : '已按白底产品图和卖点拓写，可继续编辑'}</div>
+                    </div>
+                    <div class="doubao-count">${segments.length} 张</div>
+                </div>
+                <div class="doubao-grid">
+                    ${segments.map((seg, i) => `
+                        <div class="doubao-card">
+                            <div class="doubao-card-head">
+                                <span>第 ${i+1} 张</span>
+                                <span>${seg.trim().length} 字</span>
+                            </div>
+                            <textarea class="doubao-ta" data-index="${i}">${escHtml(seg.trim())}</textarea>
+                        </div>`).join('')}
+                </div>
+                <div class="doubao-actions">
+                    <button class="doubao-cancel" onclick="cancelDoubaoInline('${containerId}')">取消</button>
+                    <button class="doubao-submit" id="btn-${containerId}" onclick="confirmDoubaoInline('${containerId}')">发送生图</button>
                 </div>`;
             container._files = files;
+            container._customStyleLabel = customStyleLabel;
+            container._customStylePrompt = customStylePrompt;
         }
 
         async function confirmDoubaoInline(containerId) {
             const container = document.getElementById(containerId);
             if (!container) return;
+            if (container._submitting) return;
+            container._submitting = true;
+            container.classList.add('doubao-submitting');
 
             const confirmBtn = document.getElementById(`btn-${containerId}`);
             const cancelBtn = container.querySelector('button[onclick*="cancel"]');
+            const actions = container.querySelector('.doubao-actions');
+            let statusEl = container.querySelector('.doubao-submit-status');
+            if (!statusEl) {
+                statusEl = document.createElement('div');
+                statusEl.className = 'doubao-submit-status';
+                if (actions) {
+                    actions.parentNode.insertBefore(statusEl, actions);
+                } else {
+                    container.appendChild(statusEl);
+                }
+            }
+            statusEl.textContent = '已收到，正在提交生图任务，请稍候...';
+            statusEl.dataset.state = 'pending';
             if (confirmBtn) {
                 confirmBtn.disabled = true;
-                confirmBtn.innerHTML = '⏳ 发送中...';
-                confirmBtn.style.opacity = '0.7';
-                confirmBtn.style.cursor = 'not-allowed';
+                confirmBtn.textContent = '提交中...';
             }
             if (cancelBtn) {
-                cancelBtn.style.display = 'none';
+                cancelBtn.disabled = true;
             }
 
             const tas = [...container.querySelectorAll('.doubao-ta')];
+            tas.forEach(ta => {
+                ta.disabled = true;
+            });
             const files = container._files || [];
+            if (files.length === 0) {
+                container.innerHTML = `<div style="font-size:0.85rem;color:#EF4444;">自定义模式缺少白底产品图，请重新上传白底图后再发送。</div>`;
+                return;
+            }
             _doubaoConfirmed = true;
 
-            let sentCount = 0;
-            for (let i = 0; i < tas.length; i++) {
-                const prompt = tas[i].value.trim();
-                if (!prompt) continue;
-                droppedFiles = files.length > 0 ? [files[Math.min(i, files.length - 1)]] : [];
-                document.getElementById('promptInput').value = prompt;
-                await executeTask();
-                sentCount++;
-                await new Promise(r => setTimeout(r, 800));
-            }
-            _doubaoConfirmed = false;
+            const categoryPrompt = selectedPrompt?.prompt || '';
+            const customStyleLabel = container._customStyleLabel || getCustomStyleInfo().label;
+            const prompts = tas
+                .map(ta => [ta.value.trim(), categoryPrompt].filter(Boolean).join('\n'))
+                .filter(Boolean);
 
-            if (sentCount > 0) {
+            if (prompts.length > 0) {
+                try {
+                    const selectedAgentId = document.getElementById('agentSelect')?.value || 'gpt-image';
+                    const agentId = resolveImageAgentId(selectedAgentId);
+                    const formData = new FormData();
+                    files.forEach(f => formData.append('images', f));
+                    prompts.forEach(p => formData.append('prompt', p));
+                    formData.append('count', '1');
+                    formData.append('multiPrompt', 'true');
+                    formData.append('agentId', agentId);
+                    formData.append('aspect', document.getElementById('customAspect') ? document.getElementById('customAspect').value : 'auto');
+                    formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
+                    formData.append('sessionId', SESSION_ID);
+                    formData.append('mode', 'custom');
+
+                    captureLastGen('/api/custom_generate', formData, `[白底图改图任务] Gemini 批量 ${prompts.length} 张`);
+                    appendMessage('user', `[白底图改图任务] Gemini 分析后批量提交\n模型: ${agentId}${selectedAgentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}\n风格: ${customStyleLabel}\n提示词: ${prompts.length} 段 → ${prompts.length} 张图`);
+                    statusEl.textContent = `已提交请求，正在等待服务器创建任务（${prompts.length} 张图）...`;
+
+                    const resp = await fetch('/api/custom_generate', { method: 'POST', body: formData });
+                    const data = await resp.json();
+                    if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
+                    statusEl.textContent = '任务已创建，正在进入生成进度...';
+                    statusEl.dataset.state = 'success';
+                    clearFiles();
+                    document.getElementById('promptInput').value = '';
+                    insertProgressCard(data.taskId);
+                    startPolling(data.taskId);
+                } catch (e) {
+                    _doubaoConfirmed = false;
+                    container._submitting = false;
+                    container.classList.remove('doubao-submitting');
+                    tas.forEach(ta => {
+                        ta.disabled = false;
+                    });
+                    if (confirmBtn) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = '发送生图';
+                    }
+                    if (cancelBtn) cancelBtn.disabled = false;
+                    if (statusEl) {
+                        statusEl.textContent = '提交失败，请检查网络或后端服务后重试：' + e.message;
+                        statusEl.dataset.state = 'error';
+                    }
+                    appendMessage('ai', '生成提交失败：' + e.message);
+                    return;
+                }
+
                 container.innerHTML = `
                     <div style="padding: 10px 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; color: #10B981; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                        已成功提交 ${sentCount} 个生图任务
+                        已成功提交 1 个生图任务，共 ${prompts.length} 张图
                     </div>
                 `;
             } else {
                 container.innerHTML = `<div style="font-size:0.85rem;color:var(--text-dim);">已取消（未输入任何有效提示词）</div>`;
             }
+            _doubaoConfirmed = false;
+            container._submitting = false;
         }
 
         function cancelDoubaoInline(containerId) {
@@ -1226,6 +1409,18 @@
             const grpGptSize = document.getElementById('grp-gpt-size');
             const grpGptQuality = document.getElementById('grp-gpt-quality');
             const grpGptInpaint = document.getElementById('grp-gpt-inpaint');
+
+            if (currentMode === 'standard') {
+                if(grpAspect) grpAspect.style.display = 'none';
+                if(grpNegPrompt) grpNegPrompt.style.display = 'none';
+                if(grpBatch) grpBatch.classList.remove('disabled');
+                if(grpGptSize) grpGptSize.style.display = 'none';
+                if(grpGptQuality) grpGptQuality.style.display = 'none';
+                if(grpGptInpaint) grpGptInpaint.style.display = 'none';
+                const tog = document.getElementById('gptInpaintToggle');
+                if(tog) tog.checked = false;
+                return;
+            }
 
             if(agent.includes('dall') || agent.includes('gpt')) {
                 if(grpAspect) grpAspect.style.display = 'none';
@@ -1868,20 +2063,22 @@
             }
 
             if (mode === 'standard') {
-                input.placeholder = '描述想生成的产品图...';
+                input.placeholder = '上传一张产品图，选择背景风格，可补充少量要求后发送...';
                 sendBtn.className = 'btn-send';
             } else if (mode === 'custom') {
-                input.placeholder = '描述对参考图的修改...';
+                input.placeholder = '先选择改图风格并上传白底产品图，再描述改图需求...';
                 sendBtn.className = 'btn-send custom';
             } else if (mode === 'ecommerce') {
                 input.placeholder = '客户附加要求（可留空）...';
                 sendBtn.className = 'btn-send custom';
             } else if (mode === 'product') {
-                input.placeholder = '描述您希望分析的产品维度...';
+                input.placeholder = '上传产品图，或填写产品描述后进行外观分析...';
                 sendBtn.className = 'btn-send custom';
-                sidebar.classList.add('minimized');
+                sidebar.classList.remove('minimized');
                 kpRenderThumb('A');
                 kpRenderThumb('B');
+                kpRenderMaterialThumb();
+                updateKaiPinDbBadge();
                 kpToggleCustomFocus();
                 kpToggleStyleCustom();
                 confirmKaiPinSettings();
@@ -2154,6 +2351,57 @@
             let apiPath = '/api/generate';
 
             if (currentMode === 'standard') {
+                if (droppedFiles.length > 0) {
+                    apiPath = '/api/custom_generate';
+                    const finalPrompt = buildStdAutoPrompt(prompt);
+                    const count = Math.max(1, Math.min(50, payload.batchCount || 1));
+                    const formData = new FormData();
+                    droppedFiles.forEach(f => formData.append('images', f));
+                    formData.append('prompt', finalPrompt);
+                    formData.append('count', String(count));
+                    formData.append('agentId', agentId);
+                    formData.append('sessionId', SESSION_ID);
+                    formData.append('mode', 'standard');
+                    formData.append('aspect', payload.aspect || '1:1');
+                    if (payload.negativePrompt) formData.append('negativePrompt', payload.negativePrompt);
+
+                    const bgKey = document.getElementById('stdBgStyle')?.value || 'tech-blue';
+                    const bgLabel = (STD_BG_STYLES[bgKey] || STD_BG_STYLES['tech-blue']).label;
+                    const imgDataUrl = await new Promise(res => {
+                        const r = new FileReader();
+                        r.onload = e => res(e.target.result);
+                        r.onerror = () => res('');
+                        r.readAsDataURL(droppedFiles[0]);
+                    });
+                    const userHtml = `
+                        <div class="std-submit-msg">
+                            ${imgDataUrl ? `<img src="${imgDataUrl}" class="std-submit-thumb" alt="参考产品图">` : ''}
+                            <div class="std-submit-meta">
+                                <strong>自动生图</strong>
+                                <span>模型：${escapeHtml(agentId)}</span>
+                                <span>背景风格：${escapeHtml(bgLabel)}</span>
+                                <span>生成张数：${count}</span>
+                                <span>参考图：${droppedFiles.length} 张</span>
+                                ${prompt ? `<span>补充：${escapeHtml(prompt)}</span>` : ''}
+                            </div>
+                        </div>`;
+                    appendMessage('user', userHtml, true);
+
+                    try {
+                        promptInput.value = '';
+                        captureLastGen(apiPath, formData, `[自动生图] ${bgLabel} ${count} 张`);
+                        const resp = await fetch(apiPath, { method: 'POST', body: formData });
+                        const data = await resp.json();
+                        if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
+                        clearFiles();
+                        insertProgressCard(data.taskId);
+                        startPolling(data.taskId);
+                    } catch (e) {
+                        appendMessage('ai', '启动失败：' + e.message);
+                    }
+                    return;
+                }
+
                 if (ids.length === 0) return alert('请选择产品');
                 payload.productIds = ids;
                 payload.sessionId = SESSION_ID;
@@ -2179,35 +2427,31 @@
                 }
 
             } else if (currentMode === 'custom') {
-                // 未经豆包确认时，先走豆包分析流程
+                if (droppedFiles.length === 0) {
+                    alert('自定义模式必须上传白底产品图。请先点击“图片”上传，或直接拖拽 / Ctrl+V 粘贴白底图。');
+                    return;
+                }
+
+                // 未经分析确认时，先走 Gemini 图片分析流程
                 if (!_doubaoConfirmed) {
                     triggerDoubaoInline();
                     promptInput.value = '';
-                    clearFiles();
                     return;
                 }
 
                 apiPath = '/api/custom_generate';
 
                 // 合并类目提示词与用户输入
-                const finalPrompt = [prompt, selectedPrompt.prompt].filter(Boolean).join('\n') || '自动生成';
+                const customStyleInfo = getCustomStyleInfo();
+                const customStylePrompt = buildCustomStylePrompt();
+                const finalPrompt = [prompt, customStylePrompt, selectedPrompt.prompt].filter(Boolean).join('\n') || '自动生成';
 
-                // gemini 不支持纯文生图，无图时自动切换到 gpt-image
-                const effectiveAgentId = (agentId === 'gemini' && droppedFiles.length === 0 && !sessionImagePath)
-                    ? 'gpt-image' : agentId;
+                const effectiveAgentId = resolveImageAgentId(agentId);
                 payload.prompt = finalPrompt;
                 if (selectedPrompt.negativePrompt) payload.negativePrompt = selectedPrompt.negativePrompt;
 
                 const formData = new FormData();
-                if (droppedFiles.length > 0) {
-                    droppedFiles.forEach(f => formData.append('images', f));
-                } else if (sessionImagePath) {
-                    // 无新图时用上次生成结果作为重绘基底
-                    try {
-                        const blob = await fetch(toImgUrl(sessionImagePath)).then(r => r.blob());
-                        formData.append('images', new File([blob], 'session_base.jpg', { type: blob.type || 'image/jpeg' }));
-                    } catch (_) {}
-                }
+                droppedFiles.forEach(f => formData.append('images', f));
 
                 for (const key in payload) {
                     formData.append(key, payload[key]);
@@ -2221,24 +2465,19 @@
                 formData.append('sessionId', SESSION_ID);
                 formData.append('mode', 'custom');
 
-                const hasBase = droppedFiles.length > 0 || sessionImagePath;
-                const taskLabel = hasBase ? '重绘任务' : '文生图任务';
+                const taskLabel = '白底图改图任务';
 
                 // 用户消息：若有图片则显示图片缩略图
-                if (droppedFiles.length > 0) {
-                    const imgDataUrl = await new Promise(res => {
-                        const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(droppedFiles[0]);
-                    });
-                    appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>[${taskLabel}] 模型: ${agentId}<br>${finalPrompt}</span>`, true);
-                } else {
-                    appendMessage('user', `[${taskLabel}] 模型: ${agentId}\n提示词: ${finalPrompt}`);
-                }
+                const imgDataUrl = await new Promise(res => {
+                    const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(droppedFiles[0]);
+                });
+                appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>[${taskLabel}] 模型: ${effectiveAgentId}${agentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}<br>风格：${escHtml(customStyleInfo.label)}<br>${escHtml(finalPrompt).replace(/\n/g, '<br>')}</span>`, true);
 
                 try {
 
                     promptInput.value = '';
 
-                    captureLastGen(apiPath, formData, `[${taskLabel}] 模型 ${agentId}`);
+                    captureLastGen(apiPath, formData, `[${taskLabel}] 模型 ${effectiveAgentId}`);
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
@@ -2333,41 +2572,36 @@
                 }
 
             } else if (currentMode === 'product') {
-                // 开品模式融合分析流程：第一步分析 → 第二步生图
+                // 开品模式外观分析流程：第一步固定维度分析 → 第二步生图
                 const a = (document.getElementById('kpProductA')?.value || '').trim();
                 const b = (document.getElementById('kpProductB')?.value || '').trim();
                 const sel = (document.getElementById('kpSelling')?.value || '').trim();
+                const guide = (document.getElementById('kpGuidePrompt')?.value || '').trim();
                 const focus = document.querySelector('input[name="kpFocus"]:checked')?.value || 'cost';
                 const focusText = (document.getElementById('kpFocusCustom')?.value || '').trim();
                 const style = document.querySelector('input[name="kpStyle"]:checked')?.value || '';
                 const styleText = (document.getElementById('kpStyleCustom')?.value || '').trim();
-                const count = parseInt(document.getElementById('kpCount')?.value, 10) || 1;
+                const count = 1;
 
-                // 验证：A/B 至少各有一个（文字或图片）
+                // 验证：新版开品模式以白底产品图为主体，数据库素材只作为创意参考
                 const hasA = !!a || !!window.kpRefA;
-                const hasB = !!b || !!window.kpRefB;
-                if (!hasA || !hasB) {
-                    alert('开品模式需要给 A 和 B 各提供材料：每边可以填文字、传图片、或两者都给');
-                    return;
-                }
-                if (!sel) {
-                    alert('开品模式需要填写"核心卖点 / 一句广告语"（必填）');
+                if (!hasA) {
+                    alert('开品模式需要先上传白底产品图，或填写一段产品描述用于分析');
                     return;
                 }
 
-                // 用户消息：显示 A/B 和卖点
-                const aLabel = a ? a.substring(0, 30) + (a.length > 30 ? '...' : '') : '（图片）';
-                const bLabel = b ? b.substring(0, 30) + (b.length > 30 ? '...' : '') : '（图片）';
-                const headline = `[开品分析] 产品 A: ${aLabel}\n产品 B: ${bLabel}\n卖点: ${sel.substring(0, 40)}${sel.length > 40 ? '...' : ''}`;
+                // 用户消息：显示产品材料和补充要求
+                const aLabel = a ? a.substring(0, 36) + (a.length > 36 ? '...' : '') : (window.kpRefA ? '已上传产品图' : '');
+                const headline = `[开品外观分析]\n产品材料: ${aLabel}\n数据库素材: ${(window.kpSelectedMaterialIds || []).length} 条\n补充: ${sel ? sel.substring(0, 50) + (sel.length > 50 ? '...' : '') : '无'}`;
                 appendMessage('user', headline);
 
-                // 第一步：调用融合分析接口
+                // 第一步：调用开品外观分析接口
                 const formData = new FormData();
                 if (window.kpRefA) formData.append('imageA', window.kpRefA);
                 if (window.kpRefB) formData.append('imageB', window.kpRefB);
                 formData.append('productA', a);
                 formData.append('productB', b);
-                formData.append('selling', sel);
+                formData.append('selling', [guide, sel].filter(Boolean).join('\n'));
                 formData.append('focus', focus);
                 if (focusText) formData.append('focusText', focusText);
                 formData.append('style', style);
@@ -2380,7 +2614,7 @@
                     if (!resp.ok || data.error) throw new Error(data.error || '分析失败');
 
                     // 渲染分析卡片（带上原始参数，供二次生图使用）
-                    renderKaiPinAnalysisCards(data.fields || [], { a, b, sel, focus, focusText, style, styleText, count, agentId });
+                    renderKaiPinAnalysisCards(data.fields || [], { a, b, sel, guide, focus, focusText, style, styleText, count, agentId });
                 } catch (e) {
                     appendMessage('ai', '开品分析失败：' + e.message);
                 }
@@ -2594,22 +2828,75 @@
             `, true);
         }
 
+        const KP_ANALYSIS_ORDER = ['几何结构', '体量感', '仿生学元素', '模块化程度', '主色调', '辅色', '风格标签'];
+        const KP_ANALYSIS_OPTIONS = {
+            '体量感': ['轻盈', '厚重', '悬浮感'],
+            '模块化程度': ['一体成型', '可拆卸', '堆叠式设计'],
+            '风格标签': ['科技极简', '复古怀旧', '赛博朋克', '可爱治愈']
+        };
+
+        function normalizeKaiPinFields(fields) {
+            const map = new Map((fields || []).map(f => [String(f.key || '').trim(), String(f.value || '').trim()]));
+            return KP_ANALYSIS_ORDER.map(key => ({ key, value: map.get(key) || '' }));
+        }
+
+        function kpSelectedOptions(value, options) {
+            const text = String(value || '');
+            const selected = options.filter(opt => text.includes(opt));
+            return selected.length ? selected : [];
+        }
+
+        function renderKaiPinFieldCard(f, i) {
+            const options = KP_ANALYSIS_OPTIONS[f.key];
+            if (options) {
+                const selected = kpSelectedOptions(f.value, options);
+                return `
+                    <div class="analysis-card kp-choice-card" data-index="${i}" data-key="${escHtml(f.key)}">
+                        <label>${escHtml(f.key)}</label>
+                        <div class="kp-choice-grid">
+                            ${options.map(opt => `
+                                <button type="button" class="kp-choice-btn ${selected.includes(opt) ? 'active' : ''}"
+                                    data-value="${escHtml(opt)}" onclick="toggleKaiPinChoice(this)">
+                                    ${escHtml(opt)}
+                                </button>
+                            `).join('')}
+                        </div>
+                        <textarea style="display:none;">${escHtml(selected.join('、'))}</textarea>
+                    </div>
+                `;
+            }
+            return `
+                <div class="analysis-card" data-index="${i}" data-key="${escHtml(f.key)}">
+                    <label>${escHtml(f.key)}</label>
+                    <textarea>${escHtml(f.value)}</textarea>
+                </div>
+            `;
+        }
+
+        function toggleKaiPinChoice(btn) {
+            const card = btn.closest('.kp-choice-card');
+            btn.classList.toggle('active');
+            const active = Array.from(card.querySelectorAll('.kp-choice-btn.active')).map(b => b.dataset.value);
+            const ta = card.querySelector('textarea');
+            if (ta) ta.value = active.join('、');
+        }
+
         /**
-         * 渲染开品模式融合分析卡片（带原始参数，支持二次生图）
+         * 渲染开品模式外观分析卡片（带原始参数，支持二次生图）
          * @param fields 分析结果 [{key, value}, ...]
-         * @param params 原始参数 { a, b, sel, focus, focusText, style, styleText, count, agentId }
+         * @param params 原始参数 { a, b, sel, guide, focus, focusText, style, styleText, count, agentId }
          */
         function renderKaiPinAnalysisCards(fields, params) {
             if (!Array.isArray(fields) || fields.length === 0) {
-                appendMessage('ai', '融合分析未返回有效维度，请补充产品描述后重试。');
+                appendMessage('ai', '开品分析未返回有效维度，请补充产品描述后重试。');
                 return;
             }
 
             // 保存分析字段和原始参数
-            window.__analysisFields = fields.map(f => ({
+            window.__analysisFields = normalizeKaiPinFields(fields).map(f => ({
                 key: String(f.key || '').trim(),
                 value: String(f.value || '').trim()
-            })).filter(f => f.key && f.value);
+            })).filter(f => f.key);
 
             if (window.__analysisFields.length === 0) {
                 appendMessage('ai', '分析结果为空，请补充产品信息后重试。');
@@ -2619,12 +2906,7 @@
             // 保存原始参数供二次生图使用
             window.__kaipinParams = params;
 
-            const cards = window.__analysisFields.map((f, i) => `
-                <div class="analysis-card" data-index="${i}">
-                    <label>${escHtml(f.key)}</label>
-                    <textarea>${escHtml(f.value)}</textarea>
-                </div>
-            `).join('');
+            const cards = window.__analysisFields.map((f, i) => renderKaiPinFieldCard(f, i)).join('');
 
             // 显示方案侧重和视觉风格标签
             const focusLabels = { cost: '成本与量产', premium: '颜值与溢价', disruptive: '颠覆性创新', custom: params.focusText || '自定义' };
@@ -2634,15 +2916,14 @@
 
             appendMessage('ai', `
                 <div class="analysis-cards-wrap">
-                    <div class="analysis-cards-title">🚀 开品融合分析结果</div>
+                    <div class="analysis-cards-title">开品外观设计分析</div>
                     <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px;padding:6px 8px;background:var(--surface);border-radius:4px;">
-                        <strong>方案侧重：</strong>${escHtml(focusLabel)} &nbsp;|&nbsp;
-                        <strong>视觉风格：</strong>${escHtml(styleLabel)} &nbsp;|&nbsp;
-                        <strong>生成张数：</strong>${params.count}
+                        <strong>内置维度：</strong>几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签 &nbsp;|&nbsp;
+                        <strong>素材库：</strong>每条选中素材生成 1 张融合图
                     </div>
                     <div class="analysis-cards-container">${cards}</div>
                     <div class="analysis-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button class="btn-primary" onclick="submitKaiPinGenerate(this)">生成图片</button>
+                        <button class="btn-primary" onclick="submitKaiPinGenerate(this)">引用数据库生成</button>
                         <button class="btn-secondary" onclick="clearAnalysisCards()">取消</button>
                     </div>
                 </div>
@@ -2674,14 +2955,25 @@
             }
 
             const params = window.__kaipinParams || {};
-            const agentId = params.agentId || document.getElementById('agentSelect')?.value || 'gpt-image';
+            const selectedAgentId = params.agentId || document.getElementById('agentSelect')?.value || 'gpt-image';
+            const agentId = resolveImageAgentId(selectedAgentId);
+            const materialIds = window.kpSelectedMaterialIds || [];
+            if (!window.kpRefA) {
+                alertSafe('请先在开品模式上滑菜单上传白底产品图');
+                return;
+            }
+            if (materialIds.length === 0) {
+                alertSafe('请先点击“引用数据库”选择至少一条素材');
+                openKaiPinMaterialDb();
+                return;
+            }
 
-            // 构建融合生图 prompt
+            // 构建固定外观维度生图 prompt
             const prompt = [
-                '【开品模式·融合设计】',
-                '基于以下结构化分析生成新概念产品的使用场景图。画面应突出产品主体，结构合理、可制造、材质清晰、光影真实。',
+                '【开品模式·产品外观设计】',
+                '基于以下固定维度生成产品外观设计图。画面应突出单个产品主体，几何结构清晰，体量感准确，模块化关系可信，主辅色明确，材质和光影真实。',
                 ...lines,
-                '【禁止】低清晰度、畸变、漂浮部件、不可制造结构、品牌 logo、水印、纯文字海报。'
+                '【禁止】低清晰度、畸变、漂浮部件、不可制造结构、品牌 logo、水印、纯文字海报、多个无关产品拼贴。'
             ].join('\n');
 
             window.__taskSubmitting = true;
@@ -2691,33 +2983,28 @@
 
             try {
                 const formData = new FormData();
-
-                // 添加原始参考图（如果有）
-                if (window.kpRefA) formData.append('images', window.kpRefA);
-                if (window.kpRefB) formData.append('images', window.kpRefB);
-
-                formData.append('prompt', prompt);
-                formData.append('count', String(Math.min(50, Math.max(1, params.count || 1))));
-                formData.append('agentId', agentId);
-                formData.append('sessionId', SESSION_ID);
-                formData.append('mode', 'kaipin');
-                formData.append('aspect', 'auto');
-
-                // 保存分析卡片到 configJson
-                formData.append('configJson', JSON.stringify({
+                const configJson = JSON.stringify({
                     type: 'kaipin_cards',
                     fields: lines.map(line => {
                         const idx = line.indexOf('：');
                         return { key: line.slice(0, idx), value: line.slice(idx + 1) };
                     }),
                     focus: params.focus,
-                    style: params.style
-                }));
+                    style: params.style,
+                    materialIds
+                });
 
-                appendMessage('user', `[开品生成] 模型: ${agentId}\n${lines.length} 个分析维度 → ${params.count || 1} 张图`);
-                captureLastGen('/api/custom_generate', formData, `[开品模式] ${lines.length} 维度`);
+                const apiPath = '/api/kaipin_material_generate';
+                formData.append('whiteImage', window.kpRefA);
+                formData.append('materialIds', materialIds.join(','));
+                formData.append('basePrompt', prompt);
+                formData.append('agentId', agentId);
+                formData.append('sessionId', SESSION_ID);
+                formData.append('configJson', configJson);
+                appendMessage('user', `[开品素材库融合] 模型: ${agentId}${selectedAgentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}\n白底产品图 + ${materialIds.length} 条数据库素材 → ${materialIds.length} 张图`);
+                captureLastGen(apiPath, formData, `[开品模式] 素材库融合 ${materialIds.length} 条`);
 
-                const resp = await fetch('/api/custom_generate', { method: 'POST', body: formData });
+                const resp = await fetch(apiPath, { method: 'POST', body: formData });
                 const data = await resp.json();
                 if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
 
@@ -2771,7 +3058,8 @@
             btn.disabled = true;
             btn.textContent = '提交中...';
             try {
-                const agentId = document.getElementById('agentSelect').value;
+                const selectedAgentId = document.getElementById('agentSelect').value;
+                const agentId = resolveImageAgentId(selectedAgentId);
                 const prompt = [
                     '【开品模式·结构化分析转生图】',
                     '请基于下列产品分析卡片生成一张新产品概念图或产品使用场景图。画面应突出产品主体，结构合理、可制造、材质清晰、光影真实。',
@@ -2790,7 +3078,7 @@
                 }
                 formData.append('prompt', prompt);
                 formData.append('count', '1');
-                formData.append('agentId', agentId === 'gemini' && droppedFiles.length === 0 && !sessionImagePath ? 'gpt-image' : agentId);
+                formData.append('agentId', agentId);
                 formData.append('sessionId', SESSION_ID);
                 formData.append('mode', 'product');
                 formData.append('aspect', 'auto');
@@ -3007,6 +3295,7 @@
             msg.className = `msg-bubble ${role === 'user' ? 'msg-user' : ''}`;
 
             if (isHtml) {
+                msg.classList.add('msg-html');
                 msg.innerHTML = text;
             } else {
                 msg.innerText = text;
@@ -4238,38 +4527,193 @@
         // window 全局存 File 对象，重渲不丢；走 URL.createObjectURL 显示缩略图
         window.kpRefA = null;
         window.kpRefB = null;
+        window.kpMaterialFile = null;
+        window.kpSelectedMaterialIds = [];
+        window.kpMaterialDbItems = [];
         function kpHandleFile(slot, input) {
             const f = input.files && input.files[0];
             input.value = ''; // 允许重复选同一文件
             if (!f) return;
             if (slot === 'A') window.kpRefA = f; else window.kpRefB = f;
             kpRenderThumb(slot);
+            confirmKaiPinSettings();
         }
-        function kpRenderThumb(slot) {
-            const file = slot === 'A' ? window.kpRefA : window.kpRefB;
-            const div = document.getElementById('kpThumb' + slot);
-            const hint = document.getElementById('kpHint' + slot);
+        function kpHandleMaterialFile(input) {
+            const f = input.files && input.files[0];
+            input.value = '';
+            if (!f) return;
+            window.kpMaterialFile = f;
+            kpRenderMaterialThumb();
+        }
+        function kpRenderMaterialThumb() {
+            const file = window.kpMaterialFile;
+            const div = document.getElementById('kpMaterialThumb');
+            const hint = document.getElementById('kpMaterialHint');
+            const drop = document.getElementById('kpMaterialDrop');
             if (!div) return;
             if (!file) {
                 div.style.display = 'none';
                 div.innerHTML = '';
                 if (hint) hint.style.display = '';
+                if (drop) drop.classList.remove('has-image');
                 return;
             }
             const url = URL.createObjectURL(file);
             div.innerHTML = `
-                <div style="display:flex;align-items:center;gap:8px;width:100%;">
-                    <img src="${url}" style="width:42px;height:42px;object-fit:cover;border-radius:6px;" alt="${slot}">
-                    <span style="font-size:0.72rem;color:var(--text-dim);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(file.name)}</span>
-                    <button type="button" onclick="event.stopPropagation();kpClearFile('${slot}')" style="border:none;background:transparent;color:var(--text-dim);cursor:pointer;padding:4px;" title="移除">×</button>
+                <div class="kp-thumb-card">
+                    <img class="kp-thumb-img" src="${url}" alt="素材图预览">
+                    <div class="kp-thumb-meta">
+                        <span class="kp-thumb-title">素材图已上传</span>
+                        <span class="kp-thumb-name">${escHtml(file.name)}</span>
+                    </div>
+                    <button type="button" class="kp-thumb-remove" onclick="event.stopPropagation();kpClearMaterialFile()" title="移除">×</button>
                 </div>
             `;
             div.style.display = 'block';
             if (hint) hint.style.display = 'none';
+            if (drop) drop.classList.add('has-image');
+        }
+        function kpClearMaterialFile() {
+            window.kpMaterialFile = null;
+            kpRenderMaterialThumb();
+        }
+        async function generateKaiPinMaterialPrompt(btn) {
+            if (!window.kpMaterialFile) return alertSafe('请先上传一张素材图');
+            const oldText = btn?.textContent;
+            if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+            try {
+                const fd = new FormData();
+                fd.append('image', window.kpMaterialFile);
+                fd.append('note', document.getElementById('kpSelling')?.value || '');
+                fd.append('agentId', document.getElementById('agentSelect')?.value || 'gemini');
+                const resp = await fetch('/api/kaipin_material_prompt', { method: 'POST', body: fd });
+                const data = await resp.json();
+                if (!resp.ok || data.error) throw new Error(data.error || '生成失败');
+                const ta = document.getElementById('kpMaterialPrompt');
+                if (ta) ta.value = data.prompt || '';
+            } catch (e) {
+                appendMessage('ai', '素材提示词生成失败：' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = oldText || '生成提示词'; }
+            }
+        }
+        async function saveKaiPinMaterial(btn) {
+            if (!window.kpMaterialFile) return alertSafe('请先上传一张素材图');
+            const prompt = (document.getElementById('kpMaterialPrompt')?.value || '').trim();
+            if (!prompt) return alertSafe('请先生成或填写素材提示词');
+            const oldText = btn?.textContent;
+            if (btn) { btn.disabled = true; btn.textContent = '保存中...'; }
+            try {
+                const fd = new FormData();
+                fd.append('image', window.kpMaterialFile);
+                fd.append('title', document.getElementById('kpMaterialTitle')?.value || '');
+                fd.append('prompt', prompt);
+                const resp = await fetch('/api/kaipin_materials', { method: 'POST', body: fd });
+                const data = await resp.json();
+                if (!resp.ok || data.error || data.success === false) throw new Error(data.error || '保存失败');
+                appendMessage('ai', '已保存到开品数据库：' + (data.item?.title || '素材'));
+                window.kpMaterialFile = null;
+                document.getElementById('kpMaterialPrompt').value = '';
+                document.getElementById('kpMaterialTitle').value = '';
+                kpRenderMaterialThumb();
+                await openKaiPinMaterialDb();
+            } catch (e) {
+                appendMessage('ai', '保存素材失败：' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = oldText || '保存到数据库'; }
+            }
+        }
+        async function openKaiPinMaterialDb() {
+            const view = document.getElementById('kpMaterialView');
+            const list = document.getElementById('kpMaterialDbList');
+            if (view) view.classList.add('active');
+            if (list) list.innerHTML = '<div class="kp-db-empty">正在读取数据库...</div>';
+            try {
+                const resp = await fetch('/api/kaipin_materials?limit=200');
+                const data = await resp.json();
+                if (!resp.ok || data.error) throw new Error(data.error || '读取失败');
+                window.kpMaterialDbItems = data.items || [];
+                renderKaiPinMaterialDb();
+            } catch (e) {
+                if (list) list.innerHTML = `<div class="kp-db-empty">读取失败：${escHtml(e.message || e)}</div>`;
+            }
+        }
+        function closeKaiPinMaterialDb() {
+            document.getElementById('kpMaterialView')?.classList.remove('active');
+        }
+        function renderKaiPinMaterialDb() {
+            const list = document.getElementById('kpMaterialDbList');
+            if (!list) return;
+            const items = window.kpMaterialDbItems || [];
+            if (!items.length) {
+                list.innerHTML = '<div class="kp-db-empty">数据库暂无素材。先在左侧上传素材图，生成提示词后保存到数据库。</div>';
+                return;
+            }
+            const selected = new Set((window.kpSelectedMaterialIds || []).map(String));
+            list.innerHTML = items.map(item => {
+                const id = String(item.id);
+                const active = selected.has(id);
+                return `
+                    <button type="button" class="kp-db-card ${active ? 'active' : ''}" data-id="${escHtml(id)}" onclick="toggleKaiPinMaterialPick(this)">
+                        <img src="${toImgUrl(item.imagePath)}" alt="${escHtml(item.title || '素材')}" loading="lazy">
+                        <div class="kp-db-card-body">
+                            <strong>${escHtml(item.title || '开品素材')}</strong>
+                            <span>${escHtml(item.createdAt || '')}</span>
+                            <p>${escHtml(item.prompt || '').slice(0, 120)}</p>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+        }
+        function toggleKaiPinMaterialPick(btn) {
+            const id = btn.dataset.id;
+            const set = new Set((window.kpSelectedMaterialIds || []).map(String));
+            if (set.has(id)) set.delete(id); else set.add(id);
+            window.kpSelectedMaterialIds = Array.from(set);
+            btn.classList.toggle('active', set.has(id));
+        }
+        function confirmKaiPinMaterialSelection() {
+            updateKaiPinDbBadge();
+            closeKaiPinMaterialDb();
+            confirmKaiPinSettings();
+        }
+        function updateKaiPinDbBadge() {
+            const count = (window.kpSelectedMaterialIds || []).length;
+            const badge = document.getElementById('kpDbSelectCount');
+            if (badge) badge.textContent = count ? `已选 ${count} 条` : '未选择';
+        }
+        function kpRenderThumb(slot) {
+            const file = slot === 'A' ? window.kpRefA : window.kpRefB;
+            const div = document.getElementById('kpThumb' + slot);
+            const hint = document.getElementById('kpHint' + slot);
+            const drop = document.getElementById('kpDrop' + slot);
+            if (!div) return;
+            if (!file) {
+                div.style.display = 'none';
+                div.innerHTML = '';
+                if (hint) hint.style.display = '';
+                if (drop) drop.classList.remove('has-image');
+                return;
+            }
+            const url = URL.createObjectURL(file);
+            div.innerHTML = `
+                <div class="kp-thumb-card">
+                    <img class="kp-thumb-img" src="${url}" alt="${slot === 'A' ? '产品图预览' : '补充图预览'}">
+                    <div class="kp-thumb-meta">
+                        <span class="kp-thumb-title">${slot === 'A' ? '产品图已上传' : '补充图已上传'}</span>
+                        <span class="kp-thumb-name">${escHtml(file.name)}</span>
+                    </div>
+                    <button type="button" class="kp-thumb-remove" onclick="event.stopPropagation();kpClearFile('${slot}')" title="移除">×</button>
+                </div>
+            `;
+            div.style.display = 'block';
+            if (hint) hint.style.display = 'none';
+            if (drop) drop.classList.add('has-image');
         }
         function kpClearFile(slot) {
             if (slot === 'A') window.kpRefA = null; else window.kpRefB = null;
             kpRenderThumb(slot);
+            confirmKaiPinSettings();
         }
         function kpToggleCustomFocus() {
             const focus = document.querySelector('input[name="kpFocus"]:checked')?.value || 'cost';
@@ -4420,7 +4864,7 @@
                     if (!input.value) {
                         input.placeholder = currentMode === 'product'
                             ? "可选：填写附加要求或风格补充..."
-                            : "描述你的需求，点发送后豆包将分析图片...";
+                            : "已上传白底产品图，描述你的改图需求...";
                     }
                     input.focus();
                 } else {
@@ -4883,6 +5327,7 @@
             const a = (document.getElementById('kpProductA')?.value || '').trim();
             const b = (document.getElementById('kpProductB')?.value || '').trim();
             const selling = (document.getElementById('kpSelling')?.value || '').trim();
+            const guide = (document.getElementById('kpGuidePrompt')?.value || '').trim();
             const focus = document.querySelector('input[name="kpFocus"]:checked')?.value || 'cost';
             const style = document.querySelector('input[name="kpStyle"]:checked')?.value || '';
             const statusBadge = document.getElementById('kpStatusBadge');
@@ -4890,7 +5335,7 @@
 
             const hasA = !!a || !!window.kpRefA;
             const hasB = !!b || !!window.kpRefB;
-            const ready = hasA || hasB || !!selling;
+            const ready = hasA;
             const focusLabels = { cost: '成本与量产', premium: '颜值与溢价', disruptive: '颠覆性创新', custom: '自定义' };
             const styleLabels = { '': '不指定', dopamine: '多巴胺', wood: '木元素', cartoon: '卡通', ins: 'ins 风', minimal: '极简', cyberpunk: '赛博朋克', custom: '自定义' };
 
@@ -4898,11 +5343,11 @@
                 statusBadge.innerHTML = `<span style="color:#10B981">● 已就绪</span>`;
                 summary.style.display = 'block';
                 const parts = [];
-                if (hasA) parts.push(`<b>产品 A：</b>${escHtml(a || '已上传参考图')}`);
-                if (hasB) parts.push(`<b>产品 B：</b>${escHtml(b || '已上传参考图')}`);
-                if (selling) parts.push(`<b>卖点：</b>${escHtml(selling)}`);
-                parts.push(`<b>侧重：</b>${focusLabels[focus] || focus}`);
-                parts.push(`<b>风格：</b>${styleLabels[style] || style}`);
+                if (hasA) parts.push(`<b>白底产品：</b>${escHtml(a || '已上传白底产品图')}`);
+                const dbCount = (window.kpSelectedMaterialIds || []).length;
+                parts.push(`<b>数据库素材：</b>${dbCount ? `已选 ${dbCount} 条` : '未选择'}`);
+                if (selling) parts.push(`<b>补充要求：</b>${escHtml(selling)}`);
+                parts.push(`<b>分析维度：</b>几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签`);
                 summary.innerHTML = parts.join('<br>');
             } else {
                 statusBadge.innerHTML = `<span>未配置</span>`;
@@ -5764,6 +6209,56 @@
         <div id="dirBrowserGrid" style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:10px;"></div>
     </div>
 
+    <!-- ── 开品素材库全屏页面 ── -->
+    <div id="kpMaterialView" class="history-view kp-material-view">
+        <div class="history-header">
+            <button class="btn-back" onclick="closeKaiPinMaterialDb()">
+                <svg style="width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+                返回开品模式
+            </button>
+            <h2>开品素材库</h2>
+            <p>把有特色的参考图保存成素材，再从数据库中选择素材与白底产品图融合生成。</p>
+        </div>
+        <div class="kp-material-page">
+            <section class="settings-card kp-material-maker">
+                <div class="settings-card-head">
+                    <h3>素材采集</h3>
+                    <button type="button" class="btn-primary" onclick="saveKaiPinMaterial(this)">保存到数据库</button>
+                </div>
+                <div class="kp-material-maker-grid">
+                    <div class="kp-material-upload-pane">
+                        <div class="kp-modal-field">
+                            <label>素材图</label>
+                            <div id="kpMaterialDrop" class="ec-img-drop kp-img-drop" onclick="document.getElementById('kpMaterialFile').click()">
+                                <input type="file" id="kpMaterialFile" accept="image/*" style="display:none" onchange="kpHandleMaterialFile(this)">
+                                <div id="kpMaterialThumb" style="display:none"></div>
+                                <span id="kpMaterialHint" class="ec-img-hint">上传有特色的参考图</span>
+                            </div>
+                        </div>
+                        <div class="kp-material-actions">
+                            <input type="text" id="kpMaterialTitle" class="kp-custom-input" placeholder="可选：给这条素材起个名字">
+                            <button type="button" class="btn-outline" onclick="generateKaiPinMaterialPrompt(this)">生成提示词</button>
+                        </div>
+                    </div>
+                    <div class="kp-modal-field kp-material-prompt-field">
+                        <label>素材提示词</label>
+                        <textarea id="kpMaterialPrompt" class="kp-material-prompt" placeholder="生成后可编辑。保存时会把这段提示词和素材图一起写入数据库。"></textarea>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-card kp-material-picker">
+                <div class="settings-card-head">
+                    <h3>引用数据库</h3>
+                    <button type="button" class="btn-primary" onclick="confirmKaiPinMaterialSelection()">确认引用并返回</button>
+                </div>
+                <div id="kpMaterialDbList" class="kp-db-grid">
+                    <div class="kp-db-empty">正在读取数据库...</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
     <!-- ── 设置全屏页面（替代旧 modal；同步配置 + 代理 + 文件保存位置 三段，各自独立保存） ── -->
     <div id="settingsView" class="history-view">
         <div class="history-header">
@@ -5940,16 +6435,15 @@
                     </ul>
 
                     <h2 class="doc-h2" id="doc-mode-kaipin">开品模式</h2>
-                    <p class="doc-p">跨界开品设计师模式。输入产品 A（功能参考）和产品 B（造型参考），AI 生成融合两者特点的新品设计方案图。</p>
+                    <p class="doc-p">白底产品图 + 素材库创意参考的开品模式。先分析白底图，再从素材库选择创意图进行逐条融合生成。</p>
                     <ul class="doc-ul">
-                        <li><strong>产品 A / B</strong> — 两侧各需提供材料（文字或图片至少其一），两者都不能为空。可只填文字、只传图片、或两者都给。</li>
-                        <li><strong>核心卖点</strong> — 必填，描述新品的核心卖点，直接影响设计方向。</li>
-                        <li><strong>方案侧重</strong> — 成本量产 / 颜值溢价 / 颠覆创新 / 自定义，决定 AI 的设计取向。</li>
-                        <li><strong>视觉风格</strong> — 可选，预设 6 种风格：多巴胺、木元素、卡通、ins 风、极简、赛博朋克。也可自定义风格描述。</li>
-                        <li><strong>生成张数</strong> — 输入 1-50，默认 1 张。</li>
+                        <li><strong>白底产品图</strong> — 作为唯一产品主体，生成时必须保持造型、比例、颜色和结构一致。</li>
+                        <li><strong>素材采集</strong> — 看到有特色的图后上传，点击“生成提示词”，编辑后保存到开品数据库。</li>
+                        <li><strong>引用数据库</strong> — 从已保存素材中多选；每条素材都会和白底图、分析卡片提示词融合生成 1 张图。</li>
+                        <li><strong>补充要求</strong> — 可写目标人群、卖点、风格偏好，参与白底图分析和最终融合提示。</li>
                     </ul>
                     <div class="doc-tip">
-                        <strong>模型限制</strong> — Gemini 为图像编辑模型，需要参考图才能生成。开品模式如不上传图片，请选择 GPT-Image / 万相 / 通义 / 混元 等支持纯文生图的模型。
+                        <strong>一致性</strong> — 素材库图片只提供创意灵感，不作为新产品主体；主体始终以白底产品图为准。
                     </div>
 
                     <h2 class="doc-h2" id="doc-mode-video">视频模式</h2>
@@ -6000,13 +6494,13 @@
                     <h1 class="doc-h1">开品模式详解</h1>
 
                     <h2 class="doc-h2" id="doc-kaipin-input">产品输入</h2>
-                    <p class="doc-p">开品模式需要提供两个产品的信息，AI 会融合两者的特点生成新概念产品：</p>
+                    <p class="doc-p">开品模式需要先提供白底产品图，再从素材库选择创意参考：</p>
                     <table class="doc-table">
                         <thead><tr><th>输入项</th><th>作用</th><th>是否必填</th></tr></thead>
                         <tbody>
-                            <tr><td>产品 A · 功能本体</td><td>提供产品的功能结构、使用场景、核心组件</td><td>文字或图片至少其一</td></tr>
-                            <tr><td>产品 B · 造型灵感</td><td>提供造型语言、线条比例、CMF、风格氛围</td><td>文字或图片至少其一</td></tr>
-                            <tr><td>核心卖点</td><td>驱动场景与文案，决定产品定位</td><td>必填</td></tr>
+                            <tr><td>白底产品图</td><td>提供需要保持一致的产品主体</td><td>必填</td></tr>
+                            <tr><td>素材库图片</td><td>提供造型、CMF、结构或场景创意参考</td><td>生成时至少选 1 条</td></tr>
+                            <tr><td>素材提示词</td><td>保存素材时与图片一起入库，生成时作为创意说明</td><td>保存素材时必填</td></tr>
                         </tbody>
                     </table>
 
@@ -6014,30 +6508,26 @@
                         <strong>纯文生图</strong> — 如不上传图片，请选择 GPT-Image / 万相 / 通义 / 混元 等支持纯文生图的模型。Gemini 需要参考图才能生成。
                     </div>
 
-                    <h2 class="doc-h2" id="doc-kaipin-focus">方案侧重</h2>
-                    <p class="doc-p">方案侧重决定 AI 的设计取向，影响材质选择、工艺路线、成本控制等：</p>
+                    <h2 class="doc-h2" id="doc-kaipin-focus">素材数据库</h2>
+                    <p class="doc-p">素材数据库用于沉淀你看到的创意参考。每条数据包含一张图片和一段提示词：</p>
                     <table class="doc-table">
-                        <thead><tr><th>侧重方向</th><th>设计策略</th></tr></thead>
+                        <thead><tr><th>操作</th><th>说明</th></tr></thead>
                         <tbody>
-                            <tr><td>成本与量产</td><td>优先成熟工艺（注塑/钣金），降低开模难度，简洁实用风</td></tr>
-                            <tr><td>颜值与溢价</td><td>高级材质（拉丝金属/真皮/木纹），精致工艺，艺术品格调</td></tr>
-                            <tr><td>颠覆性创新</td><td>突破常规结构，隐藏机构/模块化/智能化，视觉冲击优先</td></tr>
-                            <tr><td>自定义</td><td>自由填写设计方向，如"极简北欧风、可上墙安装"</td></tr>
+                            <tr><td>生成提示词</td><td>AI 分析素材图的造型亮点、结构创新、CMF 和可借鉴创意点。</td></tr>
+                            <tr><td>保存到数据库</td><td>将素材图和提示词一起保存到本地 SQLite 数据库和图片目录。</td></tr>
+                            <tr><td>引用数据库</td><td>打开素材库界面多选，最终每条素材生成 1 张融合图。</td></tr>
                         </tbody>
                     </table>
 
-                    <h2 class="doc-h2" id="doc-kaipin-style">视觉风格</h2>
-                    <p class="doc-p">可选的视觉风格预设，为产品增加特定的视觉氛围：</p>
+                    <h2 class="doc-h2" id="doc-kaipin-style">融合规则</h2>
+                    <p class="doc-p">素材库融合时会遵循以下边界：</p>
                     <table class="doc-table">
-                        <thead><tr><th>风格</th><th>特点</th></tr></thead>
+                        <thead><tr><th>规则</th><th>说明</th></tr></thead>
                         <tbody>
-                            <tr><td>多巴胺</td><td>高饱和撞色（柠檬黄/珊瑚红/薄荷绿），圆润边角，活泼趣味</td></tr>
-                            <tr><td>木元素</td><td>原木材质纹理（橡木/胡桃木/竹材），暖米色与原木棕色调</td></tr>
-                            <tr><td>卡通</td><td>圆润可爱化，亮丽柔和色彩，拟人化趣味细节</td></tr>
-                            <tr><td>ins 风</td><td>清新奶油色系（象牙白/浅粉/哑光米灰），柔和弥散光</td></tr>
-                            <tr><td>极简</td><td>纯净背景（白/浅灰/米），大量留白，线条简洁</td></tr>
-                            <tr><td>赛博朋克</td><td>深色背景配霓虹灯光（紫/青/粉），发光线条，金属质感</td></tr>
-                            <tr><td>自定义</td><td>自由填写风格描述，如"日式侘寂、Y2K 千禧"</td></tr>
+                            <tr><td>主体一致</td><td>白底产品图是唯一主体，素材图不能替换主体。</td></tr>
+                            <tr><td>创意借鉴</td><td>只提取素材图的造型语言、结构亮点、CMF、氛围或场景创意。</td></tr>
+                            <tr><td>逐条输出</td><td>选择 N 条数据库素材，就生成 N 张融合图。</td></tr>
+                            <tr><td>禁止拼贴</td><td>不能把白底图和素材图简单并列，必须融合成一个新的单体产品。</td></tr>
                         </tbody>
                     </table>
                 </section>
@@ -6133,6 +6623,52 @@
 
     <!-- 旧 settingsModal 已废弃（设置改成 settingsView 全屏页面） -->
 
+
+    <!-- 自定义模式：改图风格选择界面 -->
+    <div id="customStyleModal" class="modal-overlay" style="z-index: 5000;" onclick="if(event.target===this) closeCustomStyleModal()">
+        <div class="modal-card custom-style-modal-card">
+            <div class="modal-header">
+                <h3>选择改图风格</h3>
+                <button class="close-btn" onclick="closeCustomStyleModal()">×</button>
+            </div>
+            <p class="modal-desc" style="margin-top:0;">风格会参与 Gemini 分析和最终生图，产品主体仍以白底图为准。</p>
+            <div class="custom-style-grid custom-style-modal-grid">
+                <button type="button" class="custom-style-card active" data-value="original" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-original"></span>
+                    <span>原图延展</span>
+                    <small>自然扩写画面，不强套风格</small>
+                </button>
+                <button type="button" class="custom-style-card" data-value="tech-blue" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-tech-blue"></span>
+                    <span>科技蓝</span>
+                    <small>蓝白冷光、玻璃金属、智能感</small>
+                </button>
+                <button type="button" class="custom-style-card" data-value="girl-pink" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-girl-pink"></span>
+                    <span>少女粉</span>
+                    <small>粉白柔光、轻盈治愈、精致亲和</small>
+                </button>
+                <button type="button" class="custom-style-card" data-value="premium-gray" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-premium-gray"></span>
+                    <span>高级灰</span>
+                    <small>克制留白、柔和阴影、高客单质感</small>
+                </button>
+                <button type="button" class="custom-style-card" data-value="natural-green" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-natural-green"></span>
+                    <span>自然绿</span>
+                    <small>植物绿、自然光、环保生活方式</small>
+                </button>
+                <button type="button" class="custom-style-card" data-value="sunset-orange" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-sunset-orange"></span>
+                    <span>暖阳橙</span>
+                    <small>暖橙光感、情绪温度、生活氛围</small>
+                </button>
+            </div>
+            <div class="modal-footer custom-style-modal-footer">
+                <button class="btn-outline" style="flex:1" onclick="closeCustomStyleModal()">完成</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 自定义模式：产品类目选择 modal（跟电商共用 EC_CATEGORY_TREE 数据 + ecBuildColumn 渲染） -->
     <div id="customCatModal" class="modal-overlay" style="z-index: 5000;" onclick="if(event.target===this) closeCustomCatModal()">

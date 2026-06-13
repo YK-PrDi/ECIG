@@ -85,6 +85,21 @@ public class ImageGenerationService {
     }
 
     /**
+     * 自定义模式发送前的图片分析：把白底产品图 + 用户描述扩写为多段可编辑生图提示词。
+     * 返回文本用 --- 分隔，前端继续复用原来的卡片编辑流程。
+     */
+    public String analyzeCustomImagePrompts(String prompt, List<File> imageFiles, int count) {
+        int safeCount = Math.max(1, Math.min(8, count));
+        String userPrompt = prompt == null ? "" : prompt.trim();
+        try {
+            return requestGeminiCustomPromptAnalysis(userPrompt, imageFiles == null ? List.of() : imageFiles, safeCount);
+        } catch (Exception e) {
+            log.error("自定义模式 Gemini 图片分析失败: {}", e.getMessage(), e);
+            throw new RuntimeException("Gemini 图片分析失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * 开品模式融合分析：基于产品 A/B、卖点、方案侧重、视觉风格，综合生成结构化分析卡片。
      * 这是两步流程的第一步，返回可编辑卡片供用户确认后二次生图。
      *
@@ -166,34 +181,37 @@ public class ImageGenerationService {
         };
 
         return """
-                你是资深跨界开品设计师，擅长把产品 A 的功能内核与产品 B 的造型语言融合，生成新概念产品。
+                你是“产品外观设计分析师 + 电商开品视觉策略师”。
+                当前开品模式只做单个产品的外观设计结构化分析。请严格按照下面这条内置 Excel 提示词执行：
+                提示词：请对这个产品从几何结构、体量感（轻盈/厚重/悬浮感）、仿生学元素、模块化程度（一体成型 / 可拆卸 / 堆叠式设计）、主色调、辅色、风格标签（科技极简/复古怀旧/赛博朋克/可爱治愈）的角度进行产品外观设计分析。
 
-                请分析以下输入，并输出结构化的设计分析卡片：
-
-                【产品 A · 功能本体】
+                输入材料：
+                【产品描述】
                 %s
 
-                【产品 B · 造型灵感】
+                【补充要求 / 卖点 / 目标人群】
                 %s
 
-                【核心卖点】
-                %s
-
+                【可选参考】
                 %s
                 %s
 
                 输出要求：
-                1. 从设计角度动态提取维度，推荐维度：产品定位、融合方向、造型语言、材质工艺、功能布局、使用场景、视觉氛围。
-                2. 每个维度的 value 要具体描述可落地的设计特征，便于后续直接生成产品使用场景图。
-                3. 融合 A 的功能特点与 B 的造型特点，生成有创新性的新概念产品描述。
-                4. 输出必须是严格 JSON 数组，格式：[{"key":"维度名","value":"分析内容"}]。
-                5. 只输出 JSON，不要 markdown，不要代码块，不要解释。
+                1. 必须只输出 7 个字段，顺序和 key 必须完全固定为：几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签。
+                2. 几何结构：从图片中观察产品主轮廓、基础几何、转折面、曲直线关系、对称性和视觉重心，输出 80-160 字，可直接用于后续设计。
+                3. 体量感：只能从“轻盈、厚重、悬浮感”中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用“、”连接。
+                4. 仿生学元素：分析是否有动物、植物、骨骼、翅膀、水滴、贝壳、昆虫、流线等自然形态借鉴；如果没有明显仿生，也要写“无明显仿生，偏几何/工程化”，80-160 字。
+                5. 模块化程度：只能从“一体成型、可拆卸、堆叠式设计”中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用“、”连接。
+                6. 主色调：输出图片中最主要的颜色名称，可带材质感，例如“哑光白”“银灰金属”“深黑”等，不要写长句。
+                7. 辅色：输出辅助色或点缀色；如果图片中没有明显辅色，输出“无明显辅色”。
+                8. 风格标签：只能从“科技极简、复古怀旧、赛博朋克、可爱治愈”中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用“、”连接。
+                9. 如果用户补充了卖点或目标人群，几何结构和仿生学元素两个字段必须说明这些外观特征如何支撑卖点；但固定选项字段仍只能输出选项词。
+                10. 输出必须是严格 JSON 数组，格式：[{"key":"维度名","value":"分析内容"}]。不要 markdown，不要代码块，不要解释。
                 """.formatted(
-                productA == null || productA.isBlank() ? "（文字未提供，请从参考图中提取功能特征）" : productA,
-                productB == null || productB.isBlank() ? "（文字未提供，请从参考图中提取造型特征）" : productB,
-                selling == null || selling.isBlank() ? "（未提供卖点，请根据产品特性自行提炼）" : selling,
-                focusPrompt,
-                stylePrompt.isEmpty() ? "" : stylePrompt
+                productA == null || productA.isBlank() ? "（未提供文字，请优先从上传图片分析产品外观）" : productA,
+                selling == null || selling.isBlank() ? "（未提供，按图片外观自行提炼设计取向）" : selling,
+                productB == null || productB.isBlank() ? "" : "补充描述：" + productB,
+                (focusPrompt + "\n" + (stylePrompt.isEmpty() ? "" : stylePrompt)).trim()
         );
     }
 
@@ -208,9 +226,9 @@ public class ImageGenerationService {
 
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode systemInstruction = root.putObject("systemInstruction");
-        String systemText = "你是资深跨界开品设计师，擅长把产品 A 的功能内核与产品 B 的造型语言融合。你必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。";
+        String systemText = "你是产品外观设计分析师和电商开品视觉策略师。你必须严格按照固定 7 个维度分析产品外观：几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签。体量感只能从轻盈/厚重/悬浮感中选择；模块化程度只能从一体成型/可拆卸/堆叠式设计中选择；风格标签只能从科技极简/复古怀旧/赛博朋克/可爱治愈中选择。必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。";
         if (strictRetry) {
-            systemText += "\n\n重要：本轮不是资料完整性诊断。即使部分信息缺失，也必须基于已有信息输出可编辑分析卡片，禁止输出“异常说明”“请补充信息”“无法分析”。";
+            systemText += "\n\n重要：本轮不是资料完整性诊断。即使图片或文字信息不完整，也必须输出这 7 个固定字段，禁止输出“异常说明”“请补充信息”“无法分析”。固定选项字段只输出选项词，不要写解释。";
         }
         systemInstruction.putArray("parts").addObject().put("text", systemText);
 
@@ -239,8 +257,8 @@ public class ImageGenerationService {
         }
 
         ObjectNode generationConfig = root.putObject("generationConfig");
-        generationConfig.put("temperature", 0.3);
-        generationConfig.put("maxOutputTokens", 4000);
+        generationConfig.put("temperature", 0.65);
+        generationConfig.put("maxOutputTokens", 9000);
         generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
 
         Request request = new Request.Builder()
@@ -263,55 +281,21 @@ public class ImageGenerationService {
     private List<Map<String, String>> buildFallbackKaiPinFields(
             String productA, String productB, String selling, String focus, String style) {
 
-        String subjectA = productA != null && !productA.isBlank()
+        String subject = productA != null && !productA.isBlank()
                 ? productA.substring(0, Math.min(50, productA.length()))
-                : "产品 A";
-        String subjectB = productB != null && !productB.isBlank()
-                ? productB.substring(0, Math.min(50, productB.length()))
-                : "产品 B";
+                : "该产品";
 
-        List<Map<String, String>> fields = new ArrayList<>();
-
-        fields.add(Map.of("key", "产品定位",
-                "value", "以" + subjectA + "的功能内核为核心，融合" + subjectB + "的造型语言，生成面向年轻/科技人群的新概念产品。"));
-
-        fields.add(Map.of("key", "融合方向",
-                "value", "保留" + subjectA + "的核心功能结构和操作逻辑，将" + subjectB + "的线条比例、视觉语言、材质感迁移到新产品外形。"));
-
-        fields.add(Map.of("key", "造型语言",
-                "value", "整体轮廓参考" + subjectB + "，边角过渡明确，主次结构层级清晰，视觉重心稳定，呈现可制造的真实产品尺度。"));
-
-        fields.add(Map.of("key", "材质工艺",
-                "value", "表面材质结合" + focus + "取向，可选哑光/亮面/金属/塑胶等质感对比，边缘收口干净，工艺细节精致。"));
-
-        fields.add(Map.of("key", "功能布局",
-                "value", "功能区域清晰分层，操作区、支撑区、核心工作区有明确边界，结构服务于实际使用动作，人机交互直观。"));
-
-        fields.add(Map.of("key", "使用场景",
-                "value", "放置在真实使用场景中展示，环境干净克制，光影自然，画面突出产品主体及其与用户生活方式的关系。"));
-
-        if (selling != null && !selling.isBlank()) {
-            fields.add(Map.of("key", "核心卖点呈现",
-                    "value", selling + " — 在画面中通过产品姿态、环境道具或视觉符号强化这一卖点。"));
-        }
-
-        if (style != null && !style.isBlank()) {
-            String styleDesc = switch (style) {
-                case "dopamine" -> "高饱和撞色、活泼趣味造型细节";
-                case "wood" -> "原木材质纹理、温润自然色调";
-                case "cartoon" -> "圆润可爱化、拟人化趣味细节";
-                case "ins" -> "清新奶油色系、柔和弥散光";
-                case "minimal" -> "纯净背景、大量留白、线条简洁";
-                case "cyberpunk" -> "霓虹灯光、金属质感、高对比度";
-                default -> "";
-            };
-            if (!styleDesc.isBlank()) {
-                fields.add(Map.of("key", "视觉氛围",
-                        "value", styleDesc + "，整体呈现符合目标人群审美的视觉调性。"));
-            }
-        }
-
-        return fields;
+        return List.of(
+                Map.of("key", "几何结构",
+                        "value", subject + "以清晰主轮廓为基础，重点观察外壳几何、边角半径、转折面、开孔与局部组件层级；后续设计应保持主体比例稳定，并让关键结构服务产品识别和卖点表达。"),
+                Map.of("key", "体量感", "value", "轻盈"),
+                Map.of("key", "仿生学元素",
+                        "value", subject + "未识别到明确动物、植物或自然形态借鉴，整体更偏几何化和工程化表达；如果需要强化记忆点，可从流线、水滴或骨骼支撑关系中提取轻量仿生线索。"),
+                Map.of("key", "模块化程度", "value", "一体成型"),
+                Map.of("key", "主色调", "value", "中性白"),
+                Map.of("key", "辅色", "value", "无明显辅色"),
+                Map.of("key", "风格标签", "value", "科技极简")
+        );
     }
 
     private String requestGeminiAnalysis(String prompt, File imageFile, boolean strictRetry) throws IOException {
@@ -323,7 +307,7 @@ public class ImageGenerationService {
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode systemInstruction = root.putObject("systemInstruction");
         systemInstruction.putArray("parts").addObject().put("text",
-                "你是资深工业设计与电商开品分析师。你必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。");
+                "你是资深工业设计与电商爆品开品分析师。你必须先观察图片证据，再严格拓写用户输入中的卖点，将其扩展为用户痛点、功能利益、购买理由和可视化证明方式，输出能直接用于二次生图的结构化卡片。每个卡片都要回扣卖点如何被证明或放大。必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。");
 
         ArrayNode contents = root.putArray("contents");
         ObjectNode content = contents.addObject();
@@ -339,8 +323,8 @@ public class ImageGenerationService {
         }
 
         ObjectNode generationConfig = root.putObject("generationConfig");
-        generationConfig.put("temperature", 0.2);
-        generationConfig.put("maxOutputTokens", 4000);
+        generationConfig.put("temperature", 0.55);
+        generationConfig.put("maxOutputTokens", 7000);
         generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
 
         Request request = new Request.Builder()
@@ -355,6 +339,77 @@ public class ImageGenerationService {
             }
             return extractGeminiOutputText(body);
         }
+    }
+
+    private String requestGeminiCustomPromptAnalysis(String prompt, List<File> imageFiles, int count) throws IOException {
+        String apiKey = appProperties.getGemini().getApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("Gemini API Key 未配置");
+        }
+
+        ObjectNode root = objectMapper.createObjectNode();
+        ObjectNode systemInstruction = root.putObject("systemInstruction");
+        systemInstruction.putArray("parts").addObject().put("text",
+                "你是资深电商产品视觉分析师和 AI 生图提示词导演。你的任务是看懂白底产品图，把用户的短描述、风格要求和隐含卖点扩写成可直接用于图片生成的中文提示词。必须严格保持产品主体来自白底图，不能改变产品结构、比例、颜色、材质、logo 和识别特征。");
+
+        ArrayNode contents = root.putArray("contents");
+        ObjectNode content = contents.addObject();
+        content.put("role", "user");
+        ArrayNode parts = content.putArray("parts");
+        parts.addObject().put("text", buildCustomPromptAnalysisPrompt(prompt, count, imageFiles != null && !imageFiles.isEmpty()));
+
+        if (imageFiles != null) {
+            for (File imageFile : imageFiles) {
+                if (imageFile == null || !imageFile.exists() || !imageFile.isFile()) continue;
+                byte[] bytes = Files.readAllBytes(imageFile.toPath());
+                parts.addObject()
+                        .putObject("inlineData")
+                        .put("mimeType", getMimeType(imageFile.getName()))
+                        .put("data", Base64.getEncoder().encodeToString(bytes));
+            }
+        }
+
+        ObjectNode generationConfig = root.putObject("generationConfig");
+        generationConfig.put("temperature", 0.65);
+        generationConfig.put("maxOutputTokens", 7000);
+        generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
+
+        Request request = new Request.Builder()
+                .url(GEMINI_BASE_URL + GEMINI_ANALYSIS_MODEL + ":generateContent?key=" + apiKey)
+                .post(RequestBody.create(root.toString(), JSON_TYPE))
+                .build();
+
+        try (Response response = buildAnalysisClient().newCall(request).execute()) {
+            String body = response.body() != null ? response.body().string() : "";
+            if (!response.isSuccessful()) {
+                throw new RuntimeException("Gemini 自定义分析失败(" + response.code() + "): " + body);
+            }
+            return extractGeminiOutputText(body);
+        }
+    }
+
+    private String buildCustomPromptAnalysisPrompt(String prompt, int count, boolean hasImage) {
+        return """
+                本次是否上传白底产品图：%s
+                用户描述和风格要求：
+                %s
+
+                请生成 %d 段适合 AI 生图的中文提示词，每段 260-420 个中文字符。
+                输出格式要求：
+                1. 只输出提示词正文，段与段之间用 --- 单独分隔，不要编号，不要 markdown，不要解释。
+                2. 每段都必须包含“产品主体保持白底图一致”的强约束，并把图中可见的轮廓、结构、材质、颜色、比例、接口/按键/细节作为主体锁定依据。
+                3. 每段必须严格按以下字段顺序组织成自然语言提示词，字段名必须保留：
+                   【安装方式】说明该产品适合壁挂、台置、落地、嵌入、夹持、悬挂、手持或免安装等方式，并写清固定点、承重点、接触面或使用动作。
+                   【形态结构】分析产品主轮廓、体块比例、功能区、开孔/接口/按键/支撑件、边角转折和结构层级。
+                   【背景风格/视觉基调】给出适合该产品与用户风格要求的背景基调，例如科技蓝、少女粉、高级灰、自然绿、暖阳橙、赛博黑或更贴合产品的真实生活场景，并说明色彩、空间和道具。
+                   【材质/工艺】写清外壳、金属/塑胶/玻璃/木纹/硅胶等材质，表面是哑光、亮面、磨砂、拉丝、透明、喷涂、倒角、接缝还是细纹理。
+                   【卖点场景构图】围绕用户卖点展开，写明场景构图、拍摄角度、产品功能展示方式、场景布局、产品状态、产品全貌/局部质感、光影。
+                4. 无论用户描述多短、混乱或只写关键词，都必须严格拓写卖点：提炼用户痛点、功能利益、购买理由、画面证明方式和可执行视觉证据。
+                5. 每段都要把卖点转成画面：至少包含一个具体使用场景、一个证明卖点的道具或动作、一个产品状态、一个镜头角度、一个光影策略。
+                6. 多段之间要差异化：换不同安装方式侧重点、构图、场景、卖点证明方式、光影调性或道具组合，但产品主体不能变。
+                7. 禁止空泛词堆叠，比如“高端、精致、好看、实用”；必须把这些词改写成可见结构、安装关系、材质反光、收纳方式、操作动作、场景痛点或对比证据。
+                8. 禁止：改变产品主体造型、生成多个无关产品、文字海报、水印、logo 错乱、畸变、低清晰度、过曝、遮挡产品关键结构。
+                """.formatted(hasImage ? "是" : "否", prompt == null || prompt.isBlank() ? "无" : prompt, count);
     }
 
     public boolean generateImage(String prompt, String refImagePath,
@@ -533,16 +588,16 @@ public class ImageGenerationService {
         String strictText = strictRetry ? """
 
                 重要纠偏：
-                上一次输出像是在要求补充资料，这是错误的。本轮不是资料完整性诊断，而是把用户文字直接转换为开品分析卡片。
+                上一次输出像是在要求补充资料或内容过浅，这是错误的。本轮不是资料完整性诊断，而是把用户文字和图片直接转换为深度开品分析卡片。
                 如果没有图片，用户文字中的产品对象就是分析对象；必须输出可编辑卡片，禁止输出“异常说明”“请补充信息”“无法分析”。
-                如果用户写了“从 A、B 角度分析一个 Z”，必须输出 A、B 两个 key，并围绕 Z 填写 value。
+                如果用户写了“从 A、B 角度分析一个 Z”，必须输出 A、B 两个 key，并围绕 Z 填写 value；每个 value 都要包含设计判断、生图落点，并严格拓写用户文字中隐含或显性的卖点。
                 后端已识别维度提示：%s
                 后端已识别产品对象提示：%s
                 """.formatted(dimensionHint.isBlank() ? "按用户原文自行提取" : dimensionHint,
                 subjectHint.isBlank() ? "按用户原文自行识别" : subjectHint) : "";
         return """
-                你是资深工业设计与电商开品分析师。
-                请参考自定义模式的图片分析思路理解输入，再按用户要求拆成可编辑的开品分析卡片。
+                你是资深工业设计与电商爆品开品分析师。
+                请参考自定义模式的图片分析思路理解输入：先看图像证据，再拆结构和卖点，最后把分析写成可编辑、可二次生图的卡片。
 
                 本次是否上传图片：%s
                 用户分析提示词：
@@ -552,8 +607,11 @@ public class ImageGenerationService {
                 1. 从用户提示词中动态提取维度名称，不要硬编码维度；如果出现“从 A、B、C 角度分析”，A/B/C 就是 key。
                 2. 输出必须是严格 JSON 数组，格式：[{"key":"维度名","value":"分析内容"}]。
                 3. 只输出 JSON，不要 markdown，不要代码块，不要解释。
-                4. key 使用中文短标签；value 要能直接拼入后续生图提示词，聚焦可观察的结构、比例、体量、材质、功能线索、使用场景或造型语言。
-                5. 即使没有图片，也必须基于用户文字做结构化拆解；不要要求补充资料。
+                4. key 使用中文短标签；value 必须 100-200 个中文字符，包含“观察依据/文字依据 + 设计判断 + 生图可执行细节”，不能只写形容词。
+                5. 如果有图片，每个 value 优先引用图中可见信息：几何轮廓、比例、部件层级、接口按键、纹理、材质、颜色、场景线索；至少 4 个卡片显式写出“从图中可见...”或同义表达。
+                6. 卖点必须严格拓写：即使用户没有单独写卖点，也要从产品结构、使用痛点、视觉差异中提炼购买理由；每个动态维度都要说明该维度如何证明、放大或承接卖点。
+                7. value 要能直接拼入后续生图提示词，聚焦可观察的结构、比例、体量、材质、功能线索、使用场景、镜头角度、光影或造型语言，并把卖点转成画面证据。
+                8. 即使没有图片，也必须基于用户文字做结构化拆解；不要要求补充资料。
                 """.formatted(hasImage ? "是" : "否", prompt, strictText);
     }
 
@@ -612,21 +670,21 @@ public class ImageGenerationService {
 
     private String fallbackValueForDimension(String subject, String dimension) {
         if (dimension.contains("几何") || dimension.contains("结构") || dimension.contains("造型")) {
-            return subject + "以清晰可辨的基础几何轮廓为主体，边缘转折明确，主次结构层级清楚，适合在生图中强化产品外形识别度。";
+            return subject + "需要先建立清晰可辨的主轮廓，主体、支撑件、开孔和操作区要形成明确层级。生图时用 3/4 视角展示边缘转折、厚薄关系和关键结构，让用户一眼理解它是可制造、可使用的真实产品，而不是概念拼贴。";
         }
         if (dimension.contains("材质") || dimension.contains("工艺")) {
-            return subject + "表面材质需要明确呈现触感与工艺细节，可使用哑光、亮面、透光、金属或细腻塑胶等质感对比，边缘收口干净。";
+            return subject + "的材质要服务核心卖点，表面可用哑光塑胶、拉丝金属、透明件、软胶防滑区或细腻纹理形成分区对比。生图时必须看见接缝、边缘收口、按键开孔和表面反光差异，证明产品具备真实工艺而非滤镜质感。";
         }
         if (dimension.contains("体量") || dimension.contains("比例")) {
-            return subject + "整体体量关系稳定，主体比例协调，视觉重心清楚，避免部件过度膨胀或比例失衡，呈现可制造的真实产品尺度。";
+            return subject + "的体量关系要稳定，主体、握持区、底座或功能头部之间保持真实尺度，视觉重心不能漂浮。生图时通过桌面、手部、生活道具或环境参照物表现尺寸，让产品显得可信、顺手并具备购买判断依据。";
         }
         if (dimension.contains("功能") || dimension.contains("分区")) {
-            return subject + "功能区域需要在画面中清晰分层，操作区、支撑区、核心工作区有明确边界，结构服务于实际使用动作。";
+            return subject + "的功能区域需要围绕真实使用动作排布，操作区、显示区、工作区、支撑区和维护区要有清晰边界。生图时展示按压、打开、握持、放置或工作状态，用可见交互件证明卖点，而不是只靠文字说明。";
         }
         if (dimension.contains("场景") || dimension.contains("使用")) {
-            return subject + "放置在真实使用场景中展示，环境干净克制，光影自然，画面突出产品主体及其与用户生活方式的关系。";
+            return subject + "要放入真实使用场景中展示，环境由产品功能决定，可选择桌面、家居、厨房、浴室、车内或户外等空间。生图时用自然光、少量道具和人物手部动作强化购买理由，画面既展示产品主体，也证明它能解决具体生活问题。";
         }
-        return subject + "围绕“" + dimension + "”进行视觉强化，描述应具体落到形态、材质、比例、结构关系和真实使用感，便于后续二次生图。";
+        return subject + "围绕“" + dimension + "”进行视觉强化，不能停留在抽象形容。分析要落到可见结构、材质分区、比例尺度、交互动作和真实场景上，并把该维度转译成后续生图能执行的镜头、光影、道具或视觉符号。";
     }
 
     private List<Map<String, String>> parseAnalysisFields(String rawText) throws IOException {

@@ -71,7 +71,10 @@ public class ResourceController {
     public ResponseEntity<FileSystemResource> getImage(@RequestParam String path) {
         File file = new File(path);
         if (!file.exists() || !file.isFile()) return ResponseEntity.notFound().build();
-        String mimeType = path.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+        String lower = path.toLowerCase();
+        String mimeType = lower.endsWith(".png") ? "image/png"
+                : lower.endsWith(".webp") ? "image/webp"
+                : "image/jpeg";
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(mimeType))
                 .body(new FileSystemResource(file));

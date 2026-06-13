@@ -15,6 +15,8 @@ import com.elebusiness.service.CosService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.poi.xssf.usermodel.XSSFPictureData;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,6 +25,7 @@ import org.springframework.web.multipart.MultipartHttpServletRequest;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -231,8 +234,43 @@ public class GenerateController {
         }
     }
 
+    /** 自定义模式：上传白底图 + 用户要求，用 Gemini 扩写为多段可编辑生图提示词。 */
+    @PostMapping("/api/custom_analyze")
+    public ResponseEntity<Map<String, Object>> customAnalyze(
+            @RequestParam(value = "images", required = false) List<MultipartFile> images,
+            @RequestParam(value = "prompt", defaultValue = "") String prompt,
+            @RequestParam(value = "count", defaultValue = "1") int count) {
+        log.info("[custom_analyze 入参] images={}, count={}, promptLen={}",
+                images == null ? 0 : images.size(), count, prompt == null ? 0 : prompt.length());
+        if (images == null || images.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请先上传白底产品图"));
+        }
+
+        List<File> tempFiles = new ArrayList<>();
+        try {
+            for (MultipartFile image : images) {
+                if (image == null || image.isEmpty()) continue;
+                File tmp = File.createTempFile("custom_analyze_", getSuffix(image.getOriginalFilename()));
+                image.transferTo(tmp);
+                tempFiles.add(tmp);
+            }
+            if (tempFiles.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "请先上传有效图片"));
+            }
+            String text = imageGenerationService.analyzeCustomImagePrompts(prompt, tempFiles, count);
+            return ResponseEntity.ok(Map.of("text", text));
+        } catch (Exception e) {
+            log.error("custom_analyze 失败: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        } finally {
+            for (File f : tempFiles) {
+                if (f != null && f.exists()) f.delete();
+            }
+        }
+    }
+
     /**
-     * 开品模式融合分析：基于产品 A/B、卖点、方案侧重、视觉风格，综合生成结构化分析卡片。
+     * 开品模式外观分析：基于产品图/描述，按内置 Excel 维度生成结构化外观分析卡片。
      * 这是两步流程的第一步，返回可编辑卡片供用户确认后二次生图。
      */
     @PostMapping("/api/kaipin_analyze")
@@ -254,14 +292,11 @@ public class GenerateController {
         if (focusText != null) focusText = normalizeMultipartText(focusText);
         if (styleText != null) styleText = normalizeMultipartText(styleText);
 
-        // 验证：A/B 至少各有一个（文字或图片）
+        // 新版开品模式：按固定外观维度分析单个产品，至少提供一份文字或图片材料即可。
         boolean hasA = (productA != null && !productA.isBlank()) || (imageA != null && !imageA.isEmpty());
         boolean hasB = (productB != null && !productB.isBlank()) || (imageB != null && !imageB.isEmpty());
-        if (!hasA || !hasB) {
-            return ResponseEntity.badRequest().body(Map.of("error", "产品 A 和 B 都需要提供材料（文字或图片至少其一）"));
-        }
-        if (selling == null || selling.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "核心卖点是必填项"));
+        if (!hasA && !hasB) {
+            return ResponseEntity.badRequest().body(Map.of("error", "开品模式需要至少提供一张产品图或一段产品描述"));
         }
 
         File imageATmp = null;
@@ -324,6 +359,149 @@ public class GenerateController {
         }
     }
 
+    /**
+     * 开品 Excel 批量生成：豆包/视觉分析只对白底产品图执行一轮。
+     * Excel 里的图片只作为逐张创新参考图，与白底产品图配对生成。
+     */
+    @PostMapping("/api/kaipin_excel_generate")
+    public ResponseEntity<Map<String, Object>> kaipinExcelGenerate(
+            @RequestParam("whiteImage") MultipartFile whiteImage,
+            @RequestParam("excel") MultipartFile excel,
+            @RequestParam(value = "basePrompt", defaultValue = "") String basePrompt,
+            @RequestParam(value = "countPerRef", defaultValue = "1") int countPerRef,
+            @RequestParam(value = "agentId", defaultValue = "gpt-image") String agentId,
+            @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
+            @RequestParam(value = "configJson", required = false) String configJson) {
+
+        if (whiteImage == null || whiteImage.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Excel 批量开品需要上传白底产品图"));
+        }
+        if (excel == null || excel.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请上传包含参考图片的 .xlsx 文件"));
+        }
+
+        File whiteTmp = null;
+        File excelTmp = null;
+        List<File> excelRefs = new ArrayList<>();
+        try {
+            whiteTmp = File.createTempFile("kaipin_white_", getSuffix(whiteImage.getOriginalFilename()));
+            whiteImage.transferTo(whiteTmp);
+            excelTmp = File.createTempFile("kaipin_refs_", ".xlsx");
+            excel.transferTo(excelTmp);
+
+            excelRefs = extractXlsxImages(excelTmp);
+            if (excelRefs.isEmpty()) {
+                if (whiteTmp.exists()) whiteTmp.delete();
+                if (excelTmp.exists()) excelTmp.delete();
+                return ResponseEntity.badRequest().body(Map.of("error", "Excel 中没有提取到图片，请确认图片是插入到 .xlsx 文件内，而不是外部链接"));
+            }
+
+            int safeCount = Math.max(1, Math.min(50, countPerRef));
+            int total = excelRefs.size() * safeCount;
+            GenerationTask task = taskService.createTask(total);
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+            String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
+                    "开品Excel批量/" + timestamp).getAbsolutePath();
+            new File(outputDir).mkdirs();
+
+            final File whiteFinal = whiteTmp;
+            final File excelFinal = excelTmp;
+            final List<File> refsFinal = new ArrayList<>(excelRefs);
+            final int countFinal = safeCount;
+            final String promptFinalBase = basePrompt == null || basePrompt.isBlank()
+                    ? "基于白底产品图保持产品主体一致，并结合 Excel 参考图提取创新造型、色彩、材质或结构灵感，生成新的开品概念图。"
+                    : basePrompt;
+
+            taskService.submit(task, () -> {
+                ExecutorService executor = imageGenerationService.getExecutor();
+                List<CompletableFuture<String>> futures = new ArrayList<>();
+                int[] idx = {1};
+
+                for (int i = 0; i < refsFinal.size(); i++) {
+                    File excelRef = refsFinal.get(i);
+                    String prompt = buildKaiPinExcelFusionPrompt(promptFinalBase, i + 1, refsFinal.size());
+                    String aspect = resolveAutoAspect("auto", List.of(whiteFinal));
+                    for (int c = 0; c < countFinal; c++) {
+                        final int n = idx[0]++;
+                        final File refFinal = excelRef;
+                        final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
+                        futures.add(CompletableFuture.supplyAsync(() -> {
+                            if (task.isCancelled()) return "失败: 已取消";
+                            boolean ok = imageGenerationService.generateImageMulti(
+                                    prompt,
+                                    List.of(whiteFinal.getAbsolutePath(), refFinal.getAbsolutePath()),
+                                    null,
+                                    outputPath,
+                                    agentId,
+                                    aspect);
+                            return ok ? outputPath : "失败: 生成未返回图片";
+                        }, executor));
+                    }
+                }
+
+                int n = 1;
+                for (CompletableFuture<String> f : futures) {
+                    String r;
+                    try {
+                        r = f.get(5, TimeUnit.MINUTES);
+                    } catch (TimeoutException te) {
+                        f.cancel(true);
+                        r = "失败: 单张图超时(>5 分钟)";
+                    } catch (Exception e) {
+                        r = "失败: " + e.getMessage();
+                    }
+                    String name = n++ + ".jpg";
+                    if (r.startsWith("失败")) {
+                        task.addResult(ControllerHelpers.result(name, "error", r, null));
+                    } else {
+                        String outputRef = r;
+                        if (cosService.isEnabled()) {
+                            try {
+                                outputRef = cosService.upload(new File(r), name);
+                            } catch (Exception ce) {
+                                log.warn("COS 上传失败，降级本地路径: {}", ce.getMessage());
+                            }
+                        }
+                        task.addResult(ControllerHelpers.result(name, "success", null, outputRef));
+                    }
+                    task.incrementProgress();
+                }
+
+                task.addResult(ControllerHelpers.result("__OUTPUT_DIR__", "info", null, outputDir));
+                task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
+                        "【开品 Excel 批量】豆包/视觉分析仅执行 1 轮：对白底产品图形成结构化卡片；Excel 内 "
+                                + refsFinal.size() + " 张图片仅作为逐张创新参考图参与融合生成。", null));
+
+                try {
+                    List<File> refsForArchive = new ArrayList<>();
+                    refsForArchive.add(whiteFinal);
+                    refsForArchive.addAll(refsFinal);
+                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(refsForArchive);
+                    historyService.recordGeneration(sessionId, "kaipin",
+                            promptFinalBase, agentId, archive.refPaths, outputDir, configJson);
+                } catch (Exception e) {
+                    log.warn("开品 Excel 批量写历史失败（不影响生图）: {}", e.getMessage());
+                }
+
+                if (whiteFinal.exists()) whiteFinal.delete();
+                if (excelFinal.exists()) excelFinal.delete();
+                for (File ref : refsFinal) if (ref.exists()) ref.delete();
+            });
+
+            return ResponseEntity.ok(Map.of(
+                    "taskId", task.getId(),
+                    "excelImageCount", excelRefs.size(),
+                    "output_dir", outputDir
+            ));
+        } catch (Exception e) {
+            log.error("kaipin_excel_generate 失败: {}", e.getMessage(), e);
+            if (whiteTmp != null && whiteTmp.exists()) whiteTmp.delete();
+            if (excelTmp != null && excelTmp.exists()) excelTmp.delete();
+            for (File ref : excelRefs) if (ref.exists()) ref.delete();
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/api/custom_generate")
     public ResponseEntity<Map<String, Object>> customGenerate(
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
@@ -333,6 +511,7 @@ public class GenerateController {
             @RequestParam(value = "aspect", required = false) String aspect,
             @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
             @RequestParam(value = "mode", defaultValue = "custom") String mode,
+            @RequestParam(value = "multiPrompt", defaultValue = "false") boolean multiPrompt,
             @RequestParam(value = "configJson", required = false) String configJson,
             MultipartHttpServletRequest request) {
 
@@ -346,12 +525,16 @@ public class GenerateController {
         List<String> prompts = rawPrompts == null ? List.of() : Arrays.asList(rawPrompts);
 
         boolean hasImages = images != null && !images.isEmpty();
+        String generationAgentId = "gemini".equalsIgnoreCase(agentId) ? "gpt-image" : agentId;
+        if (!Objects.equals(generationAgentId, agentId)) {
+            log.info("[custom_generate] Gemini only analyzes prompts; image generation switched to {}", generationAgentId);
+        }
 
         // 诊断日志：51 任务排查 — 看清楚这次请求到底来了几条 prompt / 几张图 / 是否 pair
         log.info("[custom_generate 入参] prompts={}, images={}, pairImages={}, count={}, agentId={}, aspect={}",
                 prompts.size(),
                 images == null ? 0 : images.size(),
-                pairImages, count, agentId, aspect);
+                pairImages, count, generationAgentId, aspect);
 
         // 过滤空 prompt
         List<String> promptList = new ArrayList<>();
@@ -360,18 +543,29 @@ public class GenerateController {
             return ResponseEntity.badRequest().body(Map.of("error", "纯文生图模式需要提供提示词"));
         }
         if (promptList.isEmpty()) promptList.add("");
+        int requestedCount = Math.max(1, Math.min(50, count));
+
+        // 自定义模式的“生成数量”是最终总张数，不是 prompt 数量 × 每条 prompt 张数。
+        // 防御异常请求带入多条 prompt 时出现 4×4=16 这类倍增。
+        if ("custom".equalsIgnoreCase(mode) && multiPrompt && promptList.size() > 1) {
+            requestedCount = 1;
+            log.info("[custom_generate] 自定义模式显式批量 prompt：{} 条，每条固定生成 1 张", promptList.size());
+        } else if ("custom".equalsIgnoreCase(mode) && promptList.size() > 1) {
+            log.warn("[custom_generate] 自定义模式收到多条 prompt（{} 条），已收敛为 1 条，避免 count 倍增", promptList.size());
+            promptList = new ArrayList<>(List.of(String.join("\n\n", promptList)));
+        }
 
         // GPT-Image 对长 prompt 敏感（>550 字易超时），用 Gemini 提前批量压缩；失败自动降级原文
         // 同时收集 LLM 思考过程，回传前端展示
         List<String> thoughts = new ArrayList<>();
-        if (agentId != null && agentId.startsWith("gpt-image")) {
+        if (generationAgentId != null && generationAgentId.startsWith("gpt-image")) {
             List<String> compressed = new ArrayList<>(promptList.size());
             for (String p : promptList) {
                 PromptCondenser.Condensed c = promptCondenser.condenseDetailed(p);
                 compressed.add(c.compressed());
                 if (c.thought() == null || c.thought().isBlank()) {
                     thoughts.add(
-                        "【提示词直送（未经 LLM 处理）】\n模型: " + agentId
+                        "【提示词直送（未经 LLM 处理）】\n模型: " + generationAgentId
                         + "\n长度: " + p.length() + " 字\n\n【最终提示词】\n" + p
                     );
                 } else {
@@ -386,7 +580,7 @@ public class GenerateController {
         } else {
             for (String p : promptList) {
                 thoughts.add(
-                    "【提示词直送（未经 LLM 处理）】\n模型: " + agentId
+                    "【提示词直送（未经 LLM 处理）】\n模型: " + generationAgentId
                     + "\n长度: " + p.length() + " 字\n\n【最终提示词】\n" + p
                 );
             }
@@ -426,7 +620,7 @@ public class GenerateController {
         }
 
         int pairN = pairImages ? Math.min(pairRefs.size(), promptList.size()) : 0;
-        int total = pairImages ? (pairN * count) : (promptList.size() * count);
+        int total = pairImages ? (pairN * requestedCount) : (promptList.size() * requestedCount);
 
         GenerationTask task = taskService.createTask(total);
         final File refFinal = refTempFile;
@@ -438,6 +632,7 @@ public class GenerateController {
         final List<String> promptsFinal = promptList;
         final List<String> thoughtsFinal = thoughts;
         final String requestedAspect = normalizeAspect(aspect);
+        final int countFinal = requestedCount;
 
         taskService.submit(task, () -> {
             ExecutorService executor = imageGenerationService.getExecutor();
@@ -449,27 +644,27 @@ public class GenerateController {
                     final File refI = pairRefsFinal.get(i);
                     final String promptFinal = promptsFinal.get(i);
                     final String aspectForRef = resolveAutoAspect(requestedAspect, List.of(refI));
-                    for (int c = 0; c < count; c++) {
+                    for (int c = 0; c < countFinal; c++) {
                         final int n = idx[0]++;
                         final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "失败: 已取消";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, agentId, aspectForRef);
+                                    promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, generationAgentId, aspectForRef);
                             return ok ? outputPath : "失败: 生成未返回图片";
                         }, executor));
                     }
                 }
             } else if (!hasImagesFinal) {
                 for (String p : promptsFinal) {
-                    for (int i = 0; i < count; i++) {
+                    for (int i = 0; i < countFinal; i++) {
                         final int n = idx[0]++;
                         final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                         final String promptFinal = p;
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "失败: 已取消";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, List.of(), null, outputPath, agentId, requestedAspect);
+                                    promptFinal, List.of(), null, outputPath, generationAgentId, requestedAspect);
                             return ok ? outputPath : "失败: 生成未返回图片";
                         }, executor));
                     }
@@ -483,7 +678,7 @@ public class GenerateController {
                 refsForAspect.addAll(whiteFinal);
                 final String aspectForRefs = resolveAutoAspect(requestedAspect, refsForAspect);
                 for (String p : promptsFinal) {
-                    for (int i = 0; i < count; i++) {
+                    for (int i = 0; i < countFinal; i++) {
                         final int n = idx[0]++;
                         final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                         final String promptFinal = p;
@@ -491,7 +686,7 @@ public class GenerateController {
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "失败: 已取消";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, refsFinal, null, outputPath, agentId, aspectForRefs);
+                                    promptFinal, refsFinal, null, outputPath, generationAgentId, aspectForRefs);
                             return ok ? outputPath : "失败: 生成未返回图片";
                         }, executor));
                     }
@@ -550,7 +745,7 @@ public class GenerateController {
             // 注意：这里 archiveRefFiles 是同步 copy 一次，跟 lambda 里之后的 .delete() 无竞争
             HistoryService.ArchiveResult archive = historyService.archiveRefFiles(refsForArchive);
             String promptJoined = String.join(" || ", promptList);
-            historyService.recordGeneration(sessionId, mode, promptJoined, agentId,
+            historyService.recordGeneration(sessionId, mode, promptJoined, generationAgentId,
                     archive.refPaths, outputDir, configJson);
         } catch (Exception e) {
             log.warn("写历史记录失败（不影响生图）: {}", e.getMessage());
@@ -610,6 +805,41 @@ public class GenerateController {
         return best;
     }
 
+    private List<File> extractXlsxImages(File xlsx) throws Exception {
+        List<File> files = new ArrayList<>();
+        try (XSSFWorkbook workbook = new XSSFWorkbook(xlsx)) {
+            int idx = 1;
+            for (XSSFPictureData picture : workbook.getAllPictures()) {
+                String ext = picture.suggestFileExtension();
+                String suffix = (ext == null || ext.isBlank()) ? ".png" : "." + ext.replace(".", "");
+                File out = File.createTempFile("kaipin_xlsx_ref_" + idx + "_", suffix);
+                try (FileOutputStream fos = new FileOutputStream(out)) {
+                    fos.write(picture.getData());
+                }
+                files.add(out);
+                idx++;
+            }
+        }
+        return files;
+    }
+
+    private String buildKaiPinExcelFusionPrompt(String basePrompt, int index, int total) {
+        return """
+                【开品 Excel 批量融合】
+                本次豆包/视觉分析只对白底产品图执行一轮。请严格以第 1 张参考图（白底产品图）为产品主体，保持品类、核心结构、功能识别点、比例关系和可制造性一致。
+                第 2 张参考图来自 Excel，是第 %d / %d 张创新参考图。不要直接复制或替换成该参考图里的产品，只提取它的造型语言、CMF 色彩策略、材质质感、结构细节、装饰节奏或使用场景作为创新点。
+
+                【白底产品分析结论】
+                %s
+
+                【融合要求】
+                1. 主体必须仍然是白底产品图里的产品，不丢失原产品身份。
+                2. 将 Excel 参考图的创新点融合到主体的外观设计中，形成新的开品概念。
+                3. 画面只呈现一个清晰主产品，结构真实、材质可信、光影自然。
+                4. 禁止多产品拼贴、低清晰度、畸变、漂浮部件、不可制造结构、品牌 logo、水印、纯文字海报。
+                """.formatted(index, total, basePrompt == null ? "" : basePrompt);
+    }
+
     @PostMapping("/api/inpaint")
     public ResponseEntity<Map<String, Object>> inpaint(
             @RequestParam("image")  MultipartFile image,
@@ -644,7 +874,8 @@ public class GenerateController {
             mask.transferTo(maskTmp);
             log.info("inpaint: image={} mask={}", imageTmp.getAbsolutePath(), maskTmp.getAbsolutePath());
 
-            boolean ok = gptImageAgent.generateWithMask(prompt, imageTmp, maskTmp, outputPath);
+            String inferredAspect = resolveAutoAspect("auto", List.of(imageTmp));
+            boolean ok = gptImageAgent.generateWithMask(prompt, imageTmp, maskTmp, outputPath, inferredAspect);
             if (!ok) {
                 return ResponseEntity.internalServerError()
                         .body(Map.of("error", "GPT-Image 局部重绘失败，请检查 API Key 或网络"));

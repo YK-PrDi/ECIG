@@ -142,7 +142,14 @@ if not exist "tools\node_modules\playwright" (
 )
 rem 下载 Chromium（已下载则跳过，PLAYWRIGHT_BROWSERS_PATH 指向 tools\browsers）
 set "PLAYWRIGHT_BROWSERS_PATH=%~dp0tools\browsers"
-if not exist "tools\browsers\chromium-*\chrome-win\chrome.exe" (
+set "PW_CHROMIUM_READY=0"
+for /d %%D in ("tools\browsers\chromium-*") do (
+    if exist "%%~fD\chrome-win64\chrome.exe" set "PW_CHROMIUM_READY=1"
+    if exist "%%~fD\chrome-win\chrome.exe" set "PW_CHROMIUM_READY=1"
+)
+if "%PW_CHROMIUM_READY%"=="1" (
+    echo        Chromium already downloaded, skipping.
+) else (
     echo        downloading Chromium to tools\browsers\ ...
     pushd tools
     call node_modules\.bin\playwright.cmd install chromium
@@ -153,8 +160,6 @@ if not exist "tools\browsers\chromium-*\chrome-win\chrome.exe" (
         pause
         exit /b 1
     )
-) else (
-    echo        Chromium already downloaded, skipping.
 )
 echo        Playwright ready.
 
@@ -234,7 +239,7 @@ echo.
 echo ============================================================
 echo  Build complete. Artifacts:
 for %%f in (dist-electron\*.exe) do echo    dist-electron\%%~nxf
-echo    dist-electron\win-unpacked\AI Studio.exe  (portable)
+echo    dist-electron\win-unpacked\AI Studio.exe  ^(portable^)
 echo ============================================================
 echo.
 endlocal
