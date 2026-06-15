@@ -2434,5 +2434,910 @@ window.EC_CATEGORY_TREE = [
             { display: '书房吸顶灯' },
             { display: '卧室吸顶灯' }
         ]}
+    ]},
+    { display: '家居生活', children: [
+        { display: '饰品/流行首饰/摆件/保养鉴定', children: [
+            { display: '摆件' }, { display: '保养鉴定用品' }, { display: 'DIY配件' },
+            { display: '二次元饰品' }, { display: '耳饰' }, { display: '儿童饰品' },
+            { display: '发饰' }, { display: '佛珠/木质手串' }, { display: '功能饰品' },
+            { display: '闺蜜饰品' }, { display: '汉服配饰' }, { display: '脚链' },
+            { display: '结婚首饰' }, { display: '戒指/指环' }, { display: '金包银饰品' },
+            { display: '民族风饰品' }, { display: '男士饰品' }, { display: '情侣饰品' },
+            { display: '其它首饰' }, { display: '手链' }, { display: '首饰收纳' },
+            { display: '首饰套装' }, { display: '手镯' }, { display: '项链' },
+            { display: '项坠/吊坠' }, { display: '胸针' }, { display: '银饰' }
+        ]},
+        { display: '家庭/个人清洁工具', children: [
+            { display: '个人洗护清洁用具' }, { display: '男士理容工具' },
+            { display: '商用清洁用具' }, { display: '室内/室外清洁用具' },
+            { display: '卫浴/置物用具' }
+        ]},
+        { display: '鲜花园艺/绿植仿真/园林设备', children: [
+            { display: '插花培训' }, { display: '仿真花/绿植/蔬果成品' }, { display: '果树' },
+            { display: '花卉/蔬果/草坪种子' }, { display: '花卉盆栽/花园植物' },
+            { display: '花瓶/花器/花盆/花架' }, { display: '花艺包装/礼盒/胶水胶带' },
+            { display: '婚礼鲜花布置' }, { display: '卡通花' }, { display: '绿植盆栽' },
+            { display: '迷你植物' }, { display: '商务用花' }, { display: '生活鲜花' },
+            { display: '鲜花果篮(预定与速递)' }, { display: '行道树' },
+            { display: '永生花/干花' }, { display: '园艺设计服务' },
+            { display: '园艺用品/园林五金' }, { display: '追悼/奠仪用花' }
+        ]},
+        { display: '农机/农具/农膜', children: [
+            { display: '农产品采后加工包装/贮藏' }, { display: '农膜/篷布/遮网/大棚' },
+            { display: '农业工具' }, { display: '农业机械' },
+            { display: '喷灌/滴灌设备' }, { display: '温室大棚配件' }
+        ]},
+        { display: '厨房/烹饪用具', children: [
+            { display: '厨房金属置物架' }, { display: '厨房小工具/厨房储物' },
+            { display: '烘焙包装' }, { display: '烘焙模具' },
+            { display: '烹饪用具', children: [
+                { display: '锅具/煲/烧水壶', children: [
+                    { display: '锅盖' }
+                ]}
+            ]},
+            { display: '烧烤/烘焙用具' }
+        ]},
+        { display: '珠宝/钻石/翡翠/黄金', children: [
+            { display: '铂金/PT' }, { display: '彩色宝石/贵重宝石' }, { display: '常规黄金' },
+            { display: '翡翠' }, { display: '合成钻石' }, { display: '和田玉' },
+            { display: 'K金首饰' }, { display: '绿松石' }, { display: '玛瑙' },
+            { display: '南红' }, { display: '其他天然玉石' }, { display: '天然琥珀蜜蜡' },
+            { display: '天然水晶' }, { display: '天然珍珠' }, { display: '天然钻石' },
+            { display: '天珠' }, { display: '投资银' }, { display: '镶嵌类黄金' },
+            { display: '小克重黄金' }, { display: '玉髓' }, { display: '朱砂' }
+        ]},
+        { display: '畜牧/养殖物资', children: [
+            { display: '畜牧/养殖服务' }, { display: '畜牧/养殖设备' },
+            { display: '动物保健品/兽药' }, { display: '蜂场养殖物资' },
+            { display: '水产养殖物资' }, { display: '饲料' }
+        ]},
+        { display: '农用物资', children: [
+            { display: '动物幼苗/动物种苗' }, { display: '肥料' }, { display: '农技服务' },
+            { display: '农药' }, { display: '农业生物用品' }, { display: '农用/环境用卫生用药' },
+            { display: '农用化工原料' }, { display: '驱鸟剂' }, { display: '园林养护物资' },
+            { display: '种苗' }, { display: '种子/种球' }, { display: '助剂/添加剂' }
+        ]},
+        { display: '居家日用', children: [
+            { display: '保暖/发热/蒸汽贴' }, { display: '防护用品' }, { display: '功能面具/面罩' },
+            { display: '工作手套' }, { display: '挂历' }, { display: '家居健康用品' },
+            { display: '家居智能设备' }, { display: '家居智能用品' },
+            { display: '加热/保暖/暖身用品' }, { display: '家用五金工具' },
+            { display: '节日/派对庆典用品' }, { display: '居家鞋/鞋垫' },
+            { display: '毛巾/浴巾/浴袍' }, { display: '美体/塑身塑形/增高用具' },
+            { display: '其他' }, { display: '驱虫用品' }, { display: '热水袋' },
+            { display: '伞/雨具/防雨/防潮' }, { display: '扇/迷你风扇/配件/冰垫/冰' },
+            { display: '商用毛巾浴巾' }, { display: '书写板' }, { display: '台历' },
+            { display: '贴/保健贴/膏药贴(非器械)' }, { display: '香包/香囊' },
+            { display: '香薰用品' }, { display: '鞋用品' }, { display: '钟' }
+        ]},
+        { display: '烟品/打火机/瑞士军刀', children: [
+            { display: '打火机' }, { display: '打火机配件' }, { display: '瑞士军刀' },
+            { display: '替烟产品' }, { display: '烟具' }
+        ]},
+        { display: '古董文玩/邮币/字画/收藏', children: [
+            { display: '观赏石/奇石/矿物晶体' }, { display: '金石篆刻' }, { display: '钱币' },
+            { display: '器具收藏' }, { display: '其它收藏品' }, { display: '趣味收藏' },
+            { display: '收藏品保养/鉴定工具' }, { display: '书法/绘画' },
+            { display: '文房用品/用具' }, { display: '邮品' }, { display: '宗教用品' }
+        ]},
+        { display: '洗护清洁剂/卫生巾/纸/香薰', children: [
+            { display: '家私/皮具护理品' }, { display: '家庭环境清洁剂' }, { display: '口腔护理' },
+            { display: '面部清洁/护理' }, { display: '面膜/眼膜' }, { display: '棉柔巾/洗脸巾' },
+            { display: '驱虫用品' }, { display: '润唇膏' }, { display: '商用清洁剂' },
+            { display: '身体护理' }, { display: '身体护理贴/膏' }, { display: '身体清洁' },
+            { display: '湿巾/湿厕纸' }, { display: '室内除臭/芳香用品' }, { display: '手部护理' },
+            { display: '卫生巾/护垫' }, { display: '香薰用品' }, { display: '消毒用品' },
+            { display: '洗发/护发/头皮清洁/头发造型' }, { display: '一次性酒店用品' },
+            { display: '衣物清洁剂/护理剂' }, { display: '纸品/生活用纸' },
+            { display: '中老年护理用品' }, { display: '足部护理' }
+        ]},
+        { display: '乐器/吉他/钢琴/配件', children: [
+            { display: '电子合成器' }, { display: '儿童乐器' }, { display: '钢琴' },
+            { display: '乐器服务' }, { display: '乐器工具/周边' }, { display: '乐器配件' },
+            { display: '乐器音箱' }, { display: 'MIDI乐器/电脑音乐' },
+            { display: '民族乐器' }, { display: '西洋乐器' }
+        ]},
+        { display: '收纳整理', children: [
+            { display: '编织收纳' }, { display: '磁吸置物用品' }, { display: '防尘用具' },
+            { display: '旅行收纳用具' }, { display: '商用收纳' }, { display: '收纳用具' },
+            { display: '玩具收纳用具' }, { display: '洗晒/晾晒/护理用具' },
+            { display: '折叠收纳用具' }, { display: '整理用具' }, { display: '置物用品' }
+        ]},
+        { display: '宠物/宠物食品及用品', children: [
+            { display: '宠物服饰及配件' }, { display: '宠物附属品' }, { display: '宠物生活服务' },
+            { display: '宠物智能设备' }, { display: '动物药品及药剂' }, { display: '狗狗' },
+            { display: '狗零食' }, { display: '马类食品及用品' }, { display: '猫/狗保健品' },
+            { display: '猫/狗出行用品' }, { display: '猫/狗美容护理工具' },
+            { display: '猫/狗美容清洁用品' }, { display: '猫/狗日用品' },
+            { display: '猫/狗玩具' }, { display: '猫/狗医疗用品' }, { display: '猫零食' },
+            { display: '猫咪' }, { display: '猫主粮' }, { display: '鸟类活体' },
+            { display: '鸟类食品及用品' }, { display: '啮齿类活体' },
+            { display: '爬宠/鸣虫类活体' }, { display: '爬宠/鸣虫类食品及用品' },
+            { display: '其它宠物食品及用品' }, { display: '其他异宠活体' },
+            { display: '犬主粮' }, { display: '水族类活体' }, { display: '水族世界' },
+            { display: '鼠类等小宠食品及用品' }, { display: '兔类食品及用品' }
+        ]},
+        { display: '餐饮具', children: [
+            { display: '保鲜容器/保鲜器皿' }, { display: '杯子/水杯/水壶' },
+            { display: '餐具', children: [
+                { display: '洗菜盆' }
+            ]},
+            { display: '茶具' }, { display: '定制外卖包装用品' }, { display: '儿童餐饮具' },
+            { display: '户外饮具' }, { display: '酒壶/酒杯/酒具' }, { display: '咖啡器具' },
+            { display: '可降解餐具/环保餐具' }, { display: '商用餐厨' },
+            { display: '外卖包装/一次性用品' }, { display: '一次性餐桌用品' }
+        ]},
+        { display: '音乐/影视/明星/音像', children: [
+            { display: '教育音像' }, { display: '影视' }, { display: '音乐' }
+        ]},
+        { display: '书籍/杂志/报纸', children: [
+            { display: '保健/心理类书籍' }, { display: '报刊订阅' }, { display: '报纸' },
+            { display: '传记' }, { display: '地图/地理' }, { display: '儿童读物/童书' },
+            { display: '法律' }, { display: '工具书/百科全书' }, { display: '工业/农业技术' },
+            { display: '管理' }, { display: '古籍' }, { display: '经济' },
+            { display: '进口原版书(含港台)' }, { display: '计算机/网络' },
+            { display: '考试/教材/论文' }, { display: '科学/科学研究' }, { display: '历史' },
+            { display: '旅游' }, { display: '漫画/动漫小说' }, { display: '期刊杂志' },
+            { display: '其他' }, { display: '社会科学' }, { display: '生活' },
+            { display: '体育运动(新)' }, { display: '外语/语言文字' }, { display: '网络原创' },
+            { display: '文化/信息与知识传播' }, { display: '文学' }, { display: '小说' },
+            { display: '艺术' }, { display: '医学卫生' }, { display: '育儿书籍' },
+            { display: '娱乐时尚' }, { display: '政治军事' }, { display: '哲学和宗教' },
+            { display: '知识服务' }, { display: '自然科学' }, { display: '字帖' },
+            { display: '自我实现/励志' }, { display: '自由组合套装' }
+        ]},
+        { display: '节庆用品/礼品', children: [
+            { display: '殡葬用品' }, { display: '创意礼品' }, { display: '婚庆用品' },
+            { display: '节日/装扮用品' }, { display: '礼品包装盒/袋' },
+            { display: '商务礼品' }, { display: '商用节庆布置用品' },
+            { display: '文化创意用品' }, { display: '应援用品' }
+        ]}
+    ]},
+    { display: '数码电器', children: [
+        { display: '数码相机/单反相机/摄像机', children: [
+            { display: '单反单电镜头' }, { display: '胶卷相机' }, { display: '普通数码相机' },
+            { display: '全景相机' }, { display: '数码摄像机' }, { display: '微单/单电' },
+            { display: '专业数码单反' }
+        ]},
+        { display: '智能设备', children: [
+            { display: '其他智能设备' }, { display: '运动跟踪器' }, { display: '智能安防' },
+            { display: '智能穿戴' }, { display: '智能出行' }, { display: '智能翻译机' },
+            { display: '智能飞行/无人机' }, { display: '智能健康' }, { display: '智能家庭' },
+            { display: '智能机器人' }, { display: '智能设备配件' }, { display: '智能摄像' },
+            { display: '智能手表' }, { display: '智能手环' }, { display: '智能眼镜/vr头盔' },
+            { display: '智能支付终端' }
+        ]},
+        { display: '办公设备/耗材/相关服务', children: [
+            { display: '3D打印设备' }, { display: '办公耗材' }, { display: '办公设备配件' },
+            { display: '办公用纸' }, { display: '保管箱' }, { display: '保险箱/保险柜' },
+            { display: '包装设备/标牌及耗材' }, { display: '传真/通信设备' },
+            { display: '磁盘刻录存储及相关服务' }, { display: '打印机' }, { display: '打印机配件' },
+            { display: '点/验钞/收款机及配件' }, { display: '多功能打印设备' },
+            { display: '多功能一体机及配件' }, { display: '复合复印机' }, { display: '高拍仪' },
+            { display: '广告/印刷/绘图设备及耗材' }, { display: '广告制作/印刷/打印复印' },
+            { display: '会议音频视频' }, { display: '胶带' }, { display: '激光打印设备' },
+            { display: '门禁考勤器材' }, { display: '喷墨打印设备' }, { display: '其它办公设备' },
+            { display: '扫描仪' }, { display: '绳索/扎带/办公线材' }, { display: '碎纸机' },
+            { display: '条码扫描/采集器材' }, { display: '投影仪' }, { display: '投影仪配件' },
+            { display: '智慧办公' }
+        ]},
+        { display: '包装用品', children: [
+            { display: '玻璃包装' }, { display: '布类包装' }, { display: '定制包装' },
+            { display: '防锈包装' }, { display: '工业包装' }, { display: '工业用纸' },
+            { display: '降解制品' }, { display: '金属包装' }, { display: '礼品包装耗材' },
+            { display: '铝制包装' }, { display: '美妆包装' }, { display: '木制包装' },
+            { display: '日用品包装' }, { display: '生产用纸' }, { display: '塑料包装' },
+            { display: '陶瓷包装' }, { display: '物流包装/物流打包耗材' },
+            { display: '印刷用纸' }, { display: '纸类包装' }, { display: '竹包装' }
+        ]},
+        { display: '平板电脑/MID', children: [
+            { display: '平板电脑/MID' }
+        ]},
+        { display: '个人护理保健', children: [
+            { display: '按摩器材' }, { display: '按摩椅/沙发' }, { display: '电吹风' },
+            { display: '电动牙刷' }, { display: '各类配件' }, { display: '家用保健器材' },
+            { display: '家用医疗保健器械' }, { display: '卷/直发器' }, { display: '口腔护理' },
+            { display: '理发器' }, { display: '离子梳/电动梳/造型梳' }, { display: '美发工具' },
+            { display: '美容/美体辅助工具' }, { display: '美容仪器' }, { display: '美体塑身' },
+            { display: '清洁/消毒器' }, { display: '清洁美容工具' }, { display: '其他个人护理' },
+            { display: '生发仪' }, { display: '剃须刀' }, { display: '孕产修复仪' },
+            { display: '中医经络保健器材' }
+        ]},
+        { display: '品牌台机/品牌一体机/服务器', children: [
+            { display: '服务器整机' }, { display: '工作站' }, { display: '台式整机' },
+            { display: '台式主机' }, { display: '一体机电脑' }, { display: '直播一体机' },
+            { display: '智慧白板' }
+        ]},
+        { display: '厨房电器', children: [
+            { display: '保健/养生/煎药壶' }, { display: '冰淇淋机' }, { display: '餐具消毒机' },
+            { display: '茶吧机/泡茶机' }, { display: '厨房家电配件' }, { display: '电饼铛/可丽饼机' },
+            { display: '电磁炉' }, { display: '电动打蛋器' }, { display: '电炖/煮粥锅/文火炉' },
+            { display: '电饭煲' }, { display: '电烤箱' }, { display: '电热/火锅' },
+            { display: '电热杯' }, { display: '电热饭盒' }, { display: '电热水壶/电茶炉/煮茶器' },
+            { display: '电陶炉' }, { display: '电压力锅' }, { display: '电炸锅' },
+            { display: '电蒸锅' }, { display: '定时器/提醒器' }, { display: '豆浆机' },
+            { display: '多功能料理锅' }, { display: '多士炉' }, { display: '和面机/厨师机' },
+            { display: '搅拌/料理机' }, { display: '家用气泡水机' },
+            { display: '净水器/净水设备及配件耗材' }, { display: '咖啡机' },
+            { display: '烤串机/电烤炉/电烤盘' }, { display: '面包机' }, { display: '面条机' },
+            { display: '破壁机' }, { display: '切片机/绞肉机' }, { display: '其他厨房家电' },
+            { display: '三明治机' }, { display: '商用厨电' }, { display: '食物烘干机' },
+            { display: '食物垃圾处理机' }, { display: '酸奶机' }, { display: '台式净饮机' },
+            { display: '微波炉' }, { display: '饮水机' }, { display: '原汁机' },
+            { display: '榨汁机' }, { display: '智能厨房电器' }, { display: '煮蛋器/蒸蛋器' }
+        ]},
+        { display: '文具电教/文化用品/商务用品', children: [
+            { display: '标志牌/提示牌/门牌' }, { display: '笔类/书写工具' }, { display: '财会用品' },
+            { display: '裁剪用品' }, { display: '点读机电子书' }, { display: '画具/画材/书法用品' },
+            { display: '绘图测量用品' }, { display: '教学用品' }, { display: '胶粘用品' },
+            { display: '计算器' }, { display: '日常学习用品' }, { display: '收纳/陈列用品' },
+            { display: '文创/其他文化用品' }, { display: '学习机/教育伴学机' },
+            { display: '学习手写板' }, { display: '印刷制品' }, { display: '纸张本册' },
+            { display: '装订用品' }, { display: '字帖' }
+        ]},
+        { display: 'DIY电脑', children: [
+            { display: 'DIY兼容机（组装机）' }, { display: 'DIY一体机' }
+        ]},
+        { display: '闪存卡/U盘/存储/移动硬盘', children: [
+            { display: '记忆棒' }, { display: '普通U盘/固态U盘/音乐U盘' },
+            { display: '闪存卡' }, { display: '手机U盘' }, { display: '私有云存储设备' },
+            { display: '无线硬盘/NAS' }, { display: '移动固态硬盘' }, { display: '移动机械硬盘' }
+        ]},
+        { display: '电脑硬件/显示器/电脑周边', children: [
+            { display: '板载套装' }, { display: '便携显示器' }, { display: 'CPU' },
+            { display: 'CPU主板套装' }, { display: '电脑视听配件' }, { display: '电脑周边' },
+            { display: '电源' }, { display: '服务器/工作站/企业级配件' }, { display: '固态硬盘' },
+            { display: '键帽' }, { display: '键盘' }, { display: '键鼠套装' },
+            { display: '键轴' }, { display: '机箱' }, { display: '机箱电源风扇套装' },
+            { display: '机械硬盘' }, { display: '客制化键盘套件' }, { display: '内存' },
+            { display: '散热器/风扇' }, { display: '声卡' }, { display: '手写输入/绘图板' },
+            { display: '鼠标垫/贴/腕垫' }, { display: '无线鼠标' }, { display: '显卡' },
+            { display: '显示器/显示屏' }, { display: '显示器支架' }, { display: '虚拟现实设备' },
+            { display: '硬盘盒' }, { display: '有线鼠标' }, { display: '智能电脑硬件' },
+            { display: '智能鼠标/AI鼠标' }, { display: '主板' }
+        ]},
+        { display: '3C数码配件', children: [
+            { display: '3C数码线材' }, { display: '笔记本/电脑配件' }, { display: '插座' },
+            { display: '车载手机配件' }, { display: '电教产品配件' }, { display: '电子书配件' },
+            { display: '耳机配件' }, { display: '干电池/充电电池/套装' },
+            { display: '胶片相机配件' }, { display: 'MP3/MP4/录音笔' },
+            { display: '平板电脑配件' }, { display: '摄像机配件' }, { display: '手机配件' },
+            { display: '数码包收纳' }, { display: '数码家电保护贴' }, { display: '数码相机配件' },
+            { display: '数码相框' }, { display: '数码周边' }, { display: 'USB电脑周边' },
+            { display: '无线上网卡设备' }, { display: '移动电源' }, { display: '影音周边配件' },
+            { display: '直播/摄影配件' }, { display: '智能手表/手环配件' }
+        ]},
+        { display: '影音电器', children: [
+            { display: '耳机/耳麦' }, { display: '广告机' }, { display: '麦克风/话筒/扩音器' },
+            { display: 'MP3/录音笔/收录音机' }, { display: '舞台设备/专业器材' },
+            { display: '影音家电配件' }, { display: '影音影视播放' }, { display: '音箱/音响' }
+        ]},
+        { display: '网络设备', children: [
+            { display: '电脑网络工具' }, { display: '光纤设备' }, { display: '交换机' },
+            { display: '机房布线' }, { display: '宽带猫/光猫' }, { display: '路由器' },
+            { display: '路由器/猫/网卡配件' }, { display: '视频监控' }, { display: '数码线材' },
+            { display: '网关' }, { display: '网卡' }, { display: '网络安全' },
+            { display: '网络存储设备' }, { display: '网络设备' }, { display: '无线高清' },
+            { display: '无线上网设备与终端' }, { display: '无线网络' }, { display: '语音视频' },
+            { display: '智能控制终端' }
+        ]},
+        { display: '电子元器件市场', children: [
+            { display: '磁' }, { display: '电机/马达' }, { display: '电路板' },
+            { display: '电路保护' }, { display: '电声器材' }, { display: '电源及电源管理' },
+            { display: '电子胶/密封胶/硅胶/粘合剂' }, { display: '多媒体与显示器件' },
+            { display: '分立器件' }, { display: '光电器件' }, { display: '集成电路（IC）' },
+            { display: '晶振与频率元件' }, { display: '计算机/服务器及零部件' },
+            { display: '开发板/开发套件' }, { display: '开关/按钮' },
+            { display: '开源硬件/电子DIY/创客' }, { display: 'LED' },
+            { display: '冷却和热管理' }, { display: '连接器' },
+            { display: '实验器材/测试器材/开发工具' }, { display: '手机信号放大器' },
+            { display: '通信/网络/接口/功能模块' }, { display: '微处理器/微控制器/单片机' },
+            { display: '物联网' }, { display: '无源元件' }, { display: '线材/线类' }
+        ]},
+        { display: '大家电', children: [
+            { display: '冰箱' }, { display: '冰洗套装' }, { display: '厨房大电' },
+            { display: '大家电配件' }, { display: '烘干机' }, { display: '酒柜' },
+            { display: '空调' }, { display: '冷柜/便携冷热箱' }, { display: '平板电视' },
+            { display: '全屋互联网智能电器' }, { display: '热水器' }, { display: '商用电器' },
+            { display: '商用冷链/冷柜' }, { display: '洗烘套装' }, { display: '洗鞋机' },
+            { display: '洗衣机' }, { display: '衣物护理机' }, { display: '中央空调' },
+            { display: '中央新风机' }
+        ]},
+        { display: '电玩/配件/游戏/攻略', children: [
+            { display: 'DS/3DS专用配件' }, { display: '方向盘' }, { display: '家用游戏机' },
+            { display: 'PSP专用配件' }, { display: 'PSV专用配件' },
+            { display: 'PS主机专用配件' }, { display: '其他配件' },
+            { display: '任天堂 SWITCH配件' }, { display: '任天堂NGC/FC/N64/SFC 专用配件' },
+            { display: '任天堂掌机配件' }, { display: '世嘉 DC/MD/SS/SEGA 专用配件' },
+            { display: '手柄充电器' }, { display: '手柄硅胶套' }, { display: '体感游戏机' },
+            { display: 'WII/WIIU专用配件' }, { display: 'XBOX专用配件' },
+            { display: '摇杆' }, { display: '游戏软件' }, { display: '游戏软件平台' },
+            { display: '游戏手柄' }, { display: '游戏跳舞毯' }, { display: '游戏掌机' }
+        ]},
+        { display: '手机', children: [
+            { display: '功能机/非智能机' }, { display: '智能机' }
+        ]},
+        { display: '二手数码', children: [
+            { display: '二手笔记本电脑' }, { display: '二手电脑硬件/电脑配件' },
+            { display: '二手电玩/游戏' }, { display: '二手平板电脑' },
+            { display: '二手品牌台式机/DIY电脑' }, { display: '二手手机' },
+            { display: '二手数码影音' }, { display: '二手网络设备' },
+            { display: '二手智能设备' }, { display: '其他二手数码' }
+        ]},
+        { display: '笔记本电脑', children: [
+            { display: '笔记本电脑' }
+        ]},
+        { display: '生活电器', children: [
+            { display: '保温碟/暖菜板' }, { display: '冰箱除味器' }, { display: '擦窗机器人' },
+            { display: '擦地/拖地机器人' }, { display: '擦鞋器/刷鞋机' },
+            { display: '超声波清洗机' }, { display: '抽湿器/除湿器' }, { display: '除螨仪' },
+            { display: '电动拖把/电动扫把' }, { display: '电风扇' }, { display: '电话机' },
+            { display: '电暖足器' }, { display: '电热水袋' }, { display: '电热毯/水暖毯' },
+            { display: '电熨斗' }, { display: '电子灭蚊器' }, { display: '吊扇' },
+            { display: '对讲机' }, { display: '缝纫机' }, { display: '服务机器人' },
+            { display: '干鞋器' }, { display: '干衣机' }, { display: '挂烫机' },
+            { display: '换气扇/排气扇' }, { display: '加湿器' }, { display: '家用新风机' },
+            { display: '节电器' }, { display: '空调扇' }, { display: '空气净化/氧吧' },
+            { display: '毛球修剪器/除毛器' }, { display: '暖被机' }, { display: '暖风机/取暖器' },
+            { display: '其它生活家电' }, { display: '取暖桌/电暖茶几' },
+            { display: '扫地机器人' }, { display: '沙发/布艺/地毯清洗机' },
+            { display: '杀菌/消毒/除霉/除味家电' }, { display: '生活家电配件' },
+            { display: '生活商用电器' }, { display: '消毒水生成机' }, { display: '吸尘器' },
+            { display: '洗地机' }, { display: '蒸汽清洁机' }, { display: '蒸汽拖把' }
+        ]}
+    ]},
+    { display: '美容个护', children: [
+        { display: '彩妆/香水/美妆工具', children: [
+            { display: 'BB霜' }, { display: '彩妆盘' }, { display: '彩妆套装' },
+            { display: 'CC霜' }, { display: '唇笔/唇线笔' }, { display: '唇彩/唇蜜/唇釉' },
+            { display: '唇膏/口红' }, { display: '定妆喷雾' }, { display: '发际线粉' },
+            { display: '粉饼' }, { display: '粉底液/膏' }, { display: '隔离/妆前' },
+            { display: '假睫毛' }, { display: '睫毛膏/睫毛打底膏/睫毛增长液' },
+            { display: '眉笔/眉粉/眉膏/染眉膏' }, { display: '美甲工具' },
+            { display: '美甲饰品' }, { display: '美容工具' }, { display: '蜜粉/散粉' },
+            { display: '男士彩妆' }, { display: '气垫' }, { display: '其他彩妆' },
+            { display: '腮红/胭脂' }, { display: '身体彩绘' }, { display: '卧蚕笔/下至笔' },
+            { display: '香水/香氛' }, { display: '修容/高光' }, { display: '眼线' },
+            { display: '眼影' }, { display: '遮瑕' }, { display: '指甲贴/穿戴甲' },
+            { display: '指甲油/甲油胶' }
+        ]},
+        { display: '美容美体仪器', children: [
+            { display: '口腔电子/智能产品' }, { display: '美容/美体辅助工具' },
+            { display: '美体塑身' }, { display: '清洁美容工具' }
+        ]},
+        { display: '美发护发/假发', children: [
+            { display: '护发' }, { display: '假发配件' }, { display: '局部假发/假发片' },
+            { display: '男士个人护理' }, { display: '染发烫发' }, { display: '头发造型' },
+            { display: '头皮保养' }, { display: '洗发水/洗头膏' }, { display: '洗护套装' },
+            { display: '整顶假发' }
+        ]},
+        { display: '美容护肤/美体/精油', children: [
+            { display: '唇部护理' }, { display: '痘痘贴' }, { display: '防晒' },
+            { display: '洁面' }, { display: '精油芳疗' }, { display: '局部护理' },
+            { display: '旅行装/体验装' }, { display: '面部按摩霜' }, { display: '面部护理套装' },
+            { display: '面部精华' }, { display: '面部磨砂/去角质' }, { display: '面膜' },
+            { display: '男士护理' }, { display: '其他保养' }, { display: '乳液/面霜' },
+            { display: '身体护理' }, { display: '手部保养' }, { display: '爽肤水/化妆水/面部喷雾' },
+            { display: 'T区护理' }, { display: '卸妆' }, { display: '胸部护理' },
+            { display: '眼部护理' }, { display: '足部护理' }
+        ]}
+    ]},
+    { display: '服饰箱包', children: [
+        { display: '流行男鞋', children: [
+            { display: '低帮鞋' }, { display: '帆布鞋' }, { display: '高帮鞋' },
+            { display: '健步鞋' }, { display: '凉鞋' }, { display: '拖鞋' },
+            { display: '靴子' }, { display: '雨鞋' }
+        ]},
+        { display: '女鞋', children: [
+            { display: '低帮鞋' }, { display: '帆布鞋' }, { display: '高帮鞋' },
+            { display: '健步鞋' }, { display: '凉鞋' }, { display: '民族鞋/特色鞋' },
+            { display: '拖鞋' }, { display: '月子鞋' }, { display: '雨鞋' }, { display: '靴子' }
+        ]},
+        { display: '箱包皮具/女包/男包', children: [
+            { display: '健身包' }, { display: '卡包' }, { display: '卡套' },
+            { display: '旅行袋' }, { display: '旅行箱' }, { display: '男包' },
+            { display: '女包' }, { display: '钱包' }, { display: '手机包' },
+            { display: '双肩包' }, { display: '箱包相关配件' }, { display: '胸包/腰包' },
+            { display: '钥匙包' }, { display: '证件包' }
+        ]},
+        { display: '内衣裤袜', children: [
+            { display: '保暖裤' }, { display: '保暖上装' }, { display: '保暖套装' },
+            { display: '产后塑身衣/收腹裤/月子袜' }, { display: '潮袜' }, { display: '插片/胸垫' },
+            { display: '搭扣' }, { display: '大码内衣裤袜' }, { display: '吊带/背心/T恤' },
+            { display: '吊袜带' }, { display: '肚兜' }, { display: '肩带' },
+            { display: '科技内衣裤袜' }, { display: '抹胸' }, { display: '男士内裤' },
+            { display: '男士袜子/丝袜/打底裤袜' }, { display: '内衣配件' },
+            { display: '女士内裤' }, { display: '女士袜子/丝袜/打底裤袜' },
+            { display: '情侣内裤' }, { display: '青少年/少女内衣裤' }, { display: '绒类家居服' },
+            { display: '乳贴' }, { display: '少女文胸/发育文胸' }, { display: '术后/护理内衣裤袜' },
+            { display: '睡裤/家居裤' }, { display: '睡袍/浴袍' }, { display: '睡裙' },
+            { display: '睡衣/家居服套装' }, { display: '睡衣上装' }, { display: '塑身分体套装' },
+            { display: '塑身连体衣' }, { display: '塑身美体裤' }, { display: '塑身上装' },
+            { display: '塑身腰封/腰夹' }, { display: '文胸' }, { display: '文胸套装' },
+            { display: '运动内衣裤袜' }, { display: '中老年内衣裤袜' }, { display: '中老年文胸/胸罩' }
+        ]},
+        { display: '腕表眼镜', children: [
+            { display: '功能眼镜' }, { display: '光学眼镜' }, { display: '平光眼镜' },
+            { display: '手表' }, { display: '太阳眼镜' }, { display: '眼镜配件' }
+        ]},
+        { display: '服饰配件', children: [
+            { display: '脖套' }, { display: 'DIY编织材料包' }, { display: '耳套' },
+            { display: '防晒配件' }, { display: '婚纱礼服配件' }, { display: '口袋巾' },
+            { display: '领部配件' }, { display: '帽子' }, { display: '其他配件' },
+            { display: '手帕' }, { display: '手套' }, { display: '围巾/手套/帽子套件' },
+            { display: '围巾/丝巾/披肩' }, { display: '鞋/包/皮带配件' },
+            { display: '袖套/冰袖' }, { display: '腰带/皮带/腰链/背带' },
+            { display: '制衣面料' }, { display: '中老年服配' }
+        ]},
+        { display: '男装', children: [
+            { display: '棒球服' }, { display: '背心/马甲' }, { display: '衬衫' },
+            { display: '冲锋裤' }, { display: '冲锋衣' }, { display: '大码男装' },
+            { display: '短裤' }, { display: '防晒衣/防晒服' }, { display: '风衣' },
+            { display: '夹克' }, { display: '毛呢大衣' }, { display: '棉裤' },
+            { display: '棉衣' }, { display: '民族服装/演出服/汉服' }, { display: '男装租赁' },
+            { display: '牛仔裤' }, { display: '牛仔上装' }, { display: '派克服' },
+            { display: '皮草' }, { display: '皮裤' }, { display: '皮衣' },
+            { display: 'POLO衫' }, { display: '设计师服装/潮牌服装' }, { display: '套装' },
+            { display: 'T恤' }, { display: '卫裤' }, { display: '卫衣' },
+            { display: '西服/西裤' }, { display: '休闲裤' }, { display: '羊绒衫' },
+            { display: '羽绒服' }, { display: '羽绒裤' }, { display: '针织衫/毛衣' }
+        ]},
+        { display: '女装/女士精品', children: [
+            { display: '半身裙' }, { display: '背心吊带' }, { display: '衬衫' },
+            { display: '大码女装' }, { display: '短外套' }, { display: '风衣' },
+            { display: '汉服' }, { display: '婚纱/旗袍/礼服' }, { display: '裤子' },
+            { display: '蕾丝衫/雪纺衫' }, { display: '连衣裙' }, { display: '马夹' },
+            { display: '毛呢外套' }, { display: '毛衣/针织衫' }, { display: '棉衣/棉服' },
+            { display: '抹胸' }, { display: '牛仔裤' }, { display: '皮草' },
+            { display: '皮衣' }, { display: 'POLO衫' }, { display: '时尚冲锋衣' },
+            { display: '时尚防晒衣' }, { display: '唐装/民族服装/舞台服装' },
+            { display: '套装/学生校服/工作制服' }, { display: 'T恤' },
+            { display: '卫衣/绒衫' }, { display: '西装' }, { display: '羽绒服' },
+            { display: '羽绒裤' }, { display: '中老年女装' }
+        ]}
+    ]},
+    { display: '家纺家具家装', children: [
+        { display: '床上用品', children: [
+            { display: '被套' }, { display: '被子' }, { display: '床单' },
+            { display: '床垫/床褥/床护垫' }, { display: '床盖' }, { display: '床笠' },
+            { display: '床幔' }, { display: '床品定制/定做' }, { display: '床品配件' },
+            { display: '床品套件' }, { display: '床裙' }, { display: '床罩' },
+            { display: '电热毯' }, { display: '儿童床品' }, { display: '凉席/竹席/藤席/牛皮席' },
+            { display: '其它' }, { display: '睡袋' }, { display: '蚊帐' },
+            { display: '休闲毯/毛毯/绒毯' }, { display: '一次性床品' }, { display: '枕巾' },
+            { display: '枕套' }, { display: '枕头/枕芯' }
+        ]},
+        { display: '家居饰品', children: [
+            { display: '摆件' }, { display: '壁饰' }, { display: '创意饰品' },
+            { display: '雕刻工艺' }, { display: '风铃及配件' }, { display: '工艺船' },
+            { display: '工艺伞' }, { display: '工艺扇' }, { display: '花瓶/仿真花/仿真饰品' },
+            { display: '家居香薰' }, { display: '家居钟饰/闹钟' }, { display: '家饰软装搭配套餐' },
+            { display: '蜡烛/烛台' }, { display: '其他工艺饰品' }, { display: '贴饰' },
+            { display: '相框/画框/执照框' }, { display: '照片/照片墙' },
+            { display: '装饰挂钩' }, { display: '装饰挂牌' }, { display: '装饰画' },
+            { display: '装饰架/装饰搁板' }, { display: '装饰器皿' }
+        ]},
+        { display: '灯饰光源照明', children: [
+            { display: '成套灯具' }, { display: '灯具配件及其他' }, { display: '吊灯' },
+            { display: '功能性灯具' }, { display: '工业防爆灯具' }, { display: '工业户外照明' },
+            { display: '工业商业农业照明配件' }, { display: '工业室内照明' }, { display: '光源' },
+            { display: '户外灯具灯饰' }, { display: '家居类灯饰' }, { display: '教育照明' },
+            { display: '农业照明' }, { display: '商业照明' }, { display: '台灯' },
+            { display: '特种光源' }, { display: '无主灯类灯饰' }, { display: '吸顶灯' }
+        ]},
+        { display: '家装主材', children: [
+            { display: '背景墙/工艺软包' }, { display: '厨房' }, { display: '瓷砖' },
+            { display: '地板' }, { display: '环保/除味/保养' }, { display: '集成吊顶' },
+            { display: '晾衣架/晾衣杆' }, { display: '墙纸' }, { display: '其他' },
+            { display: '卫浴家具' }, { display: '卫浴配件' }, { display: '卫浴陶瓷' },
+            { display: '卫浴用品' }, { display: '浴霸' }
+        ]},
+        { display: '居家布艺', children: [
+            { display: '布艺套装' }, { display: '餐桌布艺' }, { display: '窗帘及配件' },
+            { display: '刺绣套件' }, { display: '地垫' }, { display: '地毯' },
+            { display: '防尘保护罩' }, { display: '纺织品填充物' },
+            { display: '缝纫DIY、工具及成品' }, { display: '挂毯/挂布' },
+            { display: '海绵垫/布料/面料' }, { display: '靠垫/抱枕' },
+            { display: '毛巾/面巾' }, { display: '门帘' }, { display: '其他/配件/DIY/缝纫' },
+            { display: '十字绣及工具配件' }, { display: '浴巾/浴袍/干发帽' },
+            { display: '坐垫/椅垫/沙发垫' }
+        ]},
+        { display: '全屋定制', children: [
+            { display: '窗' }, { display: '橱柜及配件' }, { display: '定制床垫' },
+            { display: '定制柜类' }, { display: '定制衣柜' }, { display: '地暖/暖气片/散热器' },
+            { display: '花格' }, { display: '家用电梯' }, { display: '淋浴房空间' },
+            { display: '楼梯及配件' }, { display: '门' }, { display: '全屋空间定制' },
+            { display: '榻榻米空间' }, { display: '装饰墙面' }
+        ]},
+        { display: '商业/办公家具', children: [
+            { display: '办公家具' }, { display: '殡葬业家具' }, { display: '仓储家具' },
+            { display: '餐饮/烘焙家具' }, { display: '超市家具' }, { display: '城市/景观家具' },
+            { display: '成套家具' }, { display: '发廊/美容家具' }, { display: '服装店家具' },
+            { display: '果蔬/生鲜家具' }, { display: '货架/展柜' }, { display: '酒店家具' },
+            { display: '美妆家具' }, { display: '母婴家具' }, { display: '其他' },
+            { display: '桑拿/足浴/健身家具' }, { display: '图书馆/书店/音像家具' },
+            { display: '网咖家具' }, { display: '文具家具' }, { display: '五金/建材家具' },
+            { display: '校园教学家具' }, { display: '烟酒茶家具' },
+            { display: '医院/药店/复健家具' }, { display: '娱乐/酒吧/KTV家具' },
+            { display: '早教/培训家具' }, { display: '政务家具' }
+        ]},
+        { display: '特色手工艺', children: [
+            { display: '地区民间特色手工艺' }, { display: '海外工艺品' },
+            { display: '其他特色工艺品' }, { display: '少数民族特色工艺品' },
+            { display: '宗教工艺品' }
+        ]},
+        { display: '五金工具', children: [
+            { display: '安全检查设备' }, { display: '测量工具' }, { display: '传动件' },
+            { display: '电动工具' }, { display: '电气控制' }, { display: '阀门' },
+            { display: '钢材' }, { display: '工位器具' }, { display: '焊接设备及耗材' },
+            { display: '机电五金' }, { display: '紧固件' }, { display: '金属粉末' },
+            { display: '机械五金' }, { display: '劳保用品' }, { display: '铝型材' },
+            { display: '气动工具' }, { display: '起重工具' }, { display: '刃具' },
+            { display: '手动工具' }, { display: '液压工具' }, { display: '仪器仪表' },
+            { display: '轴承' }
+        ]},
+        { display: '住宅家具', children: [
+            { display: '成套家具' }, { display: '床垫类' }, { display: '床类' },
+            { display: '凳类' }, { display: '儿童家具/婴儿家具' }, { display: '根雕类' },
+            { display: '红木家具' }, { display: '户外/庭院/阳台家具' }, { display: '家具辅料' },
+            { display: '架类' }, { display: '几类' }, { display: '镜子类' },
+            { display: '柜类' }, { display: '屏风/花窗' }, { display: '沙发类' },
+            { display: '设计师家具' }, { display: '箱类' }, { display: '椅类' },
+            { display: '桌子/案/台' }
+        ]},
+        { display: '机械设备', children: [
+            { display: '茶叶设备' }, { display: '粉碎设备' }, { display: '工程机械/建筑机械' },
+            { display: '环境污染防治设备' }, { display: '机床' }, { display: '乳品设备' },
+            { display: '塑料机械' }, { display: '压缩机' }, { display: '制鞋机械' }
+        ]},
+        { display: '装修设计/施工/监理', children: [
+            { display: '单项安装' }, { display: '监理' }, { display: '家庭保维修' },
+            { display: '软装配饰' }, { display: '装修检测治理' }
+        ]},
+        { display: '清洗/食品/商业设备', children: [
+            { display: '工业制冷设备' }, { display: '加油站设备' },
+            { display: '清洗/清理设备' }, { display: '食品加工机械' }
+        ]},
+        { display: '橡塑材料及制品', children: [
+            { display: '非金属材料及制品' }, { display: '工业塑料制品' },
+            { display: '绝缘材料' }, { display: '塑料原料/塑料粒子' }, { display: '橡胶制品' }
+        ]},
+        { display: '基础建材', children: [
+            { display: '板材' }, { display: '玻璃' }, { display: '雕花件系列' },
+            { display: '防水材料' }, { display: '隔断墙' }, { display: '隔热材料' },
+            { display: '隔音材料' }, { display: '管材管件' }, { display: '硅钙板' },
+            { display: '胶类' }, { display: '家用五金' }, { display: '门窗密封条' },
+            { display: '木方' }, { display: '配件专区' }, { display: '其他' },
+            { display: '人造大理石' }, { display: '沙/石' }, { display: '砂岩' },
+            { display: '石膏板' }, { display: '水泥' }, { display: '天然大理石' },
+            { display: '涂料（乳胶漆）' }, { display: '线条' }, { display: '新型装饰材料' },
+            { display: '阳光房/板房/附件' }, { display: '油漆' },
+            { display: '智能门锁/电子锁' }, { display: '砖' }
+        ]},
+        { display: '电子/电工', children: [
+            { display: '布线箱' }, { display: '插座' }, { display: '电工配件' },
+            { display: '电工套管' }, { display: '电线' }, { display: '底盒' },
+            { display: '断路器' }, { display: '防盗报警器材及系统' },
+            { display: '监控器材及系统' }, { display: '交换器' }, { display: '接线板/插头' },
+            { display: '开关' }, { display: '消防报警设备' }, { display: '智能家居系统' },
+            { display: '智能商业/楼宇系统' }, { display: '转换器' }
+        ]},
+        { display: '标准件/零部件/工业耗材', children: [
+            { display: '车间保护' }, { display: '防静电产品' }, { display: '管材/管件/管配件' },
+            { display: '机床配附件' }, { display: '磨具' }, { display: '磨料' },
+            { display: '气动元件/系统/装置' }, { display: '通用五金配件' },
+            { display: '液压元件/系统/装置' }
+        ]}
+    ]},
+    { display: '母婴玩具', children: [
+        { display: '童鞋/婴儿鞋/亲子鞋', children: [
+            { display: '板鞋' }, { display: '传统布鞋/手工编织鞋' }, { display: '帆布鞋' },
+            { display: '汉服鞋' }, { display: '凉鞋' }, { display: '棉鞋' },
+            { display: '皮鞋' }, { display: '青少年鞋' }, { display: '亲子鞋' },
+            { display: '拖鞋' }, { display: '舞蹈鞋' }, { display: '鞋配件' },
+            { display: '学步鞋' }, { display: '靴子/雪地靴' }, { display: '婴儿步前鞋/袜鞋' },
+            { display: '运动鞋' }, { display: '雨靴/雨鞋' }
+        ]},
+        { display: '婴童尿裤', children: [
+            { display: '布尿裤/尿垫' }, { display: '拉拉裤' }, { display: '特护尿裤' },
+            { display: '婴儿游泳纸尿裤' }, { display: '纸尿裤' }, { display: '纸尿片' }
+        ]},
+        { display: '奶粉/辅食/营养品/零食', children: [
+            { display: '宝宝辅食' }, { display: '宝宝零食' }, { display: '儿童零食' },
+            { display: '儿童奶粉' }, { display: '其他' }, { display: '特殊配方奶粉' },
+            { display: '婴童调味品' }, { display: '婴童营养品' }, { display: '婴幼儿牛奶粉' },
+            { display: '婴幼儿羊奶粉' }, { display: '婴幼儿液态奶' }
+        ]},
+        { display: '童装/婴儿装/亲子装', children: [
+            { display: '背心吊带' }, { display: '衬衫' }, { display: '肚兜/肚围/护脐带' },
+            { display: '儿童冲锋衣裤' }, { display: '儿童户外服' }, { display: '儿童家居服' },
+            { display: '儿童礼服' }, { display: '儿童内衣裤' }, { display: '儿童牛仔' },
+            { display: '儿童配饰' }, { display: '儿童皮肤衣/防晒衣' },
+            { display: '儿童旗袍/唐装/汉服/民族服装' }, { display: '儿童袜子' },
+            { display: '儿童演出服' }, { display: '儿童泳装' }, { display: '反穿衣/罩衣/围裙' },
+            { display: 'JK制服' }, { display: '裤子' }, { display: '连身衣/哈衣/爬服/和尚服' },
+            { display: '洛丽塔' }, { display: '马甲' }, { display: '毛衣/针织衫' },
+            { display: '帽子/围巾/口罩/手套/耳套/脚套' }, { display: '棉袄/棉服' },
+            { display: '抹胸/文胸/发育内衣' }, { display: '披风/斗篷' }, { display: 'POLO衫' },
+            { display: '亲子装/亲子时装' }, { display: '其他' }, { display: '裙子' },
+            { display: '套装' }, { display: '童装租赁' }, { display: 'T恤/打底衫' },
+            { display: '外套/夹克/大衣' }, { display: '卫衣/绒衫' }, { display: '婴儿礼盒' },
+            { display: '园服/校服/校服定制' }, { display: '羽绒服饰/羽绒内胆' }
+        ]},
+        { display: '婴童用品', children: [
+            { display: '背带/学步带/出行用品' }, { display: '床护栏' }, { display: '儿童彩妆' },
+            { display: '儿童房/桌椅/家具' }, { display: '儿童坐便凳' },
+            { display: '防撞/提醒/安全/保护' }, { display: '理发/指甲钳/量温等护理小用品' },
+            { display: '奶瓶/奶瓶相关' }, { display: '奶嘴/奶嘴相关' },
+            { display: '清洁液/洗衣液/柔顺剂' }, { display: '其它婴童用品' },
+            { display: '驱蚊退烧用品' }, { display: '湿巾/棉柔巾/柔纸巾' },
+            { display: '水杯/餐具/研磨/附件' }, { display: '睡袋/凉席/枕头/床品' },
+            { display: '童床/婴儿床/摇篮/餐椅/尿布台' }, { display: '消毒/暖奶/小家电' },
+            { display: '牙胶/牙刷/牙膏' }, { display: '婴儿手推车/学步车' },
+            { display: '婴童护肤' }, { display: '婴童洗浴' }
+        ]},
+        { display: '模玩/动漫/周边/cos/桌游', children: [
+            { display: 'BJD/OB娃娃及配件' }, { display: '潮玩盲盒/盲袋' },
+            { display: '二次元古风服饰及配件' }, { display: '高达/机甲模型/机器人/变形类' },
+            { display: 'JK/DK/Cosplay服饰/道具/服务' }, { display: '卡牌/桌游及配件' },
+            { display: '魔术道具/套装' }, { display: '手办/兵人/扭蛋' },
+            { display: '影视周边' }, { display: '艺术家潮玩' },
+            { display: '游戏/卡通/动漫/IP周边/谷子' },
+            { display: '专业航模/车船模/军模/穿越机' }, { display: 'lolita/洛丽塔' }
+        ]},
+        { display: '玩具/童车/益智/积木/模型', children: [
+            { display: '宝宝纪念品/个性产品' }, { display: '彩泥/粘土/软陶泥' },
+            { display: '串珠/拼图/配对/拆装/敲打玩具' }, { display: '电动/遥控/惯性/发条玩具' },
+            { display: '电动遥控玩具零件/工具' }, { display: '电子/发光/充气/整蛊玩具' },
+            { display: '儿童包/背包/箱包' }, { display: '儿童读物/童书' },
+            { display: '儿童机器人/变形/人偶玩具' }, { display: '儿童棋类/桌面游戏' },
+            { display: '儿童玩具枪' }, { display: '儿童智能玩具' },
+            { display: '仿真/过家家玩具' }, { display: '绘画类用品' },
+            { display: '户外运动/休闲/传统玩具' }, { display: '解锁/迷宫/魔方/智力玩具' },
+            { display: '积木' }, { display: '静态模型' }, { display: '毛绒布艺类玩具' },
+            { display: '其它玩具' }, { display: '手工制作/创意DIY' },
+            { display: 'STEAM玩具/教具' }, { display: '童车/儿童轮滑' },
+            { display: '玩具礼盒' }, { display: '娃娃/配件/着替' },
+            { display: '学习/实验/绘画文具' }, { display: '音乐玩具/儿童乐器' },
+            { display: '油动电动模型' }, { display: '幼儿爬行/学步/健身' },
+            { display: '幼儿响铃/布玩/安抚玩具' }, { display: '游乐/教学设备/大型设施' },
+            { display: '游泳池/戏水玩具' }, { display: '悠悠(溜溜)球' },
+            { display: '育儿书籍' }, { display: '早教/智能玩具' }
+        ]},
+        { display: '孕产妇用品/孕妇装/营养', children: [
+            { display: '哺乳文胸/内裤/产检裤' }, { display: '哺乳用品' },
+            { display: '产妇帽/孕妇袜/孕妇鞋' }, { display: '待产用品' },
+            { display: '防辐射' }, { display: '家居服/哺乳装/秋衣裤' },
+            { display: '妈咪包/袋' }, { display: '束缚带/塑身衣/盆骨矫正' },
+            { display: '吸奶器/配件' }, { display: '月子营养' }, { display: '孕产妇彩妆' },
+            { display: '孕产妇护肤/洗护/祛纹' }, { display: '孕产妇奶粉' },
+            { display: '孕产妇营养品' }, { display: '孕妇裤/托腹裤' }, { display: '孕妇装' }
+        ]}
+    ]},
+    { display: '医药健康', children: [
+        { display: '医疗健康服务', children: [
+            { display: '泛健康管理' }, { display: '健康管理' }, { display: '健康体检' },
+            { display: '疾病检测与筛查' }, { display: '口腔健康' }, { display: '心理咨询' },
+            { display: '眼科医疗' }, { display: '医疗美容' }, { display: '疫苗接种' },
+            { display: '申请类目资质' }, { display: '孕产计划' }, { display: '中医医疗' }
+        ]},
+        { display: '成人用品', children: [
+            { display: '计生用品' }, { display: '男用器具' }, { display: '女用器具' },
+            { display: '情趣家具/配件' }, { display: '情趣内衣' },
+            { display: '情趣润滑/调情香水' }
+        ]},
+        { display: 'OTC药品', children: [
+            { display: '国际医药' }, { display: 'OTC药品' }
+        ]},
+        { display: '精制中药材', children: [
+            { display: '安神药' }, { display: '补虚药' }, { display: '化痰止咳平喘药' },
+            { display: '活血化瘀药' }, { display: '解表药' }, { display: '利水渗湿药' },
+            { display: '平肝息风药' }, { display: '清热药' }, { display: '其他中药材' },
+            { display: '祛风湿药' }, { display: '收涩药' }, { display: '泻下药' },
+            { display: '止血药' }, { display: '中药用药' }
+        ]},
+        { display: '隐形眼镜/护理液', children: [
+            { display: '护理液' }, { display: '眼部保健' }, { display: '隐形眼镜' },
+            { display: '隐形眼镜配件' }
+        ]},
+        { display: '保健用品', children: [
+            { display: '艾灸用品' }, { display: '风湿骨痛保健（消）' }, { display: '膏药贴' },
+            { display: '国际器械' }, { display: '家庭护理保健用品' },
+            { display: '康复保健用品' }, { display: '口腔健康用品' },
+            { display: '面部健康用品' }, { display: '皮肤消毒护理' },
+            { display: '私处健康用品' }, { display: '眼部护理保健' },
+            { display: '医用耗材' }, { display: '运动健康用品' },
+            { display: '中医保健用品' }, { display: '足部护理用品' }
+        ]},
+        { display: '医疗器械', children: [
+            { display: '器械保健配件' }, { display: '医疗器械' }
+        ]},
+        { display: '保健食品/膳食营养补充食品', children: [
+            { display: '保健食品' }, { display: '蛋白粉/氨基酸/胶原蛋白' },
+            { display: '动物精华/提取物' }, { display: '儿童成长型保健食品/膳食营养品' },
+            { display: '海洋生物类' }, { display: '菌/菇/酵素' },
+            { display: '其他膳食营养补充食品' }, { display: '膳食纤维/代餐食品' },
+            { display: '特殊医学用途配方食品' }, { display: '维生素/矿物质/钙铁锌硒' },
+            { display: '运动营养食品' }, { display: '脂肪酸/脂类' },
+            { display: '植物精华/提取物' }
+        ]},
+        { display: '处方药', children: [
+            { display: '补益安神' }, { display: '儿科用药' }, { display: '风湿骨科' },
+            { display: '妇科用药' }, { display: '肝胆用药' }, { display: '呼吸系统' },
+            { display: '解热镇痛' }, { display: '精神科用药' }, { display: '抗菌消炎' },
+            { display: '冷链药品' }, { display: '免疫调节' }, { display: '泌尿系统' },
+            { display: '男科用药' }, { display: '内分泌系统' }, { display: '皮肤及性病用药' },
+            { display: '神经系统' }, { display: '五官用药' }, { display: '消化系统' },
+            { display: '心脑血管' }, { display: '血液系统' }, { display: '移植用药' },
+            { display: '肿瘤用药' }
+        ]},
+        { display: '传统滋补品', children: [
+            { display: '阿胶膏方' }, { display: '参类滋补品' }, { display: '参茸贵细' },
+            { display: '虫草' }, { display: '传统滋补品提货券' }, { display: '蜂产品' },
+            { display: '蜂蜜' }, { display: '枸杞及其制品' }, { display: '灵芝' },
+            { display: '鹿茸' }, { display: '三七' }, { display: '山药及其制品' },
+            { display: '石斛/枫斗' }, { display: '食疗滋补营养' }, { display: '新食品原料' },
+            { display: '雪蛤/林蛙油' }, { display: '养生茶' }, { display: '燕窝滋补品' },
+            { display: '药食同源食品' }, { display: '滋补经典方' }, { display: '滋补养生原料' }
+        ]}
+    ]},
+    { display: '食品保健', children: [
+        { display: '酒类', children: [
+            { display: '白酒' }, { display: '黄酒' }, { display: '配制酒/露酒/果酒/米酒' },
+            { display: '啤酒' }, { display: '葡萄酒' }, { display: '其他酒类' },
+            { display: '洋酒' }, { display: '养生保健酒' }
+        ]},
+        { display: '咖啡/麦片/冲饮', children: [
+            { display: '常温乳制品' }, { display: '成人奶粉' }, { display: '低温乳制品' },
+            { display: '咖啡/麦片/冲饮提货券' }, { display: '咖啡伴侣/辅料' },
+            { display: '藕粉/麦片/冲饮品' }, { display: '其它饮品' },
+            { display: '速溶咖啡/咖啡豆/粉' }, { display: '天然/食补粉粉食品' },
+            { display: '饮料' }, { display: '饮用水' }
+        ]},
+        { display: '茶' },
+        { display: '粮油米面/南北干货/调味品' },
+        { display: '零食/坚果/特产' }
+    ]},
+    { display: '汽配摩托', children: [
+        { display: '汽车服务', children: [
+            { display: '钣金/喷漆服务' }, { display: '保养服务' },
+            { display: '电子产品安装改装服务' }, { display: '零件安装更换改装服务' },
+            { display: '美容清洗服务' }, { display: '内外饰加装装潢改装服务' },
+            { display: '上门服务' }
+        ]},
+        { display: '摩托车/装备/配件', children: [
+            { display: '船舶/装备/配件' }, { display: '飞行器/装备/配件' },
+            { display: '摩托车配件' }, { display: '摩托车骑士装备' },
+            { display: '摩托车整车' }, { display: '摩托车装饰养护' },
+            { display: '其他摩托车用品' }, { display: '沙滩车' }
+        ]},
+        { display: '汽车/用品/配件/改装', children: [
+            { display: '车用清洗用品/清洗工具' }, { display: '驾车个人用品' },
+            { display: '卡货车/工程车/重汽专用配件' }, { display: '汽车导航及车机互联系统' },
+            { display: '汽车改装' }, { display: '汽车零配件' },
+            { display: '汽车美容/保养/维修' }, { display: '汽车外饰品/加装装潢/防护' },
+            { display: '汽车影音/车用电子/电器' }, { display: '汽车用品/内饰品' },
+            { display: '新能源汽车设备/用品' }
+        ]}
+    ]},
+    { display: '运动户外', children: [
+        { display: '电动车/配件/交通工具', children: [
+            { display: '电动车护具/骑行装备' }, { display: '电动车零/配件' },
+            { display: '电动车维修工具' }, { display: '电动车整车' },
+            { display: '电动车装备区' }, { display: '商用/农用电动车' }
+        ]},
+        { display: '户外/登山/旅行野营用品', children: [
+            { display: '垂钓装备' }, { display: '刀具/多用工具' }, { display: '登山攀岩攀冰' },
+            { display: '登山杖/手杖' }, { display: '防潮垫/地席/枕头' },
+            { display: '防护/救生装备' }, { display: '弓箭及其他射击装备' },
+            { display: '滑雪装备' }, { display: '户外包' }, { display: '户外服装' },
+            { display: '户外鞋靴' }, { display: '户外休闲家具' }, { display: '户外照明' },
+            { display: '军迷配饰/用品' }, { display: '军迷鞋靴' },
+            { display: '炉具/餐具/野餐烧烤用品' }, { display: '旅行便携装备' },
+            { display: '迷彩服/军迷服/作训服/军迷包具' }, { display: '取暖用品' },
+            { display: '睡袋' }, { display: '水上船艇' }, { display: '通讯/导航/户外表类' },
+            { display: '望远镜/夜视仪/户外眼镜' }, { display: '洗漱清洁/护理用品' },
+            { display: '野营求生装备' }, { display: '饮水用具/盛水容器' },
+            { display: '帐篷/天幕/帐篷配件' }, { display: '专项户外运动装备' }
+        ]},
+        { display: '运动/瑜伽/健身/球类', children: [
+            { display: '棒球/棒球装备' }, { display: '保龄球/保龄球装备' },
+            { display: '冰球/速滑/冰上运动' }, { display: '壁球/壁球装备' },
+            { display: '大型健身器械' }, { display: 'F1/赛车及用品' },
+            { display: '飞镖/桌上足球/室内休闲' }, { display: '橄榄球/橄榄球装备' },
+            { display: '高尔夫/高尔夫用品' }, { display: '毽子/空竹/民间运动' },
+            { display: '击剑运动' }, { display: '急救用品' }, { display: '篮球/篮球装备' },
+            { display: '轮滑/滑板/极限运动' }, { display: '麻将/棋牌/益智类' },
+            { display: '马术运动' }, { display: '排球/排球装备' },
+            { display: '匹克球/匹克球装备' }, { display: '乒乓球/乒乓球装备' },
+            { display: '曲棍球' }, { display: '台球/台球装备' },
+            { display: '跆拳道/武术/搏击' }, { display: '田径运动器材' },
+            { display: '跳舞毯' }, { display: '网球/网球装备' },
+            { display: '舞蹈/健美操/体操' }, { display: '游乐场/体育场馆设施' },
+            { display: '游泳/游泳装备' }, { display: '瑜伽服饰' }, { display: '瑜伽装备' },
+            { display: '羽毛球/羽毛球用品' }, { display: '运动护具' },
+            { display: '运动赛事纪念品' }, { display: '中老年健身' },
+            { display: '中小型健身器材' }, { display: '足球/足球用品' }
+        ]},
+        { display: '运动包/户外包/配件', children: [
+            { display: '单肩背包' }, { display: '防水箱包' }, { display: '防雨罩/背包配件' },
+            { display: '户外摄影包' }, { display: '挎包/拎包/休闲包' },
+            { display: '旅行箱包' }, { display: '钱包卡套' }, { display: '其他服饰配件' },
+            { display: '手包/臂包' }, { display: '收纳配件包' }, { display: '手套' },
+            { display: '双肩背包' }, { display: '贴章/魔术贴章' }, { display: '头巾/遮耳' },
+            { display: '腿套' }, { display: '围巾/围脖' }, { display: '鞋带' },
+            { display: '鞋垫' }, { display: '鞋油' }, { display: '雪套/套脚' },
+            { display: '腰包' }, { display: '腰带' }, { display: '运动鼓包/旅行包' },
+            { display: '运动帽' }, { display: '运动首饰' }, { display: '运动水壶' },
+            { display: '运动袜' }, { display: '雨衣/雨裤/雨披' }
+        ]},
+        { display: '运动服/休闲服', children: [
+            { display: '健身服装' }, { display: '跑步服' }, { display: '皮肤衣' },
+            { display: '运动风衣' }, { display: '运动夹克/外套' }, { display: '运动裤' },
+            { display: '运动马甲' }, { display: '运动毛衣/线衫' }, { display: '运动棉衣' },
+            { display: '运动内衣' }, { display: '运动POLO衫' }, { display: '运动球服' },
+            { display: '运动裙' }, { display: '运动套装' }, { display: '运动T恤' },
+            { display: '运动卫衣/套头衫' }, { display: '运动羽绒服' }
+        ]},
+        { display: '运动鞋', children: [
+            { display: '板鞋/休闲鞋' }, { display: '帆布鞋' }, { display: '篮球鞋' },
+            { display: '跑步鞋' }, { display: '其他运动鞋' }, { display: '童鞋/青少年鞋' },
+            { display: '运动沙滩鞋/凉鞋' }, { display: '运动拖鞋' },
+            { display: '综合训练鞋/室内健身鞋' }
+        ]},
+        { display: '自行车/骑行装备/零配件', children: [
+            { display: '骑行服饰/骑行装备' }, { display: '自行车/单车装备' },
+            { display: '自行车零/配件' }, { display: '自行车修车工具' },
+            { display: '自行车整车' }
+        ]}
+    ]},
+    { display: '水果生鲜', children: [
+        { display: '特色农产品（非食用）', children: [
+            { display: '槟榔及槟榔制品' }, { display: '传统包材原料' }
+        ]},
+        { display: '水产肉类/新鲜蔬果/熟食', children: [
+            { display: '腌制蔬菜/泡菜/酱菜/脱水蔬菜' }, { display: '冰淇淋/冻品' },
+            { display: '蛋/蛋制品' }, { display: '短保蛋糕' },
+            { display: '海鲜/水产品/制品' }, { display: '生肉/肉制品' },
+            { display: '水产肉类/新鲜蔬果/熟食提货券' }, { display: '水果制品' },
+            { display: '熟食/凉菜/私房菜' }, { display: '新鲜蔬菜/蔬菜制品' },
+            { display: '新鲜水果' }, { display: '预制菜/半成品菜' }
+        ]}
+    ]},
+    { display: '虚拟商品', children: [
+        { display: '本地化生活服务', children: [
+            { display: '3C数码服务' }, { display: '多媒体服务' }, { display: '房屋维修' },
+            { display: '家电相关服务' }, { display: '家居配送/安装/维修' },
+            { display: '家居装修施工/设计' }, { display: '家政服务' },
+            { display: '快递/代购/代办跑腿' }, { display: '民生服务' },
+            { display: '汽车服务' }, { display: '其他' }, { display: '商务服务' },
+            { display: '特色服务' }, { display: '文案代写' }, { display: '信息咨询' },
+            { display: '在线清洗/洗衣券' }
+        ]},
+        { display: '电影/演出/体育赛事', children: [
+            { display: '电影票' }, { display: '体育赛事' }, { display: '演出' },
+            { display: '展览/展会' }
+        ]},
+        { display: '个性定制/设计服务' },
+        { display: '购物卡/礼品卡/代金券' },
+        { display: '婚庆/摄影/摄像服务' },
+        { display: '教育培训', children: [
+            { display: '教学服务' }, { display: '技能培训' }, { display: '生活兴趣培训' },
+            { display: '学科辅导' }, { display: '学历/职业资格考试' }, { display: '语言培训' }
+        ]},
+        { display: '景点门票/周边游' },
+        { display: '旅游路线/商品/服务' },
+        { display: '生活缴费' },
+        { display: '数字生活娱乐' },
+        { display: '特价酒店/客栈/公寓旅馆' },
+        { display: '网络服务/软件' },
+        { display: '网上营业厅' },
+        { display: '休闲娱乐' },
+        { display: '游戏服务/直播', children: [
+            { display: '激活码/新手包' }, { display: '视频直播' },
+            { display: '网络游戏点卡' }, { display: '游戏币' }, { display: '游戏代练' },
+            { display: '游戏软件' }, { display: '游戏软件平台' },
+            { display: '游戏物品/资源' }, { display: '游戏账号' }, { display: '游戏装备' }
+        ]}
     ]}
 ];

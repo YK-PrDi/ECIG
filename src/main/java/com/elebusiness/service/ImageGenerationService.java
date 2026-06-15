@@ -32,6 +32,12 @@ public class ImageGenerationService {
     private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
     private static final String GEMINI_ANALYSIS_MODEL = "gemini-2.5-flash";
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
+    private static final String NO_INTERSECTION_PROMPT = """
+            【最高优先级·禁止穿模】
+            画面中任何产品、人体、手指、衣袖、头发、道具、墙面、桌面、玻璃、置物架、支架、线缆、背景结构之间都不得互相穿透、嵌入、融合或共享边界。
+            产品必须有真实接触面、支撑点、遮挡关系和接触阴影；手指只能自然握持或触碰产品表面，不能穿过产品孔洞或外壳。
+            产品不能半截插入桌面、墙面、背景、支架或其他物体；所有连接、接触、阴影、透视和前后层级必须物理合理。
+            """.trim();
 
     private final AppProperties appProperties;
     private final Map<String, ImageGeneratorAgent> agentMap;
@@ -88,11 +94,11 @@ public class ImageGenerationService {
      * 自定义模式发送前的图片分析：把白底产品图 + 用户描述扩写为多段可编辑生图提示词。
      * 返回文本用 --- 分隔，前端继续复用原来的卡片编辑流程。
      */
-    public String analyzeCustomImagePrompts(String prompt, List<File> imageFiles, int count) {
+    public String analyzeCustomImagePrompts(String prompt, List<File> imageFiles, int count, boolean withText) {
         int safeCount = Math.max(1, Math.min(8, count));
         String userPrompt = prompt == null ? "" : prompt.trim();
         try {
-            return requestGeminiCustomPromptAnalysis(userPrompt, imageFiles == null ? List.of() : imageFiles, safeCount);
+            return requestGeminiCustomPromptAnalysis(userPrompt, imageFiles == null ? List.of() : imageFiles, safeCount, withText);
         } catch (Exception e) {
             log.error("自定义模式 Gemini 图片分析失败: {}", e.getMessage(), e);
             throw new RuntimeException("Gemini 图片分析失败: " + e.getMessage(), e);
@@ -140,11 +146,11 @@ public class ImageGenerationService {
                 fields = buildFallbackKaiPinFields(productA, productB, selling, focus, style);
             }
 
-            return fields;
+            return ensureKaiPinSellingPoints(fields, productA, selling);
         } catch (Exception e) {
             log.error("开品融合分析失败: {}", e.getMessage(), e);
             // 异常时返回兜底卡片
-            return buildFallbackKaiPinFields(productA, productB, selling, focus, style);
+            return ensureKaiPinSellingPoints(buildFallbackKaiPinFields(productA, productB, selling, focus, style), productA, selling);
         }
     }
 
@@ -197,7 +203,8 @@ public class ImageGenerationService {
                 %s
 
                 输出要求：
-                1. 必须只输出 7 个字段，顺序和 key 必须完全固定为：几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签。
+                1. 必须只输出 8 个字段，顺序和 key 必须完全固定为：核心卖点清单、几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签。
+                1.1 核心卖点清单：必须用 3-5 条编号短句罗列，每条包含用户痛点/购买理由、产品外观或功能证据、后续画面表现方式；如果用户未写卖点，也要从图片结构、使用方式和目标场景主动提炼。
                 2. 几何结构：从图片中观察产品主轮廓、基础几何、转折面、曲直线关系、对称性和视觉重心，输出 80-160 字，可直接用于后续设计。
                 3. 体量感：只能从“轻盈、厚重、悬浮感”中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用“、”连接。
                 4. 仿生学元素：分析是否有动物、植物、骨骼、翅膀、水滴、贝壳、昆虫、流线等自然形态借鉴；如果没有明显仿生，也要写“无明显仿生，偏几何/工程化”，80-160 字。
@@ -226,9 +233,9 @@ public class ImageGenerationService {
 
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode systemInstruction = root.putObject("systemInstruction");
-        String systemText = "你是产品外观设计分析师和电商开品视觉策略师。你必须严格按照固定 7 个维度分析产品外观：几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签。体量感只能从轻盈/厚重/悬浮感中选择；模块化程度只能从一体成型/可拆卸/堆叠式设计中选择；风格标签只能从科技极简/复古怀旧/赛博朋克/可爱治愈中选择。必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。";
+        String systemText = "你是产品外观设计分析师和电商开品视觉策略师。你必须先罗列核心卖点清单，再严格按照固定 7 个维度分析产品外观：几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签。核心卖点清单必须用 3-5 条编号短句写清用户痛点、购买理由、外观/功能证据和画面表现方式。体量感只能从轻盈/厚重/悬浮感中选择；模块化程度只能从一体成型/可拆卸/堆叠式设计中选择；风格标签只能从科技极简/复古怀旧/赛博朋克/可爱治愈中选择。必须只返回严格 JSON 数组，格式为 [{\"key\":\"维度名\",\"value\":\"分析内容\"}]。";
         if (strictRetry) {
-            systemText += "\n\n重要：本轮不是资料完整性诊断。即使图片或文字信息不完整，也必须输出这 7 个固定字段，禁止输出“异常说明”“请补充信息”“无法分析”。固定选项字段只输出选项词，不要写解释。";
+            systemText += "\n\n重要：本轮不是资料完整性诊断。即使图片或文字信息不完整，也必须输出“核心卖点清单”加 7 个固定维度字段，禁止输出“异常说明”“请补充信息”“无法分析”。固定选项字段只输出选项词，不要写解释。";
         }
         systemInstruction.putArray("parts").addObject().put("text", systemText);
 
@@ -298,6 +305,47 @@ public class ImageGenerationService {
         );
     }
 
+    private List<Map<String, String>> ensureKaiPinSellingPoints(
+            List<Map<String, String>> fields, String productA, String selling) {
+        List<Map<String, String>> normalized = new ArrayList<>();
+        boolean hasSellingPointList = false;
+        if (fields != null) {
+            for (Map<String, String> field : fields) {
+                if (field == null) continue;
+                String key = field.getOrDefault("key", "").trim();
+                String value = field.getOrDefault("value", "").trim();
+                if (key.isBlank()) continue;
+                if ("核心卖点清单".equals(key)) {
+                    hasSellingPointList = true;
+                    if (value.isBlank()) value = buildKaiPinSellingPointValue(productA, selling);
+                }
+                normalized.add(Map.of("key", key, "value", value));
+            }
+        }
+        if (!hasSellingPointList) {
+            normalized.add(0, Map.of(
+                    "key", "核心卖点清单",
+                    "value", buildKaiPinSellingPointValue(productA, selling)
+            ));
+        }
+        return normalized;
+    }
+
+    private String buildKaiPinSellingPointValue(String productA, String selling) {
+        String subject = productA == null || productA.isBlank()
+                ? "该产品"
+                : productA.trim().substring(0, Math.min(36, productA.trim().length()));
+        String source = selling == null || selling.isBlank()
+                ? "根据白底图可见的结构、材质、体量和使用方式主动提炼卖点"
+                : selling.trim();
+        return String.join("\n",
+                "1. 核心购买理由：" + source + "；画面要用产品主体清晰轮廓、关键功能区和真实材质细节证明，而不是只靠文字说明。",
+                "2. 使用痛点转译：" + subject + "需要让用户一眼看出好用、耐用或更省心；生成图中应展示使用动作、放置方式、尺度参照或功能状态。",
+                "3. 视觉记忆点：" + subject + "的几何结构、体量感、主辅色和可见工艺要形成统一识别；后续每张图都要围绕这些卖点变化场景和构图。",
+                "4. 商业转化证据：通过局部质感、整体全貌、场景布局、光影和拍摄角度，把卖点转成可被买家直接感知的画面证据。"
+        );
+    }
+
     private String requestGeminiAnalysis(String prompt, File imageFile, boolean strictRetry) throws IOException {
         String apiKey = appProperties.getGemini().getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
@@ -341,7 +389,7 @@ public class ImageGenerationService {
         }
     }
 
-    private String requestGeminiCustomPromptAnalysis(String prompt, List<File> imageFiles, int count) throws IOException {
+    private String requestGeminiCustomPromptAnalysis(String prompt, List<File> imageFiles, int count, boolean withText) throws IOException {
         String apiKey = appProperties.getGemini().getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("Gemini API Key 未配置");
@@ -356,7 +404,7 @@ public class ImageGenerationService {
         ObjectNode content = contents.addObject();
         content.put("role", "user");
         ArrayNode parts = content.putArray("parts");
-        parts.addObject().put("text", buildCustomPromptAnalysisPrompt(prompt, count, imageFiles != null && !imageFiles.isEmpty()));
+        parts.addObject().put("text", buildCustomPromptAnalysisPrompt(prompt, count, imageFiles != null && !imageFiles.isEmpty(), withText));
 
         if (imageFiles != null) {
             for (File imageFile : imageFiles) {
@@ -388,44 +436,119 @@ public class ImageGenerationService {
         }
     }
 
-    private String buildCustomPromptAnalysisPrompt(String prompt, int count, boolean hasImage) {
+    private String buildCustomPromptAnalysisPrompt(String prompt, int count, boolean hasImage, boolean withText) {
+        // 画面文案相关的额外字段与约束：仅当 withText=true 时注入
+        String summaryTextField = withText
+                ? "【系列文案规划】统一规划每张图要渲染在画面上的文案: 第 1 张主标题负责什么(建立认知/实力), 第 2 张负责什么(使用场景/痛点解决), 第 3 张及以后负责什么(材质/细节/差异化); 各张主标题独立但围绕同一总卖点连续递进, 风格统一。\n"
+                : "";
+        String planTextField = withText
+                ? "【画面文案】给出本图要真实渲染到画面上的中文文案: 主标题(≤8字, 醒目大字)、副标题(≤15字, 一句卖点解释)、2~3个卖点标签(每个≤6字, 适合做成小色块/圆角标签); 并说明排版位置(如左上/底部居中)、字体气质(现代简洁/科技/活泼)和文字颜色(必须与背景高对比、清晰可读); 文案要承接【系列文案规划】中本张的定位, 和其他张连续但不重复。\n"
+                : "";
+        String textGoal = withText
+                ? "6. 本次需要在生成图上渲染卖点文案。每张方案都要给出【画面文案】, 并保证整组图片的文案连续递进、风格统一; 文字必须是可直接渲染、清晰可读、无错别字的中文。\n"
+                : "6. 本次只生成纯产品图, 不要在画面上渲染任何文字、标题、标签或水印。\n";
+        String textOutputRule = withText
+                ? "7. 【画面文案】中的主标题、副标题和卖点标签必须是可直接渲染在图面上的真实中文文字, 简短有力、无错别字; 不要写成对文字的描述, 要写出确切的文案内容。\n"
+                : "";
+        String textForbid = withText
+                ? "除【画面文案】指定的卖点文字外, 画面不要出现其他多余文字、乱码、水印或 logo。"
+                : "画面上不要出现任何文字、标题、标签、水印或 logo。";
+        String exampleSummary = withText
+                ? "【总卖点】...\n【目标人群】...\n【产品识别】...\n【系列连续性】...\n【系列文案规划】...\n"
+                : "【总卖点】...\n【目标人群】...\n【产品识别】...\n【系列连续性】...\n";
+        String examplePlan = withText
+                ? "【本图卖点】...\n【系列连续性】...\n【画面文案】...\n【本图风格】...\n【产品一致性】...\n【安装方式】...\n【形态结构】...\n【材质/工艺】...\n【场景构图】...\n【禁止项】...\n"
+                : "【本图卖点】...\n【系列连续性】...\n【本图风格】...\n【产品一致性】...\n【安装方式】...\n【形态结构】...\n【材质/工艺】...\n【场景构图】...\n【禁止项】...\n";
+
+        // 专业电商主图分镜范例（来自人工整理的优质提示词库）：用于教 Gemini 把【场景构图】写到专业水准。
+        String compositionExamples = """
+
+                【场景构图·专业范例参考】下列是优质电商主图的构图写法, 请学习这种"视角 + 主体位置 + 道具 + 特效标注 + 文字区位置"的精确描述粒度, 并结合当前产品灵活套用(不要照抄品类):
+                - 正面微侧平视视角, 主体居中, 上下留白均衡, 陈列配套道具, 画面重心稳定。
+                - 斜俯视近景特写, 聚焦产品某一功能结构(如台面/层板/接口), 用蓝色发光 + 双向箭头标注关键尺寸, 单侧留作文字区。
+                - 斜仰视视角, 聚焦底部/沥水/通风结构, 搭配水流滴落或白色气流箭头特效, 展示该结构的功能价值。
+                - 近景特写 + 手部演示动作(握持/按压/抽拉/拧动), 配橙色环形波纹或发光轮廓特效突出操作部件, 真实抓握不穿模。
+                - 左右双列对比布局: 左列优秀款(暖色调)、右列普通款(灰色调), 每组上图下文 + 对勾/叉号图标。
+                - 2×2 四宫格步骤布局, 顶部标题区, 每格带序号 + 底部说明, 展示安装/使用流程。
+                - 材质分层悬浮展开/半剖视角, 内部结构配数字标签 + 材质说明 + 引线标注。
+                """;
+        String textboardExamples = withText
+                ? """
+
+                【画面文案·字板排版范例参考】下列是优质字板的排版写法, 请学习这种"位置 + 字号字重字色 + 对齐 + 标签样式"的描述粒度, 写进【画面文案】里:
+                - 左下角深色圆角矩形文字框: 上行小号浅色细体, 下行大号加粗白色黑体; 形成主次对比。
+                - 右上角无框大号加粗黑体主标题, 下方小号常规黑体副标题; 右对齐。
+                - 左侧无框左对齐: 上行两行大号加粗黑体主标题, 下行小号常规黑体说明, 文字下配短横线装饰。
+                - 关键尺寸用蓝色发光白色大号数字 + 单位, 搭配双向箭头, 叠加橙色发光底。
+                - 卖点标签: 竖排彩色圆角标签(绿/黑/红底白字)放在主体一侧; 品牌名放左上角圆角框或角标。
+                - 弧形文字: 沿圆环/吸盘弧度弯排橙黄色字标注安装时长。
+                - 对比类: 左列暖底白字配黄色对勾, 右列灰底白字配灰色叉号。
+                """
+                : "";
+
         return """
                 本次是否上传白底产品图: %s
                 用户对话/描述/风格要求:
                 %s
 
-                请生成 %d 段适合 AI 生图的中文提示词, 每段对应 1 张图, 段与段之间用 --- 单独分隔。
+                请先生成 1 段【总分析】, 再生成 %d 段适合 AI 生图的中文提示词, 每段对应 1 张图, 每个区块之间用 --- 单独分隔。
                 重要目标:
-                1. 先从白底产品图和用户对话中提炼一个统一的【总卖点】。如果用户没有明确卖点, 你必须根据产品形态、使用方式、目标人群和可见结构自动生成一个总卖点。
-                2. 每一段都必须包含同一个【总卖点】, 保证整组图片营销方向一致。
-                3. 每一段都必须生成不同的【本图卖点】、【本图风格】、【场景构图】, 让第 1 张、第 2 张、第 3 张等各自有独立表达, 但不能改变产品主体。
-                4. 每一段都必须写【产品一致性】: 罗列白底图中可见的主体轮廓、比例、颜色、材质、结构层级、接口/按键/开孔/支撑件/装饰细节。后续 image2image 会逐张使用这些约束保持同一产品。
-
-                每段必须严格保留以下字段名和顺序:
+                1. 【总分析】只输出一次, 放在最前面。它必须总结整组图片共同的总卖点、目标人群、产品结构识别点、材质/工艺识别点和系列连续性。
+                2. 如果用户没有明确卖点, 你必须根据产品形态、安装方式、使用方式、目标人群和可见结构自动生成一个总卖点。
+                3. 每张图方案都必须引用同一套【总分析】, 保证整组图片营销方向、产品主体和视觉识别连续一致。
+                4. 每张图都必须生成不同的【本图卖点】、【本图风格】、【场景构图】, 让第 1 张、第 2 张、第 3 张等形成连续系列: 先建立认知, 再证明功能, 再放大材质/场景/细节价值。
+                5. 每张图都必须写【产品一致性】: 罗列白底图中可见的主体轮廓、比例、颜色、材质、结构层级、接口/按键/开孔/支撑件/装饰细节。后续 image2image 会逐张使用这些约束保持同一产品。
+                %s
+                【总分析】必须严格保留以下字段名:
                 【总卖点】一句话概括整组图片共同要证明的核心购买理由, 必须来自用户对话或图像推断。
+                【目标人群】说明该产品主要打动谁, 以及他们的核心痛点。
+                【产品识别】罗列白底图中必须保持一致的外形轮廓、比例、主辅色、材质、关键结构和识别特征。
+                【系列连续性】说明多张图如何连续: 第 1 张负责什么, 第 2 张负责什么, 第 3 张负责什么; 若数量更多, 后续按功能证明、场景证明、材质证明、局部质感递进。
+                %s
+                每张方案必须用标题【第 1 张方案】、【第 2 张方案】... 开头, 并严格保留以下字段名和顺序:
                 【本图卖点】只服务当前这一张图的差异化卖点, 不能和其他段完全重复; 要写清用户痛点、功能利益、购买理由和画面证明方式。
-                【本图风格】为当前图指定独立视觉风格/背景基调, 可以是科技蓝、少女粉、高级灰、自然绿、暖阳橙、赛博黑、居家生活、专业办公、户外便携等, 并写明色彩、道具、空间气质。
+                【系列连续性】说明本图承接总分析中的哪一环, 和前后方案如何形成一组连续视觉叙事。
+                %s【本图风格】为当前图指定独立视觉风格/背景基调, 可以是科技蓝、少女粉、高级灰、自然绿、暖阳橙、赛博黑、居家生活、专业办公、户外便携等, 并写明色彩、道具、空间气质。
                 【产品一致性】强制产品主体保持白底图一致; 逐项列出外形轮廓、比例、主色、辅色、材质、关键结构和识别特征; 禁止改变产品结构、品牌标识、颜色关系和核心部件。
                 【安装方式】说明该产品适合壁挂、台置、落地、嵌入、夹持、悬挂、手持或免安装等方式, 并写清固定点、承重点、接触面或使用动作。
                 【形态结构】分析产品主轮廓、体块比例、功能区、开孔/接口/按键/支撑件、边角转折和结构层级。
                 【材质/工艺】写清外壳、金属/塑胶/玻璃/木纹/硅胶等材质, 表面是哑光、亮面、磨砂、拉丝、透明、喷涂、倒角、接缝还是细纹理。
                 【场景构图】写明具体使用场景、构图、拍摄角度、功能展示方式、道具、产品状态、产品全貌/局部质感、光影策略。
-                【禁止项】禁止改变产品主体造型、生成多个无关产品、文字海报、水印、logo 错乱、畸变、低清晰度、过曝、遮挡关键结构。
+                【禁止项】禁止改变产品主体造型、生成多个无关产品、畸变、低清晰度、过曝、遮挡关键结构; 严禁穿模、穿帮、产品与道具/手部/支撑面相互穿插、悬空不合理或阴影受力不符; %s
 
                 输出规则:
-                1. 只输出提示词正文, 不要编号, 不要 markdown, 不要解释。
-                2. 每段 300-520 个中文字符, 信息要具体可执行。
-                3. 多段之间必须差异化: 本图卖点、本图风格、场景构图、道具、镜头角度或光影至少变化 3 项。
-                4. 产品一致性字段每段都要出现, 且要基于白底图可见信息重新罗列, 不能只写“保持一致”。
+                1. 只输出【总分析】和【第 N 张方案】正文, 不要 markdown, 不要解释。
+                2. 【总分析】120-300 个中文字符; 每张方案 280-520 个中文字符, 信息要具体可执行。
+                3. 多张方案之间必须差异化: 本图卖点、本图风格、场景构图、道具、镜头角度或光影至少变化 3 项, 但产品主体和总卖点必须连续一致。
+                4. 产品一致性字段每张方案都要出现, 且要基于白底图可见信息重新罗列, 不能只写“保持一致”。
                 5. 禁止空泛词堆叠, 比如“高端、精致、好看、实用”; 必须转成可见结构、材质反光、操作动作、场景痛点或对比证据。
-                """.formatted(hasImage ? "是" : "否", prompt == null || prompt.isBlank() ? "无" : prompt, count);
+                %s%s6. 输出格式示例:
+                【总分析】
+                %s---
+                【第 1 张方案】
+                %s---
+                【第 2 张方案】
+                ...
+                """.formatted(
+                        hasImage ? "是" : "否",
+                        prompt == null || prompt.isBlank() ? "无" : prompt,
+                        count,
+                        textGoal,
+                        summaryTextField,
+                        planTextField,
+                        textForbid,
+                        textOutputRule,
+                        compositionExamples + textboardExamples + "\n",
+                        exampleSummary,
+                        examplePlan);
     }
 
     public boolean generateImage(String prompt, String refImagePath,
                                  String whiteBgPath, String outputPath, String agentId) {
         ImageGeneratorAgent agent = resolveAgent(agentId);
         log.info("使用智能体 [{}] 生成图片", agent.getId());
-        return agent.generate(prompt, refImagePath, whiteBgPath, outputPath);
+        String enforcedPrompt = enforceNoIntersectionPrompt(prompt);
+        return agent.generate(enforcedPrompt, refImagePath, whiteBgPath, outputPath);
     }
 
     /**
@@ -438,7 +561,19 @@ public class ImageGenerationService {
         ImageGeneratorAgent agent = resolveAgent(agentId);
         log.info("使用智能体 [{}] 生成图片（refs={}, aspect={}）", agent.getId(),
                 refImagePaths == null ? 0 : refImagePaths.size(), aspect);
-        return agent.generateMulti(prompt, refImagePaths, whiteBgPath, outputPath, aspect);
+        String enforcedPrompt = enforceNoIntersectionPrompt(prompt);
+        return agent.generateMulti(enforcedPrompt, refImagePaths, whiteBgPath, outputPath, aspect);
+    }
+
+    private String enforceNoIntersectionPrompt(String prompt) {
+        String base = prompt == null ? "" : prompt.trim();
+        if (base.contains("最高优先级·禁止穿模") || base.contains("禁止穿模")) {
+            return base;
+        }
+        if (base.isBlank()) {
+            return NO_INTERSECTION_PROMPT;
+        }
+        return base + "\n\n" + NO_INTERSECTION_PROMPT;
     }
 
     public void generateSkuImages(String whiteBgUrl, String refPath,

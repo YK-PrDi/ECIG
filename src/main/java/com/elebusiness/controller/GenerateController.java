@@ -239,9 +239,10 @@ public class GenerateController {
     public ResponseEntity<Map<String, Object>> customAnalyze(
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
             @RequestParam(value = "prompt", defaultValue = "") String prompt,
-            @RequestParam(value = "count", defaultValue = "1") int count) {
-        log.info("[custom_analyze 入参] images={}, count={}, promptLen={}",
-                images == null ? 0 : images.size(), count, prompt == null ? 0 : prompt.length());
+            @RequestParam(value = "count", defaultValue = "1") int count,
+            @RequestParam(value = "withText", defaultValue = "true") boolean withText) {
+        log.info("[custom_analyze 入参] images={}, count={}, withText={}, promptLen={}",
+                images == null ? 0 : images.size(), count, withText, prompt == null ? 0 : prompt.length());
         if (images == null || images.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "请先上传白底产品图"));
         }
@@ -257,7 +258,7 @@ public class GenerateController {
             if (tempFiles.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "请先上传有效图片"));
             }
-            String text = imageGenerationService.analyzeCustomImagePrompts(prompt, tempFiles, count);
+            String text = imageGenerationService.analyzeCustomImagePrompts(prompt, tempFiles, count, withText);
             return ResponseEntity.ok(Map.of("text", text));
         } catch (Exception e) {
             log.error("custom_analyze 失败: {}", e.getMessage(), e);
