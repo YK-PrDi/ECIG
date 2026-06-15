@@ -59,6 +59,9 @@ app.db-wal
 # 用户偏好（含 customOutputDir 自选路径）
 user-prefs.json
 
+# 会话运行期数据
+user-session.json
+
 # 中文运行期目录（旧版残留）
 大参考/
 
