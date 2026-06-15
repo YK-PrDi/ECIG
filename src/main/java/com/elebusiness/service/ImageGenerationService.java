@@ -440,10 +440,6 @@ public class ImageGenerationService {
         }
     }
 
-<<<<<<< HEAD
-    private String buildCustomPromptAnalysisPrompt(String prompt, int count, boolean hasImage) {
-        String template = promptTemplateLoader.load("prompt/custom-analysis-user.txt", """
-=======
     private String buildCustomPromptAnalysisPrompt(String prompt, int count, boolean hasImage, boolean withText) {
         // 画面文案相关的额外字段与约束：仅当 withText=true 时注入
         String summaryTextField = withText
@@ -495,7 +491,6 @@ public class ImageGenerationService {
                 : "";
 
         return """
->>>>>>> 42b1d7f (feat: 拼多多12大类目融合 + 开品模式UI优化)
                 本次是否上传白底产品图: %s
                 用户对话/描述/风格要求:
                 %s
@@ -531,10 +526,6 @@ public class ImageGenerationService {
                 3. 多张方案之间必须差异化: 本图卖点、本图风格、场景构图、道具、镜头角度或光影至少变化 3 项, 但产品主体和总卖点必须连续一致。
                 4. 产品一致性字段每张方案都要出现, 且要基于白底图可见信息重新罗列, 不能只写“保持一致”。
                 5. 禁止空泛词堆叠, 比如“高端、精致、好看、实用”; 必须转成可见结构、材质反光、操作动作、场景痛点或对比证据。
-<<<<<<< HEAD
-                """);
-        return template.formatted(hasImage ? "是" : "否", prompt == null || prompt.isBlank() ? "无" : prompt, count);
-=======
                 %s%s6. 输出格式示例:
                 【总分析】
                 %s---
@@ -554,7 +545,6 @@ public class ImageGenerationService {
                         compositionExamples + textboardExamples + "\n",
                         exampleSummary,
                         examplePlan);
->>>>>>> 42b1d7f (feat: 拼多多12大类目融合 + 开品模式UI优化)
     }
 
     public boolean generateImage(String prompt, String refImagePath,
