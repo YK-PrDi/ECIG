@@ -5,6 +5,7 @@ import com.elebusiness.model.DingTalkRecord;
 import com.elebusiness.model.GenerateRequest;
 import com.elebusiness.model.GenerationTask;
 import com.elebusiness.model.ProductInfo;
+import com.elebusiness.service.CivitaiLoraService;
 import com.elebusiness.service.DingTalkService;
 import com.elebusiness.service.HistoryService;
 import com.elebusiness.service.ImageGenerationService;
@@ -50,12 +51,14 @@ public class GenerateController {
     private final GptImageAgent gptImageAgent;
     private final HistoryService historyService;
     private final CosService cosService;
+    private final CivitaiLoraService civitaiLoraService;
 
     public GenerateController(DingTalkService dingTalkService,
                               ImageGenerationService imageGenerationService,
                               AppProperties appProperties, TaskService taskService,
                               GptImageAgent gptImageAgent,
-                              HistoryService historyService, CosService cosService) {
+                              HistoryService historyService, CosService cosService,
+                              CivitaiLoraService civitaiLoraService) {
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
         this.appProperties = appProperties;
@@ -63,6 +66,7 @@ public class GenerateController {
         this.gptImageAgent = gptImageAgent;
         this.historyService = historyService;
         this.cosService = cosService;
+        this.civitaiLoraService = civitaiLoraService;
     }
 
     /** 异步提交生成任务，立即返回 taskId，前端轮询 /api/task/{taskId} 获取进度 */
@@ -512,6 +516,8 @@ public class GenerateController {
             @RequestParam(value = "multiPrompt", defaultValue = "false") boolean multiPrompt,
             @RequestParam(value = "configJson", required = false) String configJson,
             @RequestParam(value = "promptGroups", required = false) String promptGroups,
+            @RequestParam(value = "useLora", defaultValue = "false") boolean useLora,
+            @RequestParam(value = "loraPreset", required = false) String loraPreset,
             MultipartHttpServletRequest request) {
 
         // 不能用 @RequestParam List<String> prompts —— Spring 会按英文逗号自动拆分
@@ -530,10 +536,78 @@ public class GenerateController {
         }
 
         // 诊断日志：51 任务排查 — 看清楚这次请求到底来了几条 prompt / 几张图 / 是否 pair
-        log.info("[custom_generate 入参] prompts={}, images={}, pairImages={}, count={}, agentId={}, aspect={}",
+        log.info("[custom_generate 入参] prompts={}, images={}, pairImages={}, count={}, agentId={}, aspect={}, useLora={}, loraPreset={}",
                 prompts.size(),
                 images == null ? 0 : images.size(),
-                pairImages, count, generationAgentId, aspect);
+                pairImages, count, generationAgentId, aspect, useLora, loraPreset);
+
+        // LoRA 模式：使用 Civitai API 生成
+        if (useLora && loraPreset != null && !loraPreset.isBlank()) {
+            log.info("[custom_generate] 启用 LoRA 模式，预设={}", loraPreset);
+
+            // LoRA 模式下需要至少一张参考图
+            if (images == null || images.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "LoRA 模式需要上传产品图"));
+            }
+
+            // LoRA 模式只支持单图单提示词简单生成
+            String prompt = promptList.isEmpty() ? "" : promptList.get(0);
+
+            try {
+                // 保存上传的图片
+                File whiteBgFile = File.createTempFile("lora_ref_", ".jpg");
+                images.get(0).transferTo(whiteBgFile);
+
+                // 输出路径
+                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+                String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
+                        "自定义模式生成/" + timestamp).getAbsolutePath();
+                new File(outputDir).mkdirs();
+                String outputPath = new File(outputDir, "output_0.jpg").getAbsolutePath();
+
+                // 调用 Civitai LoRA 服务
+                boolean success = civitaiLoraService.generateWithLora(
+                    prompt,
+                    whiteBgFile.getAbsolutePath(),
+                    outputPath,
+                    aspect,
+                    loraPreset
+                );
+
+                // 清理临时文件
+                whiteBgFile.delete();
+
+                if (success) {
+                    // 记录到历史
+                    HistoryService.ArchiveResult archiveResult = historyService.archiveRefs(images);
+                    historyService.recordGeneration(
+                        sessionId,
+                        "custom",
+                        prompt,
+                        "civitai-lora-" + loraPreset,
+                        archiveResult.refPaths,
+                        outputPath,
+                        configJson
+                    );
+
+                    return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "outputDir", outputDir,
+                        "message", "LoRA 生成成功"
+                    ));
+                } else {
+                    return ResponseEntity.ok(Map.of(
+                        "success", false,
+                        "error", "Civitai LoRA 生成失败，请检查日志"
+                    ));
+                }
+            } catch (Exception e) {
+                log.error("[custom_generate] LoRA 模式异常: {}", e.getMessage(), e);
+                return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "LoRA 生成异常: " + e.getMessage()
+                ));
+            }
+        }
 
         // 过滤空 prompt
         List<String> promptList = new ArrayList<>();

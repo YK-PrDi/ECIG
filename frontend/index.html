@@ -447,6 +447,24 @@
                                 <label>重绘幅度 (0-1)</label>
                                 <input type="number" id="customDenoising" class="input-field" placeholder="0.5" step="0.1" min="0" max="1" value="0.5">
                             </div>
+                            <!-- LoRA 增强配置 -->
+                            <div class="config-group" style="flex-direction:column; gap:8px; padding:12px; background:rgba(99,102,241,0.05); border-radius:8px; border:1px solid rgba(99,102,241,0.1);" id="grp-lora">
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                    <input type="checkbox" id="useLoraCheckbox" style="width:18px; height:18px; cursor:pointer; accent-color:var(--primary);">
+                                    <span style="font-weight:600; font-size:0.9rem;">启用 LoRA 增强</span>
+                                </label>
+                                <div id="loraPresetWrapper" style="display:none; flex-direction:column; gap:4px;">
+                                    <label style="font-size:0.85rem; color:var(--text-dim);">摄影风格</label>
+                                    <select id="loraPresetSelect" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid rgba(99,102,241,0.2); background:white; font-size:0.9rem;">
+                                        <option value="studio">工作室风格（专业灯光）</option>
+                                        <option value="lifestyle">生活场景（自然氛围）</option>
+                                        <option value="minimal">极简白底（纯净背景）</option>
+                                    </select>
+                                </div>
+                                <div style="font-size:0.75rem; color:var(--text-dim); line-height:1.4;">
+                                    💡 使用 Stable Diffusion + LoRA 提升产品摄影质感
+                                </div>
+                            </div>
                         </div>
 
                         <div id="videoConfig" class="panel-view">
@@ -1484,6 +1502,16 @@
                     formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
                     formData.append('sessionId', SESSION_ID);
                     formData.append('mode', 'custom');
+
+                    // LoRA 参数
+                    const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                    const loraPresetSelect = document.getElementById('loraPresetSelect');
+                    if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                        formData.append('useLora', 'true');
+                        formData.append('loraPreset', loraPresetSelect.value);
+                    } else {
+                        formData.append('useLora', 'false');
+                    }
 
                     captureLastGen('/api/custom_generate', formData, `[白底图改图任务] Gemini 批量 ${prompts.length} 张`);
                     appendMessage('user', `[白底图改图任务] Gemini 分析后批量提交\n模型: ${agentId}${selectedAgentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}\n风格: ${customStyleLabel}\n提示词: ${prompts.length} 段 → ${prompts.length} 张图`);
@@ -2837,6 +2865,16 @@
                     formData.append('aspect', payload.aspect || '1:1');
                     if (payload.negativePrompt) formData.append('negativePrompt', payload.negativePrompt);
 
+                    // LoRA 参数
+                    const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                    const loraPresetSelect = document.getElementById('loraPresetSelect');
+                    if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                        formData.append('useLora', 'true');
+                        formData.append('loraPreset', loraPresetSelect.value);
+                    } else {
+                        formData.append('useLora', 'false');
+                    }
+
                     const bgKey = document.getElementById('stdBgStyle')?.value || 'tech-blue';
                     const bgLabel = (STD_BG_STYLES[bgKey] || STD_BG_STYLES['tech-blue']).label;
                     const imgDataUrl = await new Promise(res => {
@@ -2937,6 +2975,16 @@
                 formData.append('sessionId', SESSION_ID);
                 formData.append('mode', 'custom');
 
+                // LoRA 参数
+                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                const loraPresetSelect = document.getElementById('loraPresetSelect');
+                if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                    formData.append('useLora', 'true');
+                    formData.append('loraPreset', loraPresetSelect.value);
+                } else {
+                    formData.append('useLora', 'false');
+                }
+
                 const taskLabel = '白底图改图任务';
 
                 // 用户消息：若有图片则显示图片缩略图
@@ -3007,6 +3055,16 @@
                 formData.append('sessionId', SESSION_ID);
                 formData.append('mode', 'ecommerce');
                 if (isDetail) formData.append('aspect', '9:16');
+
+                // LoRA 参数
+                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                const loraPresetSelect = document.getElementById('loraPresetSelect');
+                if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                    formData.append('useLora', 'true');
+                    formData.append('loraPreset', loraPresetSelect.value);
+                } else {
+                    formData.append('useLora', 'false');
+                }
 
                 // 诊断日志（v2026-05-22-r2）：前端实际发出的 prompt 数 / 图片数 / 是否 pair 模式
                 console.log('[ecommerce submit]', {
@@ -3575,6 +3633,16 @@
                         return { key: line.slice(0, idx), value: line.slice(idx + 1) };
                     })
                 }));
+
+                // LoRA 参数
+                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                const loraPresetSelect = document.getElementById('loraPresetSelect');
+                if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                    formData.append('useLora', 'true');
+                    formData.append('loraPreset', loraPresetSelect.value);
+                } else {
+                    formData.append('useLora', 'false');
+                }
 
                 appendMessage('user', `[开品二次生图]\n${lines.join('\n')}`);
                 captureLastGen('/api/custom_generate', formData, `[开品模式] 结构化卡片 ${lines.length} 项`);
@@ -6049,6 +6117,16 @@
             formData.append('mode', 'ecommerce');
             if (ecSel.imageType === '详情页') formData.append('aspect', '9:16');
 
+            // LoRA 参数
+            const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+            const loraPresetSelect = document.getElementById('loraPresetSelect');
+            if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                formData.append('useLora', 'true');
+                formData.append('loraPreset', loraPresetSelect.value);
+            } else {
+                formData.append('useLora', 'false');
+            }
+
             appendMessage('user', `[电商模式·批量] 模型: ${agentId}，共 ${q.length} 组：\n` +
                 q.map((it, i) => `${i + 1}. ${it.label}`).join('\n'));
 
@@ -6856,6 +6934,15 @@
             new ResizeObserver(() => board._resize()).observe(document.getElementById('canvasPanel'));
             initResizers();
             // settingsView 是全屏页面，无需点击空白处关闭
+
+            // LoRA 复选框切换逻辑
+            const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+            const loraPresetWrapper = document.getElementById('loraPresetWrapper');
+            if (useLoraCheckbox && loraPresetWrapper) {
+                useLoraCheckbox.addEventListener('change', function() {
+                    loraPresetWrapper.style.display = this.checked ? 'flex' : 'none';
+                });
+            }
         });
 
         function initResizers() {
