@@ -91,6 +91,40 @@ public class ResourceController {
                 .body(new FileSystemResource(file));
     }
 
+    @GetMapping("/api/proxy-download")
+    public ResponseEntity<byte[]> proxyDownload(@RequestParam String url,
+                                                 @RequestParam(required = false) String filename) {
+        try {
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                return ResponseEntity.badRequest().build();
+            }
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(60_000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            byte[] bytes;
+            try (java.io.InputStream in = conn.getInputStream()) {
+                bytes = in.readAllBytes();
+            } finally {
+                conn.disconnect();
+            }
+            String name = filename;
+            if (name == null || name.isBlank()) {
+                name = url.substring(url.lastIndexOf('/') + 1);
+                if (!name.contains(".")) name = name + ".jpg";
+            }
+            String encodedName = java.net.URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20");
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename*=UTF-8''" + encodedName)
+                    .body(bytes);
+        } catch (Exception e) {
+            log.error("proxy-download 失败: {}", e.getMessage());
+            return ResponseEntity.status(502).build();
+        }
+    }
+
     // ── 画廊：列出目录 ──────────────────────────────────────────────────
 
     @GetMapping("/api/gallery")
@@ -217,7 +251,45 @@ public class ResourceController {
         if (tempPath == null || tempPath.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "缺少 tempPath"));
         }
+        log.info("save-to-gallery 请求: tempPath={}, subDir={}", tempPath, body.get("subDir"));
         try {
+            // 如果 tempPath 是 URL（COS 等），直接下载到 gallery
+            if (tempPath.startsWith("http://") || tempPath.startsWith("https://")) {
+                String subDir = body.get("subDir");
+                if (subDir == null || subDir.isBlank()) {
+                    subDir = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+                }
+                File baseDir = userPrefsService.resolveOutputDir(appProperties.getPaths().getOutputDir());
+                log.info("解析输出目录: {}", baseDir.getAbsolutePath());
+                File targetDir = new File(baseDir, subDir);
+                if (!targetDir.exists()) {
+                    boolean created = targetDir.mkdirs();
+                    if (!created && !targetDir.exists()) {
+                        log.error("无法创建目标目录: {}", targetDir.getAbsolutePath());
+                        return ResponseEntity.ok(Map.of("success", false,
+                            "error", "无法创建保存目录：" + targetDir.getAbsolutePath() + "。请检查磁盘权限或在设置中更改保存位置。"));
+                    }
+                }
+                String urlName = tempPath.substring(tempPath.lastIndexOf('/') + 1);
+                if (!urlName.contains(".")) urlName = urlName + ".jpg";
+                File target = new File(targetDir, urlName);
+                int dotIdx = urlName.lastIndexOf('.');
+                String base = (dotIdx > 0) ? urlName.substring(0, dotIdx) : urlName;
+                String ext  = (dotIdx > 0) ? urlName.substring(dotIdx)    : "";
+                int suffix = 1;
+                while (target.exists()) { target = new File(targetDir, base + "_" + suffix + ext); suffix++; }
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(tempPath).openConnection();
+                conn.setConnectTimeout(15_000); conn.setReadTimeout(60_000);
+                // 图床（COS/CDN）常对裸服务器请求做防盗链 → 返回 403。带上 UA 并跟随重定向，
+                // 与 /api/proxy-download 的处理保持一致。
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                conn.setInstanceFollowRedirects(true);
+                try (java.io.InputStream in = conn.getInputStream()) {
+                    java.nio.file.Files.copy(in, target.toPath());
+                } finally { conn.disconnect(); }
+                log.info("save-to-gallery (url): {} -> {}", tempPath, target.getAbsolutePath());
+                return ResponseEntity.ok(Map.of("success", true, "savedPath", target.getAbsolutePath(), "savedName", target.getName()));
+            }
             // 用 Path.normalize().toAbsolutePath() 替代 File.getCanonicalFile() —— 后者在 Windows 上
             // 走 native WinNTFileSystem.canonicalize0，对 "./" + 中文路径 + 正斜杠 的组合偶发抛
             // IOException("文件名、目录名或卷标语法不正确")。Path.normalize 是纯字符串规范化，跨平台稳定。
@@ -227,12 +299,23 @@ public class ResourceController {
                     .toAbsolutePath().normalize();
             java.nio.file.Path source = java.nio.file.Paths.get(tempPath)
                     .toAbsolutePath().normalize();
+
+            // 详细日志：帮助诊断打包后路径校验失败的问题
+            log.info("路径校验 - tempPath原始: {}", tempPath);
+            log.info("路径校验 - tempRoot: {}", tempRoot);
+            log.info("路径校验 - source标准化: {}", source);
+            log.info("路径校验 - source.startsWith(tempRoot): {}", source.startsWith(tempRoot));
+
             // 安全检查：source 必须在 tempOutputDir 内，防路径穿越
             if (!source.startsWith(tempRoot)) {
-                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "非法路径：必须在临时归档目录内"));
+                log.error("路径校验失败 - source: {}, tempRoot: {}", source, tempRoot);
+                return ResponseEntity.badRequest().body(Map.of("success", false,
+                    "error", "非法路径：必须在临时归档目录内。source=" + source + ", tempRoot=" + tempRoot));
             }
             if (!java.nio.file.Files.exists(source) || !java.nio.file.Files.isRegularFile(source)) {
-                return ResponseEntity.ok(Map.of("success", false, "error", "源文件不存在或已被清理"));
+                log.warn("源文件不存在: {}", source);
+                return ResponseEntity.ok(Map.of("success", false,
+                    "error", "源文件不存在或已被清理（临时文件 2 小时后自动删除）。路径：" + source));
             }
             String subDir = body.get("subDir");
             if (subDir == null || subDir.isBlank()) {
@@ -240,8 +323,16 @@ public class ResourceController {
             }
             // 用户在 ⚙️ 设置 里自选的保存位置；空 / 不可写时 resolveOutputDir 自动 fallback 到默认 output-dir (A2)
             File baseDir = userPrefsService.resolveOutputDir(appProperties.getPaths().getOutputDir());
+            log.info("解析输出目录: {}", baseDir.getAbsolutePath());
             File targetDir = new File(baseDir, subDir);
-            targetDir.mkdirs();
+            if (!targetDir.exists()) {
+                boolean created = targetDir.mkdirs();
+                if (!created && !targetDir.exists()) {
+                    log.error("无法创建目标目录: {}", targetDir.getAbsolutePath());
+                    return ResponseEntity.ok(Map.of("success", false,
+                        "error", "无法创建保存目录：" + targetDir.getAbsolutePath() + "。请检查磁盘权限或在设置中更改保存位置。"));
+                }
+            }
             // 同名冲突时加 _1 / _2 后缀，绝不覆盖
             String name = source.getFileName().toString();
             File target = new File(targetDir, name);

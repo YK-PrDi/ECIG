@@ -21,7 +21,6 @@ import java.util.concurrent.TimeUnit;
 public class GeminiImageAgent implements ImageGeneratorAgent {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiImageAgent.class);
-    private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
 
     private final AppProperties appProperties;
@@ -102,7 +101,7 @@ public class GeminiImageAgent implements ImageGeneratorAgent {
                 String requestJson = buildRequest(prompt, refImgBase64, refMimeType, whiteImgBase64, whiteMimeType);
                 String apiKey = appProperties.getGemini().getApiKey();
                 String model = appProperties.getGemini().getModel();
-                String url = BASE_URL + model + ":generateContent?key=" + apiKey;
+                String url = appProperties.getGemini().getImageBaseUrl() + model + ":generateContent?key=" + apiKey;
 
                 OkHttpClient client = getClient(apiConfig.getTimeoutSeconds());
 

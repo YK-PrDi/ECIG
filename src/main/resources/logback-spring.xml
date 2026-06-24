@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  日志配置：同时输出到控制台和文件。
+  此文件会被打包进 jar（即 exe 内部），日志功能随程序内置。
+
+  日志文件位置：${user.dir}/logs/app.log（exe 所在目录的 logs 子目录）
+  - 可通过 -Dlog.dir=绝对路径 覆盖
+  - 按天滚动 + 单文件最大 10MB，保留 7 天，总上限 50MB
+
+  目的：别人机器上出问题时，把 logs/app.log 发回来即可诊断（启动、保存等关键操作都有记录）。
+-->
+<configuration>
+
+    <!-- 日志目录：默认 exe 同级 logs/，可用 -Dlog.dir 覆盖到有写权限的位置 -->
+    <property name="LOG_DIR" value="${log.dir:-${user.dir}/logs}"/>
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+
+    <!-- 控制台输出 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 文件输出：按天滚动 -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app.log</file>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- app.2026-06-21.0.log 这样滚动 -->
+            <fileNamePattern>${LOG_DIR}/app.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>50MB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- 业务日志：INFO 级别，同时进控制台和文件 -->
+    <logger name="com.elebusiness" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

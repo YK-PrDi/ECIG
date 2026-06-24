@@ -26,7 +26,6 @@ public class PromptCondenser {
 
     private static final Logger log = LoggerFactory.getLogger(PromptCondenser.class);
     private static final String MODEL = "gemini-2.5-flash"; // 文本模型；图模型不适合做文本压缩
-    private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
     private static final int MAX_INPUT_LEN = 1200; // 小于此长度直接跳过压缩；GPT-Image 实测能稳定吃 ~1500 字
 
@@ -72,24 +71,19 @@ public class PromptCondenser {
 
         try {
             ObjectNode root = objectMapper.createObjectNode();
-            // systemInstruction 字段比把规则塞进 user content 服从度更高（Gemini 官方推荐做法）
-            ObjectNode sysInst = root.putObject("systemInstruction");
-            sysInst.putArray("parts").addObject().put("text",
-                    promptTemplateLoader.load("prompt/prompt-condenser-system.txt", ""));
-            ArrayNode contents = root.putArray("contents");
-            ObjectNode content = contents.addObject();
-            content.put("role", "user");
-            content.putArray("parts").addObject().put("text", "原提示词：\n" + prompt);
-            ObjectNode genCfg = root.putObject("generationConfig");
-            genCfg.put("temperature", 0.2);
-            // 上一版 2000 + thinking 开启 → thinking 吃掉 ~1000 tokens，正文被截在 "3)" 处。
-            // 现在关 thinking、加大预算到 4000，1500 中文字 ≈ 2500 tokens，留足缓冲。
-            genCfg.put("maxOutputTokens", 4000);
-            // thinkingBudget=0：Gemini 2.5 Flash 完全关闭思考，所有 token 都用于正文输出
-            genCfg.putObject("thinkingConfig").put("thinkingBudget", 0);
+            root.put("model", MODEL);
+            root.put("max_tokens", 4000);
+            root.put("temperature", 0.2);
+            ArrayNode messages = root.putArray("messages");
+            String systemText = promptTemplateLoader.load("prompt/prompt-condenser-system.txt", "");
+            if (systemText != null && !systemText.isBlank()) {
+                messages.addObject().put("role", "system").put("content", systemText);
+            }
+            messages.addObject().put("role", "user").put("content", "原提示词：\n" + prompt);
 
             Request req = new Request.Builder()
-                    .url(BASE_URL + MODEL + ":generateContent?key=" + apiKey)
+                    .url(appProperties.getGemini().getBaseUrl() + "/v1/chat/completions")
+                    .header("Authorization", "Bearer " + apiKey)
                     .post(RequestBody.create(root.toString(), JSON_TYPE))
                     .build();
 
@@ -100,40 +94,20 @@ public class PromptCondenser {
                             body.substring(0, Math.min(200, body.length())));
                     return new Condensed("（Gemini 返回 " + resp.code() + "，降级为原文）", prompt);
                 }
-                String[] split = extractThoughtAndText(body);
-                String thought = split[0];
-                String out = split[1];
-                if (out == null || out.isBlank()) {
+                JsonNode respRoot = objectMapper.readTree(body);
+                String out = respRoot.path("choices").path(0).path("message").path("content").asText("").trim();
+                if (out.isBlank()) {
                     log.warn("压缩返回空，使用原文");
-                    return new Condensed(thought.isEmpty() ? "（Gemini 返回空，降级为原文）" : thought, prompt);
+                    return new Condensed("（Gemini 返回空，降级为原文）", prompt);
                 }
                 log.info("压缩完成 {} → {} 字", prompt.length(), out.length());
                 cache.put(key, out);
-                return new Condensed(thought, out);
+                return new Condensed("", out);
             }
         } catch (Exception e) {
             log.warn("压缩异常，降级到原文: {}", e.getMessage());
             return new Condensed("（压缩异常：" + e.getMessage() + "，降级为原文）", prompt);
         }
-    }
-
-    /** 返回 [thought, text]；任一可能为空字符串。 */
-    private String[] extractThoughtAndText(String responseBody) throws Exception {
-        JsonNode root = objectMapper.readTree(responseBody);
-        JsonNode parts = root.path("candidates").path(0).path("content").path("parts");
-        if (!parts.isArray()) return new String[]{"", ""};
-        StringBuilder thoughts = new StringBuilder();
-        StringBuilder texts = new StringBuilder();
-        for (JsonNode p : parts) {
-            JsonNode t = p.path("text");
-            if (t.isMissingNode()) continue;
-            if (p.path("thought").asBoolean(false)) {
-                thoughts.append(t.asText()).append('\n');
-            } else {
-                texts.append(t.asText());
-            }
-        }
-        return new String[]{thoughts.toString().trim(), texts.toString().trim()};
     }
 
     private OkHttpClient getClient() {

@@ -17,6 +17,7 @@ public class AppProperties {
     private Proxy proxy = new Proxy();
     private Cos cos = new Cos();
     private Auth auth = new Auth();
+    private Qwen qwen = new Qwen();
 
     public Gemini getGemini() { return gemini; }
     public void setGemini(Gemini gemini) { this.gemini = gemini; }
@@ -38,15 +39,25 @@ public class AppProperties {
     public void setApi(Api api) { this.api = api; }
     public Proxy getProxy() { return proxy; }
     public void setProxy(Proxy proxy) { this.proxy = proxy; }
+    public Qwen getQwen() { return qwen; }
+    public void setQwen(Qwen qwen) { this.qwen = qwen; }
 
     public static class Gemini {
         private String apiKey;
         private String model = "gemini-2.0-flash-preview-image-generation";
+        /** 文本分析端点（OpenAI 兼容代理），用于 /v1/chat/completions */
+        private String baseUrl = "https://api.linapi.net";
+        /** 图像生成端点（Google native），用于 {model}:generateContent */
+        private String imageBaseUrl = "https://generativelanguage.googleapis.com/v1beta/models/";
 
         public String getApiKey() { return apiKey; }
         public void setApiKey(String apiKey) { this.apiKey = apiKey; }
         public String getModel() { return model; }
         public void setModel(String model) { this.model = model; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public String getImageBaseUrl() { return imageBaseUrl; }
+        public void setImageBaseUrl(String imageBaseUrl) { this.imageBaseUrl = imageBaseUrl; }
     }
 
     public static class Veo {
@@ -190,5 +201,20 @@ public class AppProperties {
 
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
+    }
+
+    public static class Qwen {
+        private String apiKey = "";
+        private String model = "qwen-vl-max";
+        private String baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public String getModel() { return model; }
+        public void setModel(String model) { this.model = model; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+
+        public boolean isEnabled() { return apiKey != null && !apiKey.isBlank(); }
     }
 }

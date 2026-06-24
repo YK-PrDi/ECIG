@@ -105,15 +105,6 @@ public class UserPrefsService {
         }
     }
 
-    /** 给 Controller 用的统一聚合：当前所有偏好（目前只有一个字段，未来扩展用） */
-    public Map<String, Object> snapshot() {
-        return new HashMap<>(read());
-    }
-
-    /** 测试用 / cache 失效（如外部直接改了文件） */
-    public synchronized void invalidate() {
-        cache = null;
-    }
 
     /** 解析最终生效的输出目录：用户自选（验证通过）→ 否则 fallback 到 default。 */
     public File resolveOutputDir(String defaultDir) {

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain, clipboard, nativeImage } = require('electron');
 const { spawn } = require('child_process');
 const path  = require('path');
 const http  = require('http');
@@ -136,15 +136,29 @@ async function startJava() {
         `-Dapp.paths.user-data-dir=${dataDir.replace(/\\/g, '/')}`,
         `-Dapp.resources-path=${process.resourcesPath.replace(/\\/g, '/')}`,
         `-Dapp.packaged=${app.isPackaged ? 'true' : 'false'}`,
+        // 日志文件位置：指定到 dataDir/logs（与其他数据一起，用户容易找到）
+        `-Dlog.dir=${path.join(dataDir, 'logs').replace(/\\/g, '/')}`,
         '-jar', jarPath
     ];
 
     javaProcess = spawn(javaExe, jvmArgs, {
         cwd:         dataDir,
-        stdio:       'ignore',
+        stdio:       'pipe',        // 改为 pipe，捕获输出并写入日志
         windowsHide: true,
         detached:    false,
     });
+
+    // 将 stdout/stderr 输出到日志文件（与 Spring Boot 日志分开，记录 JVM 启动问题）
+    const jvmLogPath = path.join(dataDir, 'logs', 'jvm.log');
+    try {
+        fs.mkdirSync(path.dirname(jvmLogPath), { recursive: true });
+        const logStream = fs.createWriteStream(jvmLogPath, { flags: 'a' });
+        logStream.write(`\n\n========== ${new Date().toISOString()} ==========\n`);
+        if (javaProcess.stdout) javaProcess.stdout.pipe(logStream);
+        if (javaProcess.stderr) javaProcess.stderr.pipe(logStream);
+    } catch (e) {
+        console.error('无法创建 JVM 日志文件:', e.message);
+    }
 
     javaProcess.on('error', err => {
         console.error('Java 启动失败:', err.message);
@@ -328,25 +342,11 @@ function createMain() {
         }
     });
 
-    // ── 下载前询问保存位置 ──
+    // ── 下载：浏览器自然下载也走用户选定的「下载目录」 ──
     mainWindow.webContents.session.on('will-download', (event, item) => {
         const filename = item.getFilename();
-        const ext = path.extname(filename).slice(1).toLowerCase();
-        const filters = ext === 'mp4'
-            ? [{ name: '视频文件', extensions: ['mp4'] }, { name: '所有文件', extensions: ['*'] }]
-            : [{ name: '图片文件', extensions: ['jpg', 'jpeg', 'png', 'webp'] }, { name: '所有文件', extensions: ['*'] }];
-
-        const savePath = dialog.showSaveDialogSync(mainWindow, {
-            title: '保存文件',
-            defaultPath: path.join(app.getPath('downloads'), filename),
-            filters
-        });
-
-        if (savePath) {
-            item.setSavePath(savePath);
-        } else {
-            item.cancel();
-        }
+        const saveDir = loadPref().downloadDir || loadDataDir() || app.getPath('downloads');
+        item.setSavePath(uniquePath(saveDir, filename));
     });
 }
 
@@ -361,6 +361,63 @@ ipcMain.handle('pick-dir', async (_event, defaultPath) => {
     });
     if (result.canceled || !result.filePaths.length) return null;
     return result.filePaths[0];
+});
+
+// ── 生成不冲突的保存路径（同名文件自动加序号） ──
+function uniquePath(dir, filename) {
+    fs.mkdirSync(dir, { recursive: true });
+    const ext  = path.extname(filename);
+    const base = path.basename(filename, ext);
+    let target = path.join(dir, filename);
+    let i = 1;
+    while (fs.existsSync(target)) {
+        target = path.join(dir, `${base}(${i++})${ext}`);
+    }
+    return target;
+}
+
+// ── IPC：渲染层调 window.electronAPI.saveFile() 写入用户的「下载目录」 ──
+// 首次下载弹原生目录选择框让用户选，存为 downloadDir 偏好，之后沿用（与首次启动选数据目录同款体验）。
+// 渲染层传来的是 ArrayBuffer（sandbox 下 preload 无 Node Buffer），在 main 进程转 Buffer 写盘。
+ipcMain.handle('save-file', async (_event, { filename, buffer }) => {
+    try {
+        let saveDir = loadPref().downloadDir;
+        if (!saveDir || !fs.existsSync(saveDir)) {
+            const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+            const result = await dialog.showOpenDialog(owner, {
+                title: '选择图片下载位置',
+                message: '以后下载的图片都会保存到此文件夹',
+                defaultPath: loadDataDir() || app.getPath('downloads'),
+                properties: ['openDirectory', 'createDirectory'],
+                buttonLabel: '选择此文件夹',
+            });
+            if (result.canceled || !result.filePaths.length) {
+                return { ok: false, canceled: true };
+            }
+            saveDir = result.filePaths[0];
+            savePref({ downloadDir: saveDir });
+        }
+        const savePath = uniquePath(saveDir, filename);
+        fs.writeFileSync(savePath, Buffer.from(buffer));
+        return { ok: true, filePath: savePath };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// ── IPC：渲染层调 window.electronAPI.copyImage() 用原生剪贴板复制图片 ──
+// 浏览器 Clipboard API 会校验 blob 的 MIME 必须与声明的 image/png 一致，
+// 而 /api/proxy-download 返回 application/octet-stream（且源图常为 jpeg）会被拒绝。
+// nativeImage 直接按字节解码，无类型校验，打包后可靠。
+ipcMain.handle('copy-image', async (_event, arrayBuffer) => {
+    try {
+        const img = nativeImage.createFromBuffer(Buffer.from(arrayBuffer));
+        if (img.isEmpty()) return { ok: false, error: 'decode-failed' };
+        clipboard.writeImage(img);
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
 });
 
 // ── 应用启动 ──

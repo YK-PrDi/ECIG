@@ -33,8 +33,8 @@ public class TaskService {
 
     private final AppProperties appProperties;
 
-    // 最多同时跑 10 个生成任务
-    private final ExecutorService executor = Executors.newFixedThreadPool(10);
+    // 增加任务线程池大小以支持更多并发用户
+    private final ExecutorService executor = Executors.newFixedThreadPool(20);
     private final Map<String, GenerationTask> tasks = new ConcurrentHashMap<>();
     // 完成时间戳：仅 done/error/stopped 状态的任务才进入这个 map，按 TTL 过期
     private final Map<String, Long> completedAt = new ConcurrentHashMap<>();

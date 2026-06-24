@@ -8,7 +8,6 @@ import com.elebusiness.model.ProductInfo;
 import com.elebusiness.service.DingTalkService;
 import com.elebusiness.service.HistoryService;
 import com.elebusiness.service.ImageGenerationService;
-import com.elebusiness.service.PromptCondenser;
 import com.elebusiness.service.TaskService;
 import com.elebusiness.service.agent.GptImageAgent;
 import com.elebusiness.service.CosService;
@@ -49,21 +48,19 @@ public class GenerateController {
     private final AppProperties appProperties;
     private final TaskService taskService;
     private final GptImageAgent gptImageAgent;
-    private final PromptCondenser promptCondenser;
     private final HistoryService historyService;
     private final CosService cosService;
 
     public GenerateController(DingTalkService dingTalkService,
                               ImageGenerationService imageGenerationService,
                               AppProperties appProperties, TaskService taskService,
-                              GptImageAgent gptImageAgent, PromptCondenser promptCondenser,
+                              GptImageAgent gptImageAgent,
                               HistoryService historyService, CosService cosService) {
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
         this.appProperties = appProperties;
         this.taskService = taskService;
         this.gptImageAgent = gptImageAgent;
-        this.promptCondenser = promptCondenser;
         this.historyService = historyService;
         this.cosService = cosService;
     }
@@ -557,35 +554,13 @@ public class GenerateController {
             promptList = new ArrayList<>(List.of(String.join("\n\n", promptList)));
         }
 
-        // GPT-Image 对长 prompt 敏感（>550 字易超时），用 Gemini 提前批量压缩；失败自动降级原文
-        // 同时收集 LLM 思考过程，回传前端展示
+        // 收集提示词思考过程，回传前端展示（已移除 Gemini 压缩步骤，直接透传原文）
         List<String> thoughts = new ArrayList<>();
-        if (generationAgentId != null && generationAgentId.startsWith("gpt-image")) {
-            List<String> compressed = new ArrayList<>(promptList.size());
-            for (String p : promptList) {
-                PromptCondenser.Condensed c = promptCondenser.condenseDetailed(p);
-                compressed.add(c.compressed());
-                if (c.thought() == null || c.thought().isBlank()) {
-                    thoughts.add(
-                        "【提示词直送（未经 LLM 处理）】\n模型: " + generationAgentId
-                        + "\n长度: " + p.length() + " 字\n\n【最终提示词】\n" + p
-                    );
-                } else {
-                    thoughts.add(
-                        "【Gemini 压缩思考】\n" + c.thought()
-                        + "\n\n【原提示词（" + p.length() + " 字）】\n" + p
-                        + "\n\n【压缩后（" + c.compressed().length() + " 字，实际发给 GPT-Image）】\n" + c.compressed()
-                    );
-                }
-            }
-            promptList = compressed;
-        } else {
-            for (String p : promptList) {
-                thoughts.add(
-                    "【提示词直送（未经 LLM 处理）】\n模型: " + generationAgentId
-                    + "\n长度: " + p.length() + " 字\n\n【最终提示词】\n" + p
-                );
-            }
+        for (String p : promptList) {
+            thoughts.add(
+                "【提示词直送（未经 LLM 处理）】\n模型: " + generationAgentId
+                + "\n长度: " + p.length() + " 字\n\n【最终提示词】\n" + p
+            );
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));

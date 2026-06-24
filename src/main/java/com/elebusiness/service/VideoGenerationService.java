@@ -18,7 +18,6 @@ import java.util.concurrent.TimeUnit;
 public class VideoGenerationService {
 
     private static final Logger log = LoggerFactory.getLogger(VideoGenerationService.class);
-    private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
 
     private final AppProperties appProperties;
@@ -81,7 +80,14 @@ public class VideoGenerationService {
         body.set("instances", objectMapper.createArrayNode().add(instance));
         body.set("parameters", parameters);
 
-        String url = BASE_URL + "/models/" + veo.getModel() + ":predictLongRunning?key=" + apiKey;
+        // Veo 使用 Google native 格式，需要 imageBaseUrl（含 /v1beta/models/）
+        String baseUrl = appProperties.getGemini().getImageBaseUrl();
+        if (baseUrl.endsWith("/models/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 8);
+        } else if (baseUrl.endsWith("/models")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 7);
+        }
+        String url = baseUrl + "/models/" + veo.getModel() + ":predictLongRunning?key=" + apiKey;
         Request request = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON_TYPE))
@@ -100,7 +106,14 @@ public class VideoGenerationService {
 
     private String pollOperation(OkHttpClient client, String operationName) throws IOException, InterruptedException {
         String apiKey = appProperties.getGemini().getApiKey();
-        String url = BASE_URL + "/" + operationName + "?key=" + apiKey;
+        // Veo 使用 Google native 格式，需要 imageBaseUrl（含 /v1beta/models/）
+        String baseUrl = appProperties.getGemini().getImageBaseUrl();
+        if (baseUrl.endsWith("/models/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 8);
+        } else if (baseUrl.endsWith("/models")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 7);
+        }
+        String url = baseUrl + "/" + operationName + "?key=" + apiKey;
         Request request = new Request.Builder().url(url).build();
 
         // 最多等 10 分钟（120次 × 5秒）

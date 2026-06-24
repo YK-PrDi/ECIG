@@ -29,8 +29,7 @@ public class ImageGenerationService {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class);
     private static final String DEFAULT_AGENT_ID = "gpt-image";
-    private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
-    private static final String GEMINI_ANALYSIS_MODEL = "gemini-2.5-flash";
+    private static final String GEMINI_ANALYSIS_MODEL = "gemini-3-pro-preview";
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
     private static final String NO_INTERSECTION_PROMPT = """
             【最高优先级·禁止穿模】
@@ -45,6 +44,7 @@ public class ImageGenerationService {
     private final ExecutorService executor;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final PromptTemplateLoader promptTemplateLoader;
+    private final OkHttpClient analysisClient;
 
     public ImageGenerationService(AppProperties appProperties, List<ImageGeneratorAgent> agents,
                                   PromptTemplateLoader promptTemplateLoader) {
@@ -53,6 +53,7 @@ public class ImageGenerationService {
         agents.forEach(a -> agentMap.put(a.getId(), a));
         this.executor = Executors.newFixedThreadPool(appProperties.getApi().getMaxConcurrent());
         this.promptTemplateLoader = promptTemplateLoader;
+        this.analysisClient = buildAnalysisClient();
         log.info("已注册智能体: {}，并发数: {}", agentMap.keySet(), appProperties.getApi().getMaxConcurrent());
     }
 
@@ -96,16 +97,96 @@ public class ImageGenerationService {
     /**
      * 自定义模式发送前的图片分析：把白底产品图 + 用户描述扩写为多段可编辑生图提示词。
      * 返回文本用 --- 分隔，前端继续复用原来的卡片编辑流程。
+     * 降级链路：Gemini → 千问 → 本地兜底（本地兜底强制 withText=false）
      */
     public String analyzeCustomImagePrompts(String prompt, List<File> imageFiles, int count, boolean withText) {
-        int safeCount = Math.max(1, Math.min(8, count));
+        int safeCount = Math.max(1, Math.min(10, count));
         String userPrompt = prompt == null ? "" : prompt.trim();
+        List<File> files = imageFiles == null ? List.of() : imageFiles;
+
+        // 第一级：Gemini
         try {
-            return requestGeminiCustomPromptAnalysis(userPrompt, imageFiles == null ? List.of() : imageFiles, safeCount, withText);
+            return requestGeminiCustomPromptAnalysis(userPrompt, files, safeCount, withText);
         } catch (Exception e) {
-            log.error("自定义模式 Gemini 图片分析失败: {}", e.getMessage(), e);
-            throw new RuntimeException("Gemini 图片分析失败: " + e.getMessage(), e);
+            log.warn("自定义分析 Gemini 失败，尝试千问: {}", e.getMessage());
         }
+
+        // 第二级：千问
+        if (appProperties.getQwen().isEnabled()) {
+            try {
+                return requestQwenCustomPromptAnalysis(userPrompt, files, safeCount, withText);
+            } catch (Exception e) {
+                log.warn("自定义分析千问失败，使用本地兜底: {}", e.getMessage());
+            }
+        }
+
+        // 第三级：本地兜底，强制 withText=false
+        log.warn("自定义分析使用本地兜底，withText 强制为 false");
+        return buildLocalFallbackCustomPrompts(userPrompt, safeCount);
+    }
+
+    /** 千问 VL（OpenAI 兼容接口）调用分析 */
+    private String requestQwenCustomPromptAnalysis(String prompt, List<File> imageFiles, int count, boolean withText) throws IOException {
+        String apiKey = appProperties.getQwen().getApiKey();
+        String model = appProperties.getQwen().getModel();
+        String baseUrl = appProperties.getQwen().getBaseUrl();
+
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", model);
+
+        ArrayNode messages = root.putArray("messages");
+        ObjectNode userMsg = messages.addObject();
+        userMsg.put("role", "user");
+        ArrayNode content = userMsg.putArray("content");
+        content.addObject().put("type", "text")
+                .put("text", buildCustomPromptAnalysisPrompt(prompt, count, imageFiles != null && !imageFiles.isEmpty(), withText));
+
+        if (imageFiles != null) {
+            for (File f : imageFiles) {
+                if (f == null || !f.exists()) continue;
+                byte[] bytes = Files.readAllBytes(f.toPath());
+                String b64 = Base64.getEncoder().encodeToString(bytes);
+                String dataUrl = "data:" + getMimeType(f.getName()) + ";base64," + b64;
+                ObjectNode imgPart = content.addObject();
+                imgPart.put("type", "image_url");
+                imgPart.putObject("image_url").put("url", dataUrl);
+            }
+        }
+
+
+        Request request = new Request.Builder()
+                .url(baseUrl + "/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .post(RequestBody.create(root.toString(), JSON_TYPE))
+                .build();
+
+        try (Response response = analysisClient.newCall(request).execute()) {
+            String body = response.body() != null ? response.body().string() : "";
+            if (!response.isSuccessful()) {
+                throw new RuntimeException("千问分析失败(" + response.code() + "): " + body);
+            }
+            JsonNode respNode = objectMapper.readTree(body);
+            String text = respNode.path("choices").path(0).path("message").path("content").asText("");
+            if (text.isBlank()) throw new RuntimeException("千问返回空内容");
+            return text;
+        }
+    }
+
+    /** 本地兜底：生成基础提示词卡片，强制不含文案字段 */
+    private String buildLocalFallbackCustomPrompts(String prompt, int count) {
+        String subject = prompt.isBlank() ? "该产品" : prompt.substring(0, Math.min(20, prompt.length()));
+        StringBuilder sb = new StringBuilder();
+        String[] scenes = {"纯白背景产品正面展示", "浅灰渐变背景斜侧视角", "木纹桌面生活场景", "简洁场景局部特写"};
+        for (int i = 0; i < count; i++) {
+            if (i > 0) sb.append("\n---\n");
+            String scene = scenes[i % scenes.length];
+            sb.append("【本图卖点】").append(subject).append("核心功能与外观展示\n");
+            sb.append("【本图风格】简洁电商风，突出产品质感\n");
+            sb.append("【产品一致性】保持产品外观、颜色与参考图完全一致\n");
+            sb.append("【场景构图】").append(scene).append("，产品居中或黄金比例摆放，背景简洁不干扰主体\n");
+            sb.append("【禁止项】画面不得出现任何文字、标题、标签、水印或 logo；不得出现穿模、拉伸或变形\n");
+        }
+        return sb.toString();
     }
 
     /**
@@ -167,7 +248,7 @@ public class ImageGenerationService {
         // 方案侧重文本
         String focusPrompt = switch (focus) {
             case "cost" -> "【方案侧重】成本与量产：CMF 与结构在不牺牲核心功能的前提下尽量降低成本与开模难度；优先采用注塑/钣金等成熟工艺；颜色与材质走简洁实用风。";
-            case "premium" -> "【方案侧重】颜值与溢价：放大造型语言的高端感；CMF 选择高级材质（拉丝金属/真皮/木纹/陶瓷釉面）；表面工艺精致；体现“摆在客厅当艺术品也不违和”的格调。";
+            case "premium" -> "【方案侧重】颜值与溢价：放大造型语言的高端感；CMF 选择高级材质（拉丝金属/真皮/木纹/陶瓷釉面）；表面工艺精致；体现\"摆在客厅当艺术品也不违和\"的格调。";
             case "disruptive" -> "【方案侧重】颠覆性创新：允许突破常规结构去拥抱产品 B 的造型；可加入隐藏机构、模块化、可拆解、智能化等新颖设计语言；视觉冲击优先。";
             case "custom" -> focusText != null && !focusText.isBlank()
                     ? "【方案侧重·自定义】" + focusText
@@ -181,7 +262,7 @@ public class ImageGenerationService {
             case "wood" -> "【视觉风格】木元素：产品本体的外壳/主体部分改为原木材质（橡木/胡桃木/竹材纹理）；金属或塑料区域用木纹饰面替代；保留产品功能细节；暖米色与原木棕色调，体现温润自然感。";
             case "cartoon" -> "【视觉风格】卡通：产品造型圆润可爱化；色彩亮丽柔和；增加拟人化趣味细节；场景配以简洁卡通风格背景元素；整体呈现亲切活泼的儿童/年轻用户氛围。";
             case "ins" -> "【视觉风格】ins 风：清新奶油色系（象牙白/浅粉/哑光米灰）；柔和弥散光；干净留白构图；产品与鲜花/绿植/咖啡等生活道具搭配；小红书/Instagram 高颜值打卡风格。";
-            case "minimal" -> "【视觉风格】极简：背景纯净（白/浅灰/米）；产品居中大量留白；去除一切多余装饰；线条简洁；色彩克制（单色或双色）；体现“少即是多”的设计哲学。";
+            case "minimal" -> "【视觉风格】极简：背景纯净（白/浅灰/米）；产品居中大量留白；去除一切多余装饰；线条简洁；色彩克制（单色或双色）；体现\"少即是多\"的设计哲学。";
             case "cyberpunk" -> "【视觉风格】赛博朋克：深色背景配霓虹灯光（紫/青/粉）；发光线条与光效；金属质感与电路纹路；高对比度；呈现科技感十足的未来都市氛围。";
             case "custom" -> styleText != null && !styleText.isBlank()
                     ? "【视觉风格·自定义】" + styleText
@@ -190,7 +271,7 @@ public class ImageGenerationService {
         };
 
         String template = promptTemplateLoader.load("prompt/kai-pin-analysis-user.txt", """
-                你是“产品外观设计分析师 + 电商开品视觉策略师”。
+                你是"产品外观设计分析师 + 电商开品视觉策略师"。
                 当前开品模式只做单个产品的外观设计结构化分析。请严格按照下面这条内置 Excel 提示词执行：
                 提示词：请对这个产品从几何结构、体量感（轻盈/厚重/悬浮感）、仿生学元素、模块化程度（一体成型 / 可拆卸 / 堆叠式设计）、主色调、辅色、风格标签（科技极简/复古怀旧/赛博朋克/可爱治愈）的角度进行产品外观设计分析。
 
@@ -209,12 +290,12 @@ public class ImageGenerationService {
                 1. 必须只输出 8 个字段，顺序和 key 必须完全固定为：核心卖点清单、几何结构、体量感、仿生学元素、模块化程度、主色调、辅色、风格标签。
                 1.1 核心卖点清单：必须用 3-5 条编号短句罗列，每条包含用户痛点/购买理由、产品外观或功能证据、后续画面表现方式；如果用户未写卖点，也要从图片结构、使用方式和目标场景主动提炼。
                 2. 几何结构：从图片中观察产品主轮廓、基础几何、转折面、曲直线关系、对称性和视觉重心，输出 80-160 字，可直接用于后续设计。
-                3. 体量感：只能从“轻盈、厚重、悬浮感”中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用“、”连接。
-                4. 仿生学元素：分析是否有动物、植物、骨骼、翅膀、水滴、贝壳、昆虫、流线等自然形态借鉴；如果没有明显仿生，也要写“无明显仿生，偏几何/工程化”，80-160 字。
-                5. 模块化程度：只能从“一体成型、可拆卸、堆叠式设计”中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用“、”连接。
-                6. 主色调：输出图片中最主要的颜色名称，可带材质感，例如“哑光白”“银灰金属”“深黑”等，不要写长句。
-                7. 辅色：输出辅助色或点缀色；如果图片中没有明显辅色，输出“无明显辅色”。
-                8. 风格标签：只能从“科技极简、复古怀旧、赛博朋克、可爱治愈”中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用“、”连接。
+                3. 体量感：只能从"轻盈、厚重、悬浮感"中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用"、"连接。
+                4. 仿生学元素：分析是否有动物、植物、骨骼、翅膀、水滴、贝壳、昆虫、流线等自然形态借鉴；如果没有明显仿生，也要写"无明显仿生，偏几何/工程化"，80-160 字。
+                5. 模块化程度：只能从"一体成型、可拆卸、堆叠式设计"中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用"、"连接。
+                6. 主色调：输出图片中最主要的颜色名称，可带材质感，例如"哑光白""银灰金属""深黑"等，不要写长句。
+                7. 辅色：输出辅助色或点缀色；如果图片中没有明显辅色，输出"无明显辅色"。
+                8. 风格标签：只能从"科技极简、复古怀旧、赛博朋克、可爱治愈"中选择 1-2 个最符合图片证据的词，value 只输出选中的词，用"、"连接。
                 9. 如果用户补充了卖点或目标人群，几何结构和仿生学元素两个字段必须说明这些外观特征如何支撑卖点；但固定选项字段仍只能输出选项词。
                 10. 输出必须是严格 JSON 数组，格式：[{"key":"维度名","value":"分析内容"}]。不要 markdown，不要代码块，不要解释。
                 """);
@@ -235,55 +316,35 @@ public class ImageGenerationService {
             throw new IllegalStateException("Gemini API Key 未配置");
         }
 
-        ObjectNode root = objectMapper.createObjectNode();
-        ObjectNode systemInstruction = root.putObject("systemInstruction");
         String systemText = promptTemplateLoader.load("prompt/kai-pin-analysis-system.txt", "kai-pin-analysis system fallback");
         if (strictRetry) {
-            systemText += "\n\n重要：本轮不是资料完整性诊断。即使图片或文字信息不完整，也必须输出“核心卖点清单”加 7 个固定维度字段，禁止输出“异常说明”“请补充信息”“无法分析”。固定选项字段只输出选项词，不要写解释。";
+            systemText += "\n\n重要：本轮不是资料完整性诊断。即使图片或文字信息不完整，也必须输出\"核心卖点清单\"加 7 个固定维度字段，禁止输出\"异常说明\"\"请补充信息\"\"无法分析\"。固定选项字段只输出选项词，不要写解释。";
         }
-        systemInstruction.putArray("parts").addObject().put("text", systemText);
 
-        ArrayNode contents = root.putArray("contents");
-        ObjectNode content = contents.addObject();
-        content.put("role", "user");
-        ArrayNode parts = content.putArray("parts");
-        parts.addObject().put("text", prompt);
-
-        // 添加产品 A 图片
+        // 构造 user content（文本 + 图片 base64）
+        ArrayNode userContent = objectMapper.createArrayNode();
+        userContent.addObject().put("type", "text").put("text", prompt);
         if (imageA != null && imageA.exists() && imageA.isFile()) {
             byte[] bytesA = Files.readAllBytes(imageA.toPath());
-            parts.addObject()
-                    .putObject("inlineData")
-                    .put("mimeType", getMimeType(imageA.getName()))
-                    .put("data", Base64.getEncoder().encodeToString(bytesA));
+            String dataUrl = "data:" + getMimeType(imageA.getName()) + ";base64," + Base64.getEncoder().encodeToString(bytesA);
+            userContent.addObject().put("type", "image_url")
+                    .putObject("image_url").put("url", dataUrl);
         }
-
-        // 添加产品 B 图片
         if (imageB != null && imageB.exists() && imageB.isFile()) {
             byte[] bytesB = Files.readAllBytes(imageB.toPath());
-            parts.addObject()
-                    .putObject("inlineData")
-                    .put("mimeType", getMimeType(imageB.getName()))
-                    .put("data", Base64.getEncoder().encodeToString(bytesB));
+            String dataUrl = "data:" + getMimeType(imageB.getName()) + ";base64," + Base64.getEncoder().encodeToString(bytesB);
+            userContent.addObject().put("type", "image_url")
+                    .putObject("image_url").put("url", dataUrl);
         }
 
-        ObjectNode generationConfig = root.putObject("generationConfig");
-        generationConfig.put("temperature", 0.65);
-        generationConfig.put("maxOutputTokens", 9000);
-        generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
-
+        String requestJson = buildOpenAIChatRequest(GEMINI_ANALYSIS_MODEL, systemText, userContent, 9000, 0.65);
         Request request = new Request.Builder()
-                .url(GEMINI_BASE_URL + GEMINI_ANALYSIS_MODEL + ":generateContent?key=" + apiKey)
-                .post(RequestBody.create(root.toString(), JSON_TYPE))
+                .url(appProperties.getGemini().getBaseUrl() + "/v1/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .post(RequestBody.create(requestJson, JSON_TYPE))
                 .build();
 
-        try (Response response = buildAnalysisClient().newCall(request).execute()) {
-            String body = response.body() != null ? response.body().string() : "";
-            if (!response.isSuccessful()) {
-                throw new RuntimeException("Gemini 开品融合分析失败(" + response.code() + "): " + body);
-            }
-            return extractGeminiOutputText(body);
-        }
+        return executeAnalysisWithRetry(request, "Gemini 开品融合分析");
     }
 
     /**
@@ -356,41 +417,26 @@ public class ImageGenerationService {
             throw new IllegalStateException("Gemini API Key 未配置");
         }
 
-        ObjectNode root = objectMapper.createObjectNode();
-        ObjectNode systemInstruction = root.putObject("systemInstruction");
-        systemInstruction.putArray("parts").addObject().put("text",
-                promptTemplateLoader.load("prompt/kai-pin-fusion-system.txt", "kai-pin-fusion system fallback"));
+        String systemText = promptTemplateLoader.load("prompt/kai-pin-fusion-system.txt", "kai-pin-fusion system fallback");
 
-        ArrayNode contents = root.putArray("contents");
-        ObjectNode content = contents.addObject();
-        content.put("role", "user");
-        ArrayNode parts = content.putArray("parts");
-        parts.addObject().put("text", buildProductAnalysisPrompt(prompt, imageFile != null, strictRetry));
+        ArrayNode userContent = objectMapper.createArrayNode();
+        userContent.addObject().put("type", "text")
+                .put("text", buildProductAnalysisPrompt(prompt, imageFile != null, strictRetry));
         if (imageFile != null && imageFile.exists() && imageFile.isFile()) {
             byte[] bytes = Files.readAllBytes(imageFile.toPath());
-            parts.addObject()
-                    .putObject("inlineData")
-                    .put("mimeType", getMimeType(imageFile.getName()))
-                    .put("data", Base64.getEncoder().encodeToString(bytes));
+            String dataUrl = "data:" + getMimeType(imageFile.getName()) + ";base64," + Base64.getEncoder().encodeToString(bytes);
+            userContent.addObject().put("type", "image_url")
+                    .putObject("image_url").put("url", dataUrl);
         }
 
-        ObjectNode generationConfig = root.putObject("generationConfig");
-        generationConfig.put("temperature", 0.55);
-        generationConfig.put("maxOutputTokens", 7000);
-        generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
-
+        String requestJson = buildOpenAIChatRequest(GEMINI_ANALYSIS_MODEL, systemText, userContent, 7000, 0.55);
         Request request = new Request.Builder()
-                .url(GEMINI_BASE_URL + GEMINI_ANALYSIS_MODEL + ":generateContent?key=" + apiKey)
-                .post(RequestBody.create(root.toString(), JSON_TYPE))
+                .url(appProperties.getGemini().getBaseUrl() + "/v1/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .post(RequestBody.create(requestJson, JSON_TYPE))
                 .build();
 
-        try (Response response = buildAnalysisClient().newCall(request).execute()) {
-            String body = response.body() != null ? response.body().string() : "";
-            if (!response.isSuccessful()) {
-                throw new RuntimeException("Gemini 分析失败(" + response.code() + "): " + body);
-            }
-            return extractGeminiOutputText(body);
-        }
+        return executeAnalysisWithRetry(request, "Gemini 分析");
     }
 
     private String requestGeminiCustomPromptAnalysis(String prompt, List<File> imageFiles, int count, boolean withText) throws IOException {
@@ -399,46 +445,32 @@ public class ImageGenerationService {
             throw new IllegalStateException("Gemini API Key 未配置");
         }
 
-        ObjectNode root = objectMapper.createObjectNode();
-        ObjectNode systemInstruction = root.putObject("systemInstruction");
-        systemInstruction.putArray("parts").addObject().put("text",
-                promptTemplateLoader.load("prompt/custom-analysis-system.txt", "custom-analysis system fallback"));
+        String systemText = promptTemplateLoader.load("prompt/custom-analysis-system.txt", "custom-analysis system fallback");
 
-        ArrayNode contents = root.putArray("contents");
-        ObjectNode content = contents.addObject();
-        content.put("role", "user");
-        ArrayNode parts = content.putArray("parts");
-        parts.addObject().put("text", buildCustomPromptAnalysisPrompt(prompt, count, imageFiles != null && !imageFiles.isEmpty(), withText));
+        ArrayNode userContent = objectMapper.createArrayNode();
+        userContent.addObject().put("type", "text")
+                .put("text", buildCustomPromptAnalysisPrompt(prompt, count, imageFiles != null && !imageFiles.isEmpty(), withText));
 
         if (imageFiles != null) {
             for (File imageFile : imageFiles) {
                 if (imageFile == null || !imageFile.exists() || !imageFile.isFile()) continue;
                 byte[] bytes = Files.readAllBytes(imageFile.toPath());
-                parts.addObject()
-                        .putObject("inlineData")
-                        .put("mimeType", getMimeType(imageFile.getName()))
-                        .put("data", Base64.getEncoder().encodeToString(bytes));
+                String dataUrl = "data:" + getMimeType(imageFile.getName()) + ";base64," + Base64.getEncoder().encodeToString(bytes);
+                userContent.addObject().put("type", "image_url")
+                        .putObject("image_url").put("url", dataUrl);
             }
         }
 
-        ObjectNode generationConfig = root.putObject("generationConfig");
-        generationConfig.put("temperature", 0.65);
-        generationConfig.put("maxOutputTokens", 7000);
-        generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
-
+        String requestJson = buildOpenAIChatRequest(GEMINI_ANALYSIS_MODEL, systemText, userContent, 8000, 0.65);
         Request request = new Request.Builder()
-                .url(GEMINI_BASE_URL + GEMINI_ANALYSIS_MODEL + ":generateContent?key=" + apiKey)
-                .post(RequestBody.create(root.toString(), JSON_TYPE))
+                .url(appProperties.getGemini().getBaseUrl() + "/v1/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .post(RequestBody.create(requestJson, JSON_TYPE))
                 .build();
 
-        try (Response response = buildAnalysisClient().newCall(request).execute()) {
-            String body = response.body() != null ? response.body().string() : "";
-            if (!response.isSuccessful()) {
-                throw new RuntimeException("Gemini 自定义分析失败(" + response.code() + "): " + body);
-            }
-            return extractGeminiOutputText(body);
-        }
+        return executeAnalysisWithRetry(request, "Gemini 自定义分析");
     }
+
 
     private String buildCustomPromptAnalysisPrompt(String prompt, int count, boolean hasImage, boolean withText) {
         // 画面文案相关的额外字段与约束：仅当 withText=true 时注入
@@ -524,8 +556,8 @@ public class ImageGenerationService {
                 1. 只输出【总分析】和【第 N 张方案】正文, 不要 markdown, 不要解释。
                 2. 【总分析】120-300 个中文字符; 每张方案 280-520 个中文字符, 信息要具体可执行。
                 3. 多张方案之间必须差异化: 本图卖点、本图风格、场景构图、道具、镜头角度或光影至少变化 3 项, 但产品主体和总卖点必须连续一致。
-                4. 产品一致性字段每张方案都要出现, 且要基于白底图可见信息重新罗列, 不能只写“保持一致”。
-                5. 禁止空泛词堆叠, 比如“高端、精致、好看、实用”; 必须转成可见结构、材质反光、操作动作、场景痛点或对比证据。
+                4. 产品一致性字段每张方案都要出现, 且要基于白底图可见信息重新罗列, 不能只写"保持一致"。
+                5. 禁止空泛词堆叠, 比如"高端、精致、好看、实用"; 必须转成可见结构、材质反光、操作动作、场景痛点或对比证据。
                 %s%s6. 输出格式示例:
                 【总分析】
                 %s---
@@ -695,6 +727,32 @@ public class ImageGenerationService {
         return files == null ? List.of() : Arrays.asList(files);
     }
 
+    private String executeAnalysisWithRetry(Request request, String label) throws IOException {
+        int maxRetries = 3;
+        int[] retryDelaySecs = {3, 6};
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try (Response response = analysisClient.newCall(request).execute()) {
+                String body = response.body() != null ? response.body().string() : "";
+                int code = response.code();
+                if (response.isSuccessful()) {
+                    return extractGeminiOutputText(body);
+                }
+                boolean retryable = code == 429 || code == 500 || code == 503;
+                if (!retryable || attempt == maxRetries - 1) {
+                    throw new RuntimeException(label + "失败(" + code + "): " + body);
+                }
+                int delay = retryDelaySecs[Math.min(attempt, retryDelaySecs.length - 1)];
+                log.warn("{} 返回 {} (尝试 {}/{})，{}s 后重试", label, code, attempt + 1, maxRetries, delay);
+                try { Thread.sleep(delay * 1000L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+            } catch (IOException e) {
+                if (attempt == maxRetries - 1) throw e;
+                log.warn("{} 网络异常 (尝试 {}/{})，3s 后重试: {}", label, attempt + 1, maxRetries, e.getMessage());
+                try { Thread.sleep(3000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+            }
+        }
+        throw new RuntimeException(label + " 超过最大重试次数");
+    }
+
     private OkHttpClient buildAnalysisClient() {
         OkHttpClient.Builder builder = new OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
@@ -713,21 +771,28 @@ public class ImageGenerationService {
 
     private String extractGeminiOutputText(String responseBody) throws IOException {
         JsonNode root = objectMapper.readTree(responseBody);
-        StringBuilder texts = new StringBuilder();
-        JsonNode candidates = root.path("candidates");
-        if (candidates.isArray()) {
-            for (JsonNode candidate : candidates) {
-                JsonNode parts = candidate.path("content").path("parts");
-                if (!parts.isArray()) continue;
-                for (JsonNode part : parts) {
-                    String text = part.path("text").asText("");
-                    if (!text.isBlank()) texts.append(text);
-                }
-            }
+        // OpenAI 兼容格式：choices[0].message.content
+        JsonNode choices = root.path("choices");
+        if (choices.isArray() && !choices.isEmpty()) {
+            String text = choices.get(0).path("message").path("content").asText("").trim();
+            if (!text.isBlank()) return text;
         }
-        String out = texts.toString().trim();
-        if (!out.isBlank()) return out;
         throw new IOException("Gemini 未返回文本内容: " + responseBody);
+    }
+
+    /** 构造 OpenAI 兼容格式的 chat/completions 请求 JSON */
+    private String buildOpenAIChatRequest(String model, String systemText, ArrayNode userContent,
+                                          int maxTokens, double temperature) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", model);
+        root.put("max_tokens", maxTokens);
+        root.put("temperature", temperature);
+        ArrayNode messages = root.putArray("messages");
+        if (systemText != null && !systemText.isBlank()) {
+            messages.addObject().put("role", "system").put("content", systemText);
+        }
+        messages.addObject().put("role", "user").set("content", userContent);
+        return root.toString();
     }
 
     private String buildProductAnalysisPrompt(String prompt, boolean hasImage, boolean strictRetry) {
@@ -737,8 +802,8 @@ public class ImageGenerationService {
 
                 重要纠偏：
                 上一次输出像是在要求补充资料或内容过浅，这是错误的。本轮不是资料完整性诊断，而是把用户文字和图片直接转换为深度开品分析卡片。
-                如果没有图片，用户文字中的产品对象就是分析对象；必须输出可编辑卡片，禁止输出“异常说明”“请补充信息”“无法分析”。
-                如果用户写了“从 A、B 角度分析一个 Z”，必须输出 A、B 两个 key，并围绕 Z 填写 value；每个 value 都要包含设计判断、生图落点，并严格拓写用户文字中隐含或显性的卖点。
+                如果没有图片，用户文字中的产品对象就是分析对象；必须输出可编辑卡片，禁止输出"异常说明""请补充信息""无法分析"。
+                如果用户写了"从 A、B 角度分析一个 Z"，必须输出 A、B 两个 key，并围绕 Z 填写 value；每个 value 都要包含设计判断、生图落点，并严格拓写用户文字中隐含或显性的卖点。
                 后端已识别维度提示：%s
                 后端已识别产品对象提示：%s
                 """.formatted(dimensionHint.isBlank() ? "按用户原文自行提取" : dimensionHint,
@@ -752,11 +817,11 @@ public class ImageGenerationService {
                 %s
                 %s
                 输出要求：
-                1. 从用户提示词中动态提取维度名称，不要硬编码维度；如果出现“从 A、B、C 角度分析”，A/B/C 就是 key。
+                1. 从用户提示词中动态提取维度名称，不要硬编码维度；如果出现"从 A、B、C 角度分析"，A/B/C 就是 key。
                 2. 输出必须是严格 JSON 数组，格式：[{"key":"维度名","value":"分析内容"}]。
                 3. 只输出 JSON，不要 markdown，不要代码块，不要解释。
-                4. key 使用中文短标签；value 必须 100-200 个中文字符，包含“观察依据/文字依据 + 设计判断 + 生图可执行细节”，不能只写形容词。
-                5. 如果有图片，每个 value 优先引用图中可见信息：几何轮廓、比例、部件层级、接口按键、纹理、材质、颜色、场景线索；至少 4 个卡片显式写出“从图中可见...”或同义表达。
+                4. key 使用中文短标签；value 必须 100-200 个中文字符，包含"观察依据/文字依据 + 设计判断 + 生图可执行细节"，不能只写形容词。
+                5. 如果有图片，每个 value 优先引用图中可见信息：几何轮廓、比例、部件层级、接口按键、纹理、材质、颜色、场景线索；至少 4 个卡片显式写出"从图中可见..."或同义表达。
                 6. 卖点必须严格拓写：即使用户没有单独写卖点，也要从产品结构、使用痛点、视觉差异中提炼购买理由；每个动态维度都要说明该维度如何证明、放大或承接卖点。
                 7. value 要能直接拼入后续生图提示词，聚焦可观察的结构、比例、体量、材质、功能线索、使用场景、镜头角度、光影或造型语言，并把卖点转成画面证据。
                 8. 即使没有图片，也必须基于用户文字做结构化拆解；不要要求补充资料。
@@ -833,7 +898,7 @@ public class ImageGenerationService {
         if (dimension.contains("场景") || dimension.contains("使用")) {
             return subject + "要放入真实使用场景中展示，环境由产品功能决定，可选择桌面、家居、厨房、浴室、车内或户外等空间。生图时用自然光、少量道具和人物手部动作强化购买理由，画面既展示产品主体，也证明它能解决具体生活问题。";
         }
-        return subject + "围绕“" + dimension + "”进行视觉强化，不能停留在抽象形容。分析要落到可见结构、材质分区、比例尺度、交互动作和真实场景上，并把该维度转译成后续生图能执行的镜头、光影、道具或视觉符号。";
+        return subject + "围绕\"" + dimension + "\"进行视觉强化，不能停留在抽象形容。分析要落到可见结构、材质分区、比例尺度、交互动作和真实场景上，并把该维度转译成后续生图能执行的镜头、光影、道具或视觉符号。";
     }
 
     private List<Map<String, String>> parseAnalysisFields(String rawText) throws IOException {
