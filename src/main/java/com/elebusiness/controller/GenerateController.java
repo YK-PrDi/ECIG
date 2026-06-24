@@ -551,7 +551,7 @@ public class GenerateController {
             }
 
             // LoRA 模式只支持单图单提示词简单生成
-            String prompt = promptList.isEmpty() ? "" : promptList.get(0);
+            String prompt = prompts.isEmpty() ? "" : prompts.get(0);
 
             try {
                 // 保存上传的图片
