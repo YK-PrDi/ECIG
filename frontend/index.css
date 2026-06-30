@@ -393,6 +393,12 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 8px;
+    position: relative;
+    z-index: 1;
+}
+
+.doubao-card:has(.doubao-point-list[data-collapsed="false"]) {
+    z-index: 10;
 }
 .doubao-summary-card {
     width: min(780px, 100%);
@@ -446,7 +452,7 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
     padding: 12px;
     background: #fafafa;
     border-radius: 6px;
-    transition: max-height 0.3s ease;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
     overflow: hidden;
 }
 
@@ -454,13 +460,22 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
 .doubao-point-list[data-collapsed="true"] {
     max-height: 0 !important;
     padding: 0 12px;
+    opacity: 0;
     overflow: hidden;
 }
 
-/* 展开状态 */
+/* 展开状态 - 使用绝对定位避免挤占其他元素 */
 .doubao-point-list[data-collapsed="false"] {
-    max-height: 2000px;
+    position: absolute;
+    left: 0;
+    top: 100%;
+    width: 100%;
+    max-height: none;
+    opacity: 1;
     overflow: visible;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    margin-top: 4px;
 }
 .doubao-point-card {
     min-width: 0;

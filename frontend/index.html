@@ -1291,16 +1291,20 @@
                 mergedPoints.unshift({ key: '卖点与文字', value: mergedContent });
             }
 
+            // 第1张默认展开，其他张默认收缩
+            const isCollapsed = segmentIndex !== 0;
+            const toggleIcon = isCollapsed ? '▼' : '▲';
+
             return `
                 <div class="doubao-card" data-segment-index="${segmentIndex}">
                     <div class="doubao-card-head">
                         <span>第 ${segmentIndex + 1} 张</span>
                         <span>${mergedPoints.length} 个点</span>
                         <button type="button" class="doubao-card-toggle" onclick="toggleDoubaoCard(${segmentIndex})">
-                            <span class="toggle-icon">▼</span>
+                            <span class="toggle-icon">${toggleIcon}</span>
                         </button>
                     </div>
-                    <div class="doubao-point-list" data-collapsed="true">
+                    <div class="doubao-point-list" data-collapsed="${isCollapsed}">
                         ${mergedPoints.map((point, i) => renderCustomPointCard(point, i)).join('')}
                     </div>
                     <button type="button" class="doubao-add-point" onclick="addCustomPromptPoint(this)">+ 添加自定义点</button>
@@ -1358,12 +1362,10 @@
             if (isCollapsed) {
                 // 展开
                 pointList.setAttribute('data-collapsed', 'false');
-                pointList.style.maxHeight = pointList.scrollHeight + 'px';
                 toggleIcon.textContent = '▲';
             } else {
                 // 收缩
                 pointList.setAttribute('data-collapsed', 'true');
-                pointList.style.maxHeight = '0';
                 toggleIcon.textContent = '▼';
             }
         }
