@@ -363,9 +363,29 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
 }
 .doubao-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 380px));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
     justify-content: start;
+    width: 100%;
+}
+
+/* 响应式断点 */
+@media (min-width: 1200px) {
+    .doubao-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 800px) and (max-width: 1199px) {
+    .doubao-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 799px) {
+    .doubao-grid {
+        grid-template-columns: 1fr;
+    }
 }
 .doubao-card {
     min-width: 0;
@@ -398,9 +418,49 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
     color: var(--text-dim);
     font-weight: 600;
 }
+
+.doubao-card-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    color: #666;
+    font-size: 14px;
+    transition: color 0.2s ease;
+    margin-left: auto;
+}
+
+.doubao-card-toggle:hover {
+    color: #333;
+}
+
+.toggle-icon {
+    display: inline-block;
+    user-select: none;
+}
+
 .doubao-point-list {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 8px;
+    padding: 12px;
+    background: #fafafa;
+    border-radius: 6px;
+    transition: max-height 0.3s ease;
+    overflow: hidden;
+}
+
+/* 收缩状态 */
+.doubao-point-list[data-collapsed="true"] {
+    max-height: 0 !important;
+    padding: 0 12px;
+    overflow: hidden;
+}
+
+/* 展开状态 */
+.doubao-point-list[data-collapsed="false"] {
+    max-height: 2000px;
+    overflow: visible;
 }
 .doubao-point-card {
     min-width: 0;
@@ -408,6 +468,7 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
     border-radius: 7px;
     background: var(--bg-card);
     padding: 7px;
+    min-height: 80px;
 }
 .doubao-point-head {
     display: grid;

@@ -1265,14 +1265,43 @@
 
         function renderCustomPointEditor(seg, segmentIndex) {
             const points = parseCustomPromptPoints(seg);
+
+            // 合并"卖点"和"图片文字"
+            const mergedPoints = [];
+            let sellPointContent = '';
+            let textContent = '';
+
+            for (const point of points) {
+                const key = point.key || '';
+                if (key === '本图卖点' || key.includes('卖点')) {
+                    sellPointContent = point.value || '';
+                } else if (key === '本图图片文字' || key.includes('图片文字')) {
+                    textContent = point.value || '';
+                } else {
+                    mergedPoints.push(point);
+                }
+            }
+
+            // 如果存在卖点或文字，合并成一个点
+            if (sellPointContent || textContent) {
+                const parts = [];
+                if (sellPointContent) parts.push('【卖点】\n' + sellPointContent);
+                if (textContent) parts.push('【图片文字】\n' + textContent);
+                const mergedContent = parts.join('\n\n');
+                mergedPoints.unshift({ key: '卖点与文字', value: mergedContent });
+            }
+
             return `
                 <div class="doubao-card" data-segment-index="${segmentIndex}">
                     <div class="doubao-card-head">
                         <span>第 ${segmentIndex + 1} 张</span>
-                        <span>${points.length} 个点</span>
+                        <span>${mergedPoints.length} 个点</span>
+                        <button type="button" class="doubao-card-toggle" onclick="toggleDoubaoCard(${segmentIndex})">
+                            <span class="toggle-icon">▼</span>
+                        </button>
                     </div>
-                    <div class="doubao-point-list">
-                        ${points.map((point, i) => renderCustomPointCard(point, i)).join('')}
+                    <div class="doubao-point-list" data-collapsed="true">
+                        ${mergedPoints.map((point, i) => renderCustomPointCard(point, i)).join('')}
                     </div>
                     <button type="button" class="doubao-add-point" onclick="addCustomPromptPoint(this)">+ 添加自定义点</button>
                 </div>`;
@@ -1313,6 +1342,31 @@
             } else {
                 point.remove();
             }
+            refreshCustomPointIndexes(card);
+        }
+
+        function toggleDoubaoCard(segmentIndex) {
+            const card = document.querySelector(`.doubao-card[data-segment-index="${segmentIndex}"]`);
+            if (!card) return;
+
+            const pointList = card.querySelector('.doubao-point-list');
+            const toggleIcon = card.querySelector('.toggle-icon');
+            if (!pointList || !toggleIcon) return;
+
+            const isCollapsed = pointList.getAttribute('data-collapsed') === 'true';
+
+            if (isCollapsed) {
+                // 展开
+                pointList.setAttribute('data-collapsed', 'false');
+                pointList.style.maxHeight = pointList.scrollHeight + 'px';
+                toggleIcon.textContent = '▲';
+            } else {
+                // 收缩
+                pointList.setAttribute('data-collapsed', 'true');
+                pointList.style.maxHeight = '0';
+                toggleIcon.textContent = '▼';
+            }
+        }
             refreshCustomPointIndexes(card);
         }
 
