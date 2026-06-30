@@ -1266,10 +1266,10 @@
         function renderCustomPointEditor(seg, segmentIndex) {
             const points = parseCustomPromptPoints(seg);
 
-            // 合并"卖点"和"图片文字"
-            const mergedPoints = [];
+            // 分离"卖点"、"图片文字"和其他分析点
             let sellPointContent = '';
             let textContent = '';
+            const otherPoints = [];
 
             for (const point of points) {
                 const key = point.key || '';
@@ -1278,35 +1278,39 @@
                 } else if (key === '本图图片文字' || key.includes('图片文字')) {
                     textContent = point.value || '';
                 } else {
-                    mergedPoints.push(point);
+                    otherPoints.push(point);
                 }
             }
 
-            // 如果存在卖点或文字，合并成一个点
-            if (sellPointContent || textContent) {
-                const parts = [];
-                if (sellPointContent) parts.push('【卖点】\n' + sellPointContent);
-                if (textContent) parts.push('【图片文字】\n' + textContent);
-                const mergedContent = parts.join('\n\n');
-                mergedPoints.unshift({ key: '卖点与文字', value: mergedContent });
-            }
+            // 构建合并后的卖点与文字内容
+            const mergedParts = [];
+            if (sellPointContent) mergedParts.push('【卖点】\n' + sellPointContent);
+            if (textContent) mergedParts.push('【图片文字】\n' + textContent);
+            const mergedContent = mergedParts.join('\n\n');
 
-            // 第1张默认展开，其他张默认收缩
-            const isCollapsed = segmentIndex !== 0;
-            const toggleIcon = isCollapsed ? '▼' : '▲';
+            // 其他分析点默认收缩
+            const hasOtherPoints = otherPoints.length > 0;
+            const toggleIcon = '▼';
 
             return `
                 <div class="doubao-card" data-segment-index="${segmentIndex}">
                     <div class="doubao-card-head">
                         <span>第 ${segmentIndex + 1} 张</span>
-                        <span>${mergedPoints.length} 个点</span>
-                        <button type="button" class="doubao-card-toggle" onclick="toggleDoubaoCard(${segmentIndex})">
-                            <span class="toggle-icon">${toggleIcon}</span>
-                        </button>
+                        ${hasOtherPoints ? `<button type="button" class="doubao-card-toggle" onclick="toggleDoubaoCard(${segmentIndex})">
+                            <span class="toggle-icon">${toggleIcon}</span> 更多分析
+                        </button>` : ''}
                     </div>
-                    <div class="doubao-point-list" data-collapsed="${isCollapsed}">
-                        ${mergedPoints.map((point, i) => renderCustomPointCard(point, i)).join('')}
-                    </div>
+
+                    <!-- 卖点与文字：始终显示 -->
+                    ${mergedContent ? `<div class="doubao-highlight-point">
+                        ${renderCustomPointCard({ key: '卖点与文字', value: mergedContent }, 0)}
+                    </div>` : ''}
+
+                    <!-- 其他分析点：可收缩 -->
+                    ${hasOtherPoints ? `<div class="doubao-extra-points" data-collapsed="true">
+                        ${otherPoints.map((point, i) => renderCustomPointCard(point, i + 1)).join('')}
+                    </div>` : ''}
+
                     <button type="button" class="doubao-add-point" onclick="addCustomPromptPoint(this)">+ 添加自定义点</button>
                 </div>`;
         }
@@ -1353,23 +1357,31 @@
             const card = document.querySelector(`.doubao-card[data-segment-index="${segmentIndex}"]`);
             if (!card) return;
 
-            const pointList = card.querySelector('.doubao-point-list');
+            const extraPoints = card.querySelector('.doubao-extra-points');
             const toggleIcon = card.querySelector('.toggle-icon');
-            if (!pointList || !toggleIcon) return;
+            if (!extraPoints || !toggleIcon) return;
 
-            const isCollapsed = pointList.getAttribute('data-collapsed') === 'true';
+            const isCollapsed = extraPoints.getAttribute('data-collapsed') === 'true';
 
             if (isCollapsed) {
                 // 展开
-                pointList.setAttribute('data-collapsed', 'false');
+                extraPoints.setAttribute('data-collapsed', 'false');
                 toggleIcon.textContent = '▲';
             } else {
                 // 收缩
-                pointList.setAttribute('data-collapsed', 'true');
+                extraPoints.setAttribute('data-collapsed', 'true');
                 toggleIcon.textContent = '▼';
             }
         }
-            refreshCustomPointIndexes(card);
+
+        function refreshCustomPointIndexes(card) {
+            if (!card) return;
+            const points = Array.from(card.querySelectorAll('.doubao-point-card'));
+            points.forEach((point, i) => {
+                point.dataset.pointIndex = String(i);
+                const key = point.querySelector('.doubao-point-key');
+                if (key && !key.value.trim()) key.placeholder = `自定义点 ${i + 1}`;
+            });
         }
 
         // 是否为"画面文案/系列文案规划"这类文案字段的 key

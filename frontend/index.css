@@ -445,6 +445,41 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
     user-select: none;
 }
 
+/* 卖点与文字：始终显示 */
+.doubao-highlight-point {
+    padding: 12px;
+    background: #fafafa;
+    border-radius: 6px;
+    margin-top: 8px;
+}
+
+/* 其他分析点：可收缩区域 */
+.doubao-extra-points {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 12px;
+    background: #f5f5f5;
+    border-radius: 6px;
+    margin-top: 8px;
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+}
+
+/* 收缩状态 */
+.doubao-extra-points[data-collapsed="true"] {
+    max-height: 0 !important;
+    padding: 0 12px;
+    opacity: 0;
+    margin-top: 0;
+}
+
+/* 展开状态 */
+.doubao-extra-points[data-collapsed="false"] {
+    max-height: 800px;
+    opacity: 1;
+}
+
 .doubao-point-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
