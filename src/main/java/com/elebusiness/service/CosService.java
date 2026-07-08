@@ -36,7 +36,7 @@ public class CosService {
     }
 
     /**
-     * 上传文件到 COS，返回公开访问 URL。
+     * 上传文件到 COS，返回带签名的访问 URL（7天有效期）。
      * key 格式：generated/{yyyyMMdd}/{filename}
      */
     public String upload(File file, String filename) {
@@ -55,8 +55,12 @@ public class CosService {
             else meta.setContentType("image/jpeg");
 
             cos.putObject(new PutObjectRequest(bucket, key, file).withMetadata(meta));
-            // COS 公开读 URL 格式
-            String url = "https://" + bucket + ".cos." + region + ".myqcloud.com/" + key;
+
+            // 生成带签名的URL（7天有效期），适用于私有存储桶
+            java.util.Date expiration = new java.util.Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000);
+            java.net.URL signedUrl = cos.generatePresignedUrl(bucket, key, expiration);
+            String url = signedUrl.toString();
+
             log.info("COS upload: {} -> {}", file.getName(), url);
             return url;
         } catch (Exception e) {

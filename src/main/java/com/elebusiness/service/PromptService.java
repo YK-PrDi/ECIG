@@ -58,4 +58,32 @@ public class PromptService {
         }
         return result;
     }
+
+    public List<Map<String, Object>> search(String keyword) {
+        List<Map<String, Object>> flat = new ArrayList<>();
+        flattenTree(getTree(), flat);
+        String q = keyword.toLowerCase();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> node : flat) {
+            String label  = String.valueOf(node.getOrDefault("label", "")).toLowerCase();
+            String prompt = String.valueOf(node.getOrDefault("prompt", "")).toLowerCase();
+            String neg    = String.valueOf(node.getOrDefault("negativePrompt", "")).toLowerCase();
+            if (label.contains(q) || prompt.contains(q) || neg.contains(q)) {
+                result.add(node);
+            }
+        }
+        return result;
+    }
+
+    private void flattenTree(List<Map<String, Object>> nodes, List<Map<String, Object>> out) {
+        for (Map<String, Object> node : nodes) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> children = (List<Map<String, Object>>) node.get("children");
+            if (children != null && !children.isEmpty()) {
+                flattenTree(children, out);
+            } else {
+                out.add(node);
+            }
+        }
+    }
 }
