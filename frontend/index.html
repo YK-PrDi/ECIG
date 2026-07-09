@@ -447,6 +447,13 @@
                                 <label>重绘幅度 (0-1)</label>
                                 <input type="number" id="customDenoising" class="input-field" placeholder="0.5" step="0.1" min="0" max="1" value="0.5">
                             </div>
+                            <div class="config-group" style="max-width:120px; align-items:flex-start; gap:6px;" id="grp-skip-gemini" title="开启后跳过 Gemini 图片分析，直接进入可编辑提示词面板">
+                                <label style="white-space:nowrap;">跳过AI分析</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="skipGeminiToggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                             <!-- LoRA 增强配置 -->
                             <div class="config-group" style="flex-direction:column; gap:8px; padding:12px; background:rgba(99,102,241,0.05); border-radius:8px; border:1px solid rgba(99,102,241,0.1);" id="grp-lora">
                                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
@@ -724,6 +731,18 @@
             'cyber-black': {
                 label: '赛博黑',
                 prompt: '背景风格为赛博黑：深色背景、蓝紫霓虹边缘光、金属反射、未来都市科技氛围，突出先锋、酷感、强视觉冲击。'
+            },
+            'khaki': {
+                label: '卡其色',
+                prompt: '背景风格为卡其色：温暖土黄色调、哑光质感平台、柔和自然光、低饱和暖棕渐变，突出自然、耐看、户外感。'
+            },
+            'light-yellow': {
+                label: '淡黄色',
+                prompt: '背景风格为淡黄色：柔和浅黄渐变、清新明快、轻盈通透感、自然暖光，突出活泼、亲切、清爽。'
+            },
+            'beige': {
+                label: '米黄色',
+                prompt: '背景风格为米黄色：奶油米白渐变、温柔哑光质感、细腻柔光、干净高雅，突出温暖、高级、舒适质感。'
             }
         };
 
@@ -751,6 +770,18 @@
             'sunset-orange': {
                 label: '暖阳橙',
                 prompt: '【自定义改图风格·暖阳橙】画面采用暖橙夕阳光感、温暖渐变、柔和高光和长阴影，突出活力、温度、生活幸福感和情绪感染力。'
+            },
+            'khaki': {
+                label: '卡其色',
+                prompt: '【自定义改图风格·卡其色】画面采用温暖土黄卡其色调、哑光质感背景和柔和自然光，突出自然耐看的户外生活感。'
+            },
+            'light-yellow': {
+                label: '淡黄色',
+                prompt: '【自定义改图风格·淡黄色】画面采用柔和浅黄渐变背景、清新明快光效，突出活泼亲切的清爽氛围。'
+            },
+            'beige': {
+                label: '米黄色',
+                prompt: '【自定义改图风格·米黄色】画面采用奶油米白渐变、细腻柔光和温柔哑光背景，突出温暖高级的舒适质感。'
             }
         };
 
@@ -820,7 +851,7 @@
             return btoa(binary);
         }
 
-        // 统一图片 URL：COS URL（https://）直接用；本地路径走 /api/image
+        // 统一图片 URL：COS签名URL直接用；本地路径走 /api/image
         function toImgUrl(pathOrUrl) {
             if (!pathOrUrl) return '';
             if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl;
@@ -850,6 +881,7 @@
         let isTextOnly = false;
         window.pendingMask = null;
         let promptTree = [];
+        fetch('/api/prompts').then(r => r.json()).then(data => { promptTree = data; });
         let catNodes = [[], [], []];
         let selectedPrompt = { prompt: '', negativePrompt: '' };
         let sessionImagePath = null; // 上次生成结果，用于连续重绘
@@ -1029,7 +1061,9 @@
             function walk(nodeList, path) {
                 for (const n of (nodeList || [])) {
                     const fullPath = path ? path + ' > ' + n.display : n.display;
-                    if (n.display.toLowerCase().includes(q)) {
+                    const pn = findPromptNode(n.display);
+                    const promptText = pn ? (pn.prompt || '').toLowerCase() : '';
+                    if (n.display.toLowerCase().includes(q) || promptText.includes(q)) {
                         const hasChildren = !!(n.children && n.children.length);
                         const pathArr = fullPath.split(' > ');
                         results.push(`<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''}"
@@ -1054,7 +1088,11 @@
             const searchInp = document.getElementById('custom-cat-search');
             if (searchInp) searchInp.value = '';
             if (!hasChildren) {
-                selectedPrompt = { prompt: pathArr[pathArr.length - 1], negativePrompt: '' };
+                const leafLabel = pathArr[pathArr.length - 1];
+                const pNode = findPromptNode(leafLabel);
+                selectedPrompt = pNode && pNode.prompt
+                    ? { prompt: pNode.prompt, negativePrompt: pNode.negativePrompt || '' }
+                    : { prompt: leafLabel, negativePrompt: '' };
                 const txt = document.getElementById('cust-cat-text');
                 if (txt) txt.textContent = pathArr.join(' > ');
                 closeCustomCatModal();
@@ -1077,6 +1115,21 @@
                 '</div>';
         }
 
+        function findPromptNode(leafLabel) {
+            function walk(nodes) {
+                for (const n of (nodes || [])) {
+                    if (n.children && n.children.length) {
+                        const hit = walk(n.children);
+                        if (hit) return hit;
+                    } else if (n.label === leafLabel || n.value === leafLabel) {
+                        return n;
+                    }
+                }
+                return null;
+            }
+            return walk(promptTree);
+        }
+
         function customCatPick(level, display, hasChildren) {
             custCatPath = custCatPath.slice(0, level);
             custCatPath[level] = display;
@@ -1084,7 +1137,10 @@
                 selectedPrompt = { prompt: '', negativePrompt: '' };
                 customCatRefreshColumns();
             } else {
-                selectedPrompt = { prompt: display, negativePrompt: '' };
+                const pNode = findPromptNode(display);
+                selectedPrompt = pNode && pNode.prompt
+                    ? { prompt: pNode.prompt, negativePrompt: pNode.negativePrompt || '' }
+                    : { prompt: display, negativePrompt: '' };
                 const txt = document.getElementById('cust-cat-text');
                 if (txt) txt.textContent = custCatPath.join(' > ');
                 closeCustomCatModal();
@@ -1265,35 +1321,62 @@
 
         function renderCustomPointEditor(seg, segmentIndex) {
             const points = parseCustomPromptPoints(seg);
+
+            // 分离"卖点"、"图片文字"和其他分析点
+            let sellPointContent = '';
+            let textContent = '';
+            const otherPoints = [];
+
+            for (const point of points) {
+                const key = point.key || '';
+                if (key === '本图卖点' || key.includes('卖点')) {
+                    sellPointContent = point.value || '';
+                } else if (key === '本图图片文字' || key.includes('图片文字')) {
+                    textContent = point.value || '';
+                } else {
+                    otherPoints.push(point);
+                }
+            }
+
+            // 构建合并后的卖点与文字内容
+            const mergedParts = [];
+            if (sellPointContent) mergedParts.push('【卖点】\n' + sellPointContent);
+            if (textContent) mergedParts.push('【图片文字】\n' + textContent);
+            const mergedContent = mergedParts.join('\n\n');
+
+            // 其他分析点默认收缩
+            const hasOtherPoints = otherPoints.length > 0;
+            const toggleIcon = '▼';
+
             return `
                 <div class="doubao-card" data-segment-index="${segmentIndex}">
                     <div class="doubao-card-head">
                         <span>第 ${segmentIndex + 1} 张</span>
-                        <span>${points.length} 个点</span>
+                        <button type="button" class="doubao-reanalyze-btn" onclick="reanalyzeCard(${segmentIndex})">AI 分析</button>
+                        ${hasOtherPoints ? `<button type="button" class="doubao-card-toggle" onclick="toggleDoubaoCard(${segmentIndex})">
+                            <span class="toggle-icon">${toggleIcon}</span> 更多分析
+                        </button>` : ''}
                     </div>
-                    <div class="doubao-point-list">
-                        ${points.map((point, i) => renderCustomPointCard(point, i)).join('')}
-                    </div>
+
+                    <!-- 卖点与文字：始终显示 -->
+                    ${mergedContent ? `<div class="doubao-highlight-point">
+                        ${renderCustomPointCard({ key: '卖点与文字', value: mergedContent }, 0)}
+                    </div>` : ''}
+
+                    <!-- 其他分析点：可收缩 -->
+                    ${hasOtherPoints ? `<div class="doubao-extra-points" data-collapsed="true">
+                        ${otherPoints.map((point, i) => renderCustomPointCard(point, i + 1)).join('')}
+                    </div>` : ''}
+
                     <button type="button" class="doubao-add-point" onclick="addCustomPromptPoint(this)">+ 添加自定义点</button>
                 </div>`;
         }
 
-        function refreshCustomPointIndexes(card) {
-            if (!card) return;
-            const points = Array.from(card.querySelectorAll('.doubao-point-card'));
-            points.forEach((point, i) => {
-                point.dataset.pointIndex = String(i);
-                const key = point.querySelector('.doubao-point-key');
-                if (key && !key.value.trim()) key.placeholder = `自定义点 ${i + 1}`;
-            });
-            const count = card.querySelector('.doubao-card-head span:last-child');
-            if (count) count.textContent = `${points.length} 个点`;
-        }
-
         function addCustomPromptPoint(btn) {
             const card = btn.closest('.doubao-card');
-            const list = card?.querySelector('.doubao-point-list');
+            const list = card?.querySelector('.doubao-extra-points');
             if (!card || !list) return;
+            list.setAttribute('data-collapsed', 'false');
             const idx = list.querySelectorAll('.doubao-point-card').length;
             list.insertAdjacentHTML('beforeend', renderCustomPointCard({ key: `自定义点 ${idx + 1}`, value: '' }, idx));
             refreshCustomPointIndexes(card);
@@ -1314,6 +1397,69 @@
                 point.remove();
             }
             refreshCustomPointIndexes(card);
+        }
+
+        function toggleDoubaoCard(segmentIndex) {
+            const card = document.querySelector(`.doubao-card[data-segment-index="${segmentIndex}"]`);
+            if (!card) return;
+
+            const extraPoints = card.querySelector('.doubao-extra-points');
+            const toggleIcon = card.querySelector('.toggle-icon');
+            if (!extraPoints || !toggleIcon) return;
+
+            const isCollapsed = extraPoints.getAttribute('data-collapsed') === 'true';
+
+            if (isCollapsed) {
+                // 展开
+                extraPoints.setAttribute('data-collapsed', 'false');
+                toggleIcon.textContent = '▲';
+            } else {
+                // 收缩
+                extraPoints.setAttribute('data-collapsed', 'true');
+                toggleIcon.textContent = '▼';
+            }
+        }
+
+        function refreshCustomPointIndexes(card) {
+            if (!card) return;
+            const points = Array.from(card.querySelectorAll('.doubao-point-card'));
+            points.forEach((point, i) => {
+                point.dataset.pointIndex = String(i);
+                const key = point.querySelector('.doubao-point-key');
+                if (key && !key.value.trim()) key.placeholder = `自定义点 ${i + 1}`;
+            });
+        }
+
+        async function reanalyzeCard(segmentIndex) {
+            const card = document.querySelector(`.doubao-card[data-segment-index="${segmentIndex}"]`);
+            if (!card) return;
+            const container = card.closest('.doubao-panel');
+            if (!container) return;
+            const files = container._files || [];
+            if (!files.length) { alert('缺少图片文件，无法重新分析。'); return; }
+            const withText = container._withText !== false;
+            const customStylePrompt = container._customStylePrompt || '';
+            const userPrompt = document.getElementById('promptInput')?.value.trim() || '';
+            const doubaoUserPrompt = [userPrompt, customStylePrompt].filter(Boolean).join('\n');
+            const btn = card.querySelector('.doubao-reanalyze-btn');
+            if (btn) { btn.disabled = true; btn.textContent = '分析中...'; }
+            try {
+                const singleFile = files[segmentIndex] ? [files[segmentIndex]] : files;
+                const result = await analyzeWithGemini(singleFile, doubaoUserPrompt, 1, withText);
+                const bundle = parseCustomAnalysisBundle(result, 1);
+                const newSeg = (bundle.segments || [])[0] || '';
+                if (newSeg) {
+                    const tmp = document.createElement('div');
+                    tmp.innerHTML = renderCustomPointEditor(newSeg, segmentIndex);
+                    const newCard = tmp.firstElementChild;
+                    card.replaceWith(newCard);
+                } else {
+                    if (btn) { btn.disabled = false; btn.textContent = 'AI 分析'; }
+                }
+            } catch (e) {
+                alert('AI 分析失败：' + (e.message || String(e)));
+                if (btn) { btn.disabled = false; btn.textContent = 'AI 分析'; }
+            }
         }
 
         // 是否为"画面文案/系列文案规划"这类文案字段的 key
@@ -2234,13 +2380,13 @@
                     wrap.innerHTML = `
                         <img src="${m.url}" style="width:100%;aspect-ratio:1/1;object-fit:cover;cursor:pointer;" onclick="openPreview('image','${m.url}',event)">
                         <div style="display:flex;gap:6px;padding:6px 8px;background:var(--bg);">
-                            <button class="btn-outline" style="flex:1;padding:4px 6px;font-size:0.72rem;" onclick="saveToGalleryByKey('${pathKey}', this)">💾 保存</button>
+                            <button class="btn-outline" style="flex:1;padding:4px 6px;font-size:0.72rem;" onclick="saveToGalleryByKey(this, '${pathKey}')">💾 保存</button>
                         </div>`;
                 } else {
                     wrap.innerHTML = `
                         <video src="${m.url}" controls style="width:100%;aspect-ratio:1/1;object-fit:cover;background:#000;"></video>
                         <div style="display:flex;gap:6px;padding:6px 8px;background:var(--bg);">
-                            <button class="btn-outline" style="flex:1;padding:4px 6px;font-size:0.72rem;" onclick="saveToGalleryByKey('${pathKey}', this)">💾 保存</button>
+                            <button class="btn-outline" style="flex:1;padding:4px 6px;font-size:0.72rem;" onclick="saveToGalleryByKey(this, '${pathKey}')">💾 保存</button>
                         </div>`;
                 }
                 detailGrid.appendChild(wrap);
@@ -2944,9 +3090,14 @@
 
                 // 未经分析确认时，先走 Gemini 图片分析流程
                 if (!_doubaoConfirmed) {
-                    triggerDoubaoInline();
-                    promptInput.value = '';
-                    return;
+                    if (document.getElementById('skipGeminiToggle')?.checked) {
+                        _doubaoConfirmed = true;
+                        // fall through — use raw promptInput value directly
+                    } else {
+                        triggerDoubaoInline();
+                        promptInput.value = '';
+                        return;
+                    }
                 }
 
                 apiPath = '/api/custom_generate';
@@ -3691,9 +3842,11 @@
             successList.forEach(r => {
                 const path = r.output;
                 if (!path) return;
-                // 仅图片：常见 jpg/png/webp（视频已在调用方过滤，这里再防御一下）
+                // 仅图片：检查http(s)协议（签名URL）或常见扩展名
                 const lower = String(path).toLowerCase();
-                if (!/\.(jpe?g|png|webp|gif|bmp)$/.test(lower)) return;
+                const isRemoteUrl = lower.startsWith('http://') || lower.startsWith('https://');
+                const isImageExt = /\.(jpe?g|png|webp|gif|bmp)(\?|$)/.test(lower);
+                if (!isRemoteUrl && !isImageExt) return;
                 board.addImage(toImgUrl(path), null);
             });
         }
@@ -3722,12 +3875,15 @@
                 if (!result.output) continue;
 
                 try {
-                    const isImageFile = /\.(jpg|jpeg|png|webp|gif)$/i.test(result.output);
+                    const isImageFile = /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(result.output);
+                    const isRemoteUrl = result.output.startsWith('http://') || result.output.startsWith('https://');
                     let imageItems = [];
 
-                    if (isImageFile) {
+                    if (isImageFile || isRemoteUrl) {
+                        // 单张图片或远程URL，直接使用
                         imageItems = [{ path: result.output }];
                     } else {
+                        // 本地文件夹，列出所有图片
                         const res = await fetch(`/api/gallery?path=${encodeURIComponent(result.output)}`);
                         const data = await res.json();
                         imageItems = (data.items || []).filter(item => item.type === 'image');
@@ -3739,7 +3895,11 @@
                         htmlContent += `<div class="msg-images-grid">`;
 
                         for (const img of imageItems) {
-                            const imgUrl = toImgUrl(img.path);
+                            let imgUrl = toImgUrl(img.path);
+                            // COS签名URL有CORS限制，需要通过代理访问
+                            if (imgUrl.startsWith('http://') || imgUrl.startsWith('https://')) {
+                                imgUrl = '/api/proxy-download?url=' + encodeURIComponent(imgUrl);
+                            }
                             const safeName = escHtml(result.name);
                             // 不再把路径塞进 inline onclick 字符串字面量 —— Windows 路径里的 \c \. \t \20 等
                             // 会被 JS 当转义序列吃掉，导致后端拿到 "D:codeele-business-java..temp-output..." 这种残缺字符串。
@@ -7525,6 +7685,21 @@
                     <span class="custom-style-swatch bg-sunset-orange"></span>
                     <span>暖阳橙</span>
                     <small>暖橙光感、情绪温度、生活氛围</small>
+                </button>
+                <button type="button" class="custom-style-card" data-value="khaki" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-khaki"></span>
+                    <span>卡其色</span>
+                    <small>土黄哑光、自然耐看、户外生活感</small>
+                </button>
+                <button type="button" class="custom-style-card" data-value="light-yellow" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-light-yellow"></span>
+                    <span>淡黄色</span>
+                    <small>柔和浅黄、清新明快、轻盈通透</small>
+                </button>
+                <button type="button" class="custom-style-card" data-value="beige" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-beige"></span>
+                    <span>米黄色</span>
+                    <small>奶油米白、温柔哑光、高级舒适感</small>
                 </button>
             </div>
             <div class="modal-footer custom-style-modal-footer">

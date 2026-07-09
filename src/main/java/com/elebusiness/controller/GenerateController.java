@@ -441,16 +441,34 @@ public class GenerateController {
                     }
                 }
 
+                // 【优化】使用 allOf 并行等待所有任务完成，而非串行阻塞
+                log.info("[开品 Excel 批量] 等待 {} 张图片并行生成完成", futures.size());
+                try {
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                            .get(10, TimeUnit.MINUTES);
+                } catch (TimeoutException te) {
+                    log.warn("[开品 Excel 批量] 整体超时(>10分钟)，取消未完成任务");
+                    for (CompletableFuture<String> f : futures) {
+                        if (!f.isDone()) f.cancel(true);
+                    }
+                } catch (Exception e) {
+                    log.error("[开品 Excel 批量] 等待任务完成异常: {}", e.getMessage());
+                }
+
+                // 收集所有任务结果
                 int n = 1;
                 for (CompletableFuture<String> f : futures) {
                     String r;
-                    try {
-                        r = f.get(5, TimeUnit.MINUTES);
-                    } catch (TimeoutException te) {
-                        f.cancel(true);
-                        r = "失败: 单张图超时(>5 分钟)";
-                    } catch (Exception e) {
-                        r = "失败: " + e.getMessage();
+                    if (f.isCancelled()) {
+                        r = "失败: 已取消";
+                    } else if (!f.isDone()) {
+                        r = "失败: 未完成";
+                    } else {
+                        try {
+                            r = f.get(100, TimeUnit.MILLISECONDS); // 已完成，快速获取
+                        } catch (Exception e) {
+                            r = "失败: " + e.getMessage();
+                        }
                     }
                     String name = n++ + ".jpg";
                     if (r.startsWith("失败")) {
@@ -780,25 +798,85 @@ public class GenerateController {
                     }
                 }
             } else {
-                List<String> allRefs = new ArrayList<>();
-                allRefs.add(refFinal.getAbsolutePath());
-                for (File wf : whiteFinal) allRefs.add(wf.getAbsolutePath());
+                // 【自定义模式·混合并行生成】第1张串行，第2-N张并行
+                // 策略：第1张用白底图建立基调，第2-N张全部参考白底图+第1张并发生成
+                List<String> baseRefs = new ArrayList<>();
+                baseRefs.add(refFinal.getAbsolutePath());
+                for (File wf : whiteFinal) baseRefs.add(wf.getAbsolutePath());
+
                 List<File> refsForAspect = new ArrayList<>();
                 refsForAspect.add(refFinal);
                 refsForAspect.addAll(whiteFinal);
                 final String aspectForRefs = resolveAutoAspect(requestedAspect, refsForAspect);
+
                 for (String p : promptsFinal) {
-                    for (int i = 0; i < countFinal; i++) {
-                        final int n = idx[0]++;
-                        final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
-                        final String promptFinal = p;
-                        final List<String> refsFinal = allRefs;
-                        futures.add(CompletableFuture.supplyAsync(() -> {
-                            if (task.isCancelled()) return "失败: 已取消";
-                            boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, refsFinal, null, outputPath, generationAgentId, aspectForRefs);
-                            return ok ? outputPath : "失败: 生成未返回图片";
-                        }, executor));
+                    // Phase 1: 生成第1张（串行）
+                    final int n1 = idx[0]++;
+                    final String outputPath1 = new File(outputDir, n1 + ".jpg").getAbsolutePath();
+                    final List<String> refs1 = new ArrayList<>(baseRefs);
+                    final String prompt1 = buildSeriesPrompt(p, 1, countFinal);
+
+                    CompletableFuture<String> future1 = CompletableFuture.supplyAsync(() -> {
+                        if (task.isCancelled()) return "失败: 已取消";
+                        log.info("[自定义模式] 生成第1张（基调图），参考图数量: {}", refs1.size());
+                        boolean ok = imageGenerationService.generateImageMulti(
+                                prompt1, refs1, null, outputPath1, generationAgentId, aspectForRefs);
+                        return ok ? outputPath1 : "失败: 生成未返回图片";
+                    }, executor);
+
+                    futures.add(future1);
+
+                    // 等待第1张完成
+                    String result1;
+                    try {
+                        result1 = future1.get(5, TimeUnit.MINUTES);
+                        if (result1.startsWith("失败") || !new File(result1).exists()) {
+                            log.warn("[自定义模式] 第1张生成失败: {}，后续图片将降级为仅参考白底图", result1);
+                            result1 = null; // 标记为失败，后续不使用
+                        } else {
+                            log.info("[自定义模式] 第1张生成成功: {}", result1);
+                        }
+                    } catch (TimeoutException te) {
+                        future1.cancel(true);
+                        log.error("[自定义模式] 第1张生成超时");
+                        result1 = null;
+                    } catch (Exception e) {
+                        log.error("[自定义模式] 第1张生成异常: {}", e.getMessage());
+                        result1 = null;
+                    }
+
+                    // Phase 2: 并行生成第2-N张（所有都参考白底图+第1张）
+                    if (countFinal > 1) {
+                        final String firstImagePath = result1; // final for lambda
+                        List<CompletableFuture<String>> parallelFutures = new ArrayList<>();
+
+                        for (int i = 1; i < countFinal; i++) {
+                            final int imageIndex = i + 1;
+                            final int n = idx[0]++;
+                            final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
+
+                            // 构建参考图列表：白底图 + 第1张（如果第1张生成成功）
+                            final List<String> currentRefs = new ArrayList<>(baseRefs);
+                            if (firstImagePath != null) {
+                                currentRefs.add(firstImagePath);
+                            }
+
+                            final String enhancedPrompt = buildSeriesPrompt(p, imageIndex, countFinal);
+
+                            CompletableFuture<String> currentFuture = CompletableFuture.supplyAsync(() -> {
+                                if (task.isCancelled()) return "失败: 已取消";
+                                log.info("[自定义模式并行] 开始生成第 {} 张，参考图数量: {}", imageIndex, currentRefs.size());
+                                boolean ok = imageGenerationService.generateImageMulti(
+                                        enhancedPrompt, currentRefs, null, outputPath, generationAgentId, aspectForRefs);
+                                return ok ? outputPath : "失败: 生成未返回图片";
+                            }, executor);
+
+                            futures.add(currentFuture);
+                            parallelFutures.add(currentFuture);
+                        }
+
+                        // 等待所有并行任务完成（注意：不在这里做额外等待，统一在后面收集结果时处理）
+                        log.info("[自定义模式并行] 已提交 {} 张图片并行生成", parallelFutures.size());
                     }
                 }
             }
@@ -806,13 +884,29 @@ public class GenerateController {
             int n = 1;
             for (CompletableFuture<String> f : futures) {
                 String r;
-                try {
-                    r = f.get(5, TimeUnit.MINUTES);
-                } catch (TimeoutException te) {
-                    f.cancel(true);
-                    r = "失败: 单张图超时 (>5 分钟)";
-                } catch (Exception e) {
-                    r = "失败: " + e.getMessage();
+                if (f.isCancelled()) {
+                    r = "失败: 已取消";
+                } else if (!f.isDone()) {
+                    // 任务还未完成，等待它（单张最多10分钟）
+                    try {
+                        r = f.get(10, TimeUnit.MINUTES);
+                    } catch (TimeoutException te) {
+                        f.cancel(true);
+                        r = "失败: 单张图超时 (>10 分钟)";
+                    } catch (CancellationException ce) {
+                        r = "失败: 已取消";
+                    } catch (Exception e) {
+                        r = "失败: " + e.getMessage();
+                    }
+                } else {
+                    // 任务已完成，直接获取结果（不会阻塞）
+                    try {
+                        r = f.get(100, TimeUnit.MILLISECONDS);
+                    } catch (CancellationException ce) {
+                        r = "失败: 已取消";
+                    } catch (Exception e) {
+                        r = "失败: " + e.getMessage();
+                    }
                 }
                 String name = n++ + ".jpg";
                 if (r.startsWith("失败")) {
@@ -913,6 +1007,123 @@ public class GenerateController {
             }
         }
         return best;
+    }
+
+    /**
+     * 构建系列连贯性提示词：根据图片序号增强约束，确保同场景多角度拍摄效果
+     *
+     * @param basePrompt 用户原始提示词
+     * @param currentIndex 当前图片序号（1-based）
+     * @param totalCount 总图片数量
+     * @return 增强后的提示词
+     */
+    private String buildSeriesPrompt(String basePrompt, int currentIndex, int totalCount) {
+        String base = basePrompt == null ? "" : basePrompt.trim();
+
+        // 系列连贯性核心约束
+        String seriesConstraint = String.format("""
+
+                【系列连贯性·最高优先级】这是同一场景系列拍摄的第 %d/%d 张：
+                1. 产品主体必须100%%一致：外形、颜色、材质、品牌标识、关键结构完全相同
+                2. **产品原生文字必须与第1张完全相同**：
+                   - 产品本体上的文字：LOGO、品牌名称、型号标识、按钮标签、刻度数字、接口标识等
+                   - 这些文字的字形、字体、位置、颜色、清晰度必须保持一致，禁止模糊、变形、消失或改变内容
+                   - **注意**：画面上的营销卖点文案（如"持久续航"、"智能降噪"等）属于本图卖点的一部分，每张图可以不同，这是正常的
+                3. **两类文字的区分**：
+                   - 产品原生文字（必须一致）：产品包装、外壳、屏幕、按键上印刷/显示的文字
+                   - 画面营销文案（可以不同）：漂浮在场景中的卖点标题、副标题、标签，用于强调本图的差异化卖点
+                4. 场景类型必须完全一致：如果是浴室就保持浴室，厨房就保持厨房，办公室就保持办公室
+                5. 整体色调、光线氛围、背景材质必须保持一致，营造"同一时间同一地点"的连续感
+                6. 允许变化的部分：
+                   - 产品拍摄角度（正面→侧面→俯视→仰视等自然过渡）
+                   - 产品在场景中的摆放位置（左→中→右，或前→后景深变化）
+                   - 场景中的道具细节（同类型道具的不同摆放，但风格保持一致）
+                   - 光照角度的微调（但整体亮度和色温保持一致）
+                   - **画面营销文案**：每张图根据本图卖点展示不同的营销标题和标签，这是系列图的核心价值
+                7. 禁止出现：场景类型切换、色调剧变、产品变形、产品原生文字错误/模糊/消失、风格跳跃、不同时间段的光线
+                8. 最终效果：看起来像是摄影师在同一场景中走动，用不同角度拍摄同一产品的连续镜头；每张图通过不同的拍摄角度和营销文案强调不同卖点，但产品本身始终是同一个
+                """.trim(), currentIndex, totalCount);
+
+        // 角度差异化约束（替换原有的位置引导）
+        String angleConstraint = buildAngleConstraint(currentIndex, totalCount);
+
+        return base + seriesConstraint + angleConstraint;
+    }
+
+    /**
+     * 构建角度差异化约束
+     * @param currentIndex 当前图片序号（1-based）
+     * @param totalCount 总图片数量
+     * @return 角度约束提示词
+     */
+    private String buildAngleConstraint(int currentIndex, int totalCount) {
+        if (currentIndex == 1) {
+            return """
+
+                【第1张·基调建立】
+                产品主视角（正面或正面45度），清晰展示产品正面特征、品牌LOGO、核心卖点。
+                这张图将作为后续图片的参考基准，必须完整呈现产品全貌。
+                **产品原生文字重点**：清晰展示产品本体上的所有文字、LOGO、品牌标识、按钮标签等细节，确保可读且完整
+                **画面营销文案**：根据basePrompt中的卖点，设计本图的营销文案（主标题、副标题、卖点标签），用于强调第1个核心卖点
+                """;
+        }
+
+        String[] angles = selectAngleSequence(totalCount);
+        int angleIndex = (currentIndex - 2) % angles.length;
+        String currentAngle = angles[angleIndex];
+
+        return String.format("""
+
+                【第%d张·角度约束·强制执行】
+                产品必须采用%s。
+
+                **角度定义**：
+                - 保持产品主体完整可见，不得被遮挡或裁切
+                - 该角度必须与前面已生成的图片角度明显不同
+                - 展示该角度下产品的独特特征和细节
+                - 光线和阴影要符合该视角的物理规律
+
+                **禁止**：
+                - 禁止使用与第1张相同或相似的正面角度
+                - 禁止使用与前面已生成图片重复的角度
+                - 禁止因为角度改变而修改产品结构或比例
+
+                **产品原生文字约束**：参考第1张图片，确保产品本体上的文字/LOGO/标识与第1张完全相同，位置、字体、清晰度一致
+                **画面营销文案**：可以与前面不同，根据basePrompt设计新的营销标题和标签来强调第%d个卖点或从新角度证明功能
+                """, currentIndex, currentAngle, currentIndex);
+    }
+
+    /**
+     * 根据总图片数量选择合适的角度序列
+     * @param totalCount 总图片数量
+     * @return 角度描述数组
+     */
+    private String[] selectAngleSequence(int totalCount) {
+        if (totalCount <= 3) {
+            // 3张及以下：正面+侧面+俯视/仰视
+            return new String[]{
+                "侧面90度视角（展示产品左侧或右侧完整轮廓，侧面平行于画面）",
+                "俯视45度视角（从斜上方45度向下拍摄，展示产品顶部特征和整体布局）"
+            };
+        } else if (totalCount <= 5) {
+            // 4-5张：正面+左右侧+俯视+微仰视
+            return new String[]{
+                "左侧面70度视角（产品主体向左旋转70度，展示左侧面和部分正面）",
+                "右侧面70度视角（产品主体向右旋转70度，展示右侧面和部分正面）",
+                "俯视45度视角（从斜上方45度向下拍摄，展示顶部细节）",
+                "正面微仰视30度视角（相机位置略低于产品中心，向上仰拍30度）"
+            };
+        } else {
+            // 6张及以上：全方位多角度
+            return new String[]{
+                "左侧面90度视角（产品完全侧面展示，左侧面平行于画面）",
+                "右侧面90度视角（产品完全侧面展示，右侧面平行于画面）",
+                "俯视60度视角（从较陡的斜上方60度向下拍摄，强调顶部视角）",
+                "仰视30度视角（相机位置明显低于产品，向上仰拍30度）",
+                "左前45度斜视角（从产品左前方45度角拍摄，兼顾正面和左侧）",
+                "右后45度斜视角（从产品右后方45度角拍摄，展示背面和右侧）"
+            };
+        }
     }
 
     private List<File> extractXlsxImages(File xlsx) throws Exception {

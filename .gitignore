@@ -70,3 +70,4 @@ tools/__pycache__/
 
 # Build cleanup helper
 .multipart-temp.lock
+tools/browsers/

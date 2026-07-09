@@ -3339,5 +3339,12 @@ window.EC_CATEGORY_TREE = [
             { display: '游戏软件' }, { display: '游戏软件平台' },
             { display: '游戏物品/资源' }, { display: '游戏账号' }, { display: '游戏装备' }
         ]}
+    ]},
+    { display: '架子/收纳', children: [
+        { display: '展示架' },
+        { display: '书架' },
+        { display: '置物架' },
+        { display: '收纳架' },
+        { display: '工业货架' }
     ]}
 ];

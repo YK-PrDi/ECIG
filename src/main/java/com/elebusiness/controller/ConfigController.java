@@ -37,6 +37,12 @@ public class ConfigController {
         return promptService.getTree();
     }
 
+    @GetMapping("/api/prompts/search")
+    public List<Map<String, Object>> searchPrompts(@RequestParam(defaultValue = "") String q) {
+        if (q.isBlank()) return promptService.getTree();
+        return promptService.search(q);
+    }
+
     @GetMapping("/api/agents")
     public List<Map<String, String>> listAgents() {
         return imageGenerationService.listAgents();
