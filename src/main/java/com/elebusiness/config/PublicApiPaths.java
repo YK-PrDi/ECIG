@@ -14,6 +14,8 @@ final class PublicApiPaths {
                 || uri.startsWith("/api/prompts/")
                 || uri.equals("/api/categories/index")
                 || uri.equals("/api/config/status")
-                || uri.equals("/api/agents");
+                || uri.equals("/api/agents")
+                // 支付平台不会携带站内用户会话，由回调服务校验专用 Token。
+                || uri.startsWith("/api/billing/payment-callbacks/");
     }
 }

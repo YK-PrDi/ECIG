@@ -58,6 +58,18 @@ public class DingTalkService {
         tokenExpireAt = 0;
     }
 
+    /**
+     * 产品目录依赖钉钉多维表，先显式判断配置，避免把可预期的缺配置状态包装成 500。
+     */
+    public boolean isConfigured() {
+        Map<String, String> config = configService.getDingTalkConfig();
+        return hasText(config.get("app_key"))
+                && hasText(config.get("app_secret"))
+                && hasText(config.get("union_id"))
+                && hasText(config.get("app_uuid"))
+                && hasText(config.get("sheet_id"));
+    }
+
     public String getAccessToken() throws Exception {
         long now = System.currentTimeMillis();
         if (cachedToken != null && now < tokenExpireAt) {
@@ -88,6 +100,10 @@ public class DingTalkService {
     /** 直接从配置读取 union_id，不再需要额外接口换取 */
     public String getUnionId() {
         return configService.getDingTalkConfig().get("union_id");
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     public List<DingTalkRecord> getAllRecords() throws Exception {

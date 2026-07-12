@@ -34,12 +34,14 @@ tools/import-tool.spec
 .DS_Store
 Thumbs.db
 
-# Sensitive config - DO NOT commit
-src/main/resources/application-prod.yml
+# Local secrets - DO NOT commit
+config.json
+.env
+.env.*
+!.env.example
 
 # Logs
 *.log
-src/main/resources/application.yml
 
 # Phase 1 临时归档：用户生图后 2h 内可点 💾 保存到永久画廊；TaskService.evictExpiredTempOutput 自动清
 .temp-output/

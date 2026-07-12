@@ -1,0 +1,9 @@
+{
+  "sheet_id": "replace-with-sheet-id",
+  "app_key": "replace-with-app-key",
+  "app_secret": "replace-with-app-secret",
+  "union_id": "replace-with-union-id",
+  "app_uuid": "replace-with-app-uuid",
+  "proxy_host": "",
+  "proxy_port": "8086"
+}

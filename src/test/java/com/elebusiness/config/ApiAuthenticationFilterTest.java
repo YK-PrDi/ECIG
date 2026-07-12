@@ -24,7 +24,8 @@ class ApiAuthenticationFilterTest {
                 "/api/prompts/search",
                 "/api/categories/index",
                 "/api/config/status",
-                "/api/agents"
+                "/api/agents",
+                "/api/billing/payment-callbacks/manual"
         )) {
             MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
             MockHttpServletResponse response = new MockHttpServletResponse();

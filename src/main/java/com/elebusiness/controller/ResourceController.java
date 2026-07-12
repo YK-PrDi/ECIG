@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -54,6 +55,13 @@ public class ResourceController {
 
     @GetMapping("/api/products")
     public ResponseEntity<Map<String, Object>> getProducts() {
+        if (!dingTalkService.isConfigured()) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "error", "钉钉产品目录尚未配置，请在设置中完成钉钉参数后再同步",
+                    "code", "DINGTALK_NOT_CONFIGURED",
+                    "products", List.of()
+            ));
+        }
         try {
             List<DingTalkRecord> records = dingTalkService.getAllRecords();
             List<Map<String, Object>> products = new ArrayList<>();
@@ -71,8 +79,9 @@ public class ResourceController {
             return ResponseEntity.ok(Map.of("products", products));
         } catch (Exception e) {
             log.error("获取产品列表失败: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "获取数据失败: " + e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(Map.of("error", "钉钉产品目录同步失败: " + e.getMessage(),
+                            "code", "DINGTALK_PRODUCTS_UNAVAILABLE"));
         }
     }
 

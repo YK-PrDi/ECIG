@@ -1,0 +1,183 @@
+server:
+  port: 5020
+  servlet:
+    session:
+      timeout: ${SERVER_SERVLET_SESSION_TIMEOUT:12h}
+  tomcat:
+    threads:
+      max: 300              # 提升并发处理能力 200→300
+      min-spare: 50         # 提升预热线程数 20→50
+    accept-count: 200       # 提升排队数 100→200
+    max-connections: 10000
+    connection-timeout: 60000
+
+spring:
+  profiles:
+    default: local
+  autoconfigure:
+    exclude: ${SPRING_AUTOCONFIGURE_EXCLUDE:}
+  web:
+    resources:
+      static-locations: "file:./frontend/"
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+      # 上一版用 './.multipart-temp' 被 Tomcat 解析到了它自己的 work 目录（系统 temp 下），
+      # 用 ${user.dir} 拿 JVM 工作目录（启动命令所在目录）= 项目根，强制绝对路径。
+      location: ${user.dir}/.multipart-temp
+
+  # Phase 2：SQLite 历史记录（生图 + 对话）
+  # 单文件 db，不需要装 server，electron 打包友好；以后上服务器换 PostgreSQL 只改 dialect
+  datasource:
+    url: jdbc:sqlite:${user.dir}/app.db
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update    # 自动建表 / 加列；不会删列，保护用户已有数据
+    show-sql: false
+    open-in-view: false   # 关掉 JPA 的 lazy loading 开多余事务；Controller 不会触发懒加载
+
+app:
+  # 基础配置不放密钥；密钥由 application-prod.yml 的环境变量占位符注入。
+  gemini:
+    api-key: ""
+    model: "gemini-3.1-flash-image-preview"
+    base-url: "https://api.linapi.net"
+    image-base-url: "https://generativelanguage.googleapis.com/v1beta/models/"
+
+  # Veo 视频模式配置
+  veo:
+    model: "veo-3.1-generate-preview"
+    duration-seconds: 8
+    resolution: "720p"
+    generate-audio: true
+
+  # 钉钉配置（敏感字段在 application-prod.yml）
+  dingtalk:
+    app-key: ""
+    app-secret: ""
+    user-id: ""
+    app-uuid: ""
+    sheet-id: ""
+
+  # DashScope 万相 2.7 配置（key 在 application-prod.yml）
+  dashscope:
+    api-key: ""
+    model: "wan2.7-image-pro"
+    image-size: "1024*1024"
+
+  # 硅基流动 SiliconFlow 配置（key 在 application-prod.yml）
+  siliconflow:
+    api-key: ""
+    model: "hy-image-v3.0"
+
+  # 火山方舟 Seedance 2.0 配置
+  volcengine:
+    api-key: ""
+    base-url: "https://ark.cn-beijing.volces.com/api/v3"
+    model: "doubao-seedance-2-0-260128"
+
+  # 千问 VL 分析备用（Gemini 失败时降级使用）
+  qwen:
+    api-key: ""
+    model: "qwen-vl-max"
+    base-url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+  # Civitai API 配置（LoRA 增强）
+  civitai:
+    api-key: "${CIVITAI_API_KEY:}"
+    model: "sdxl"
+    max-poll-seconds: 300
+    lora-presets:
+      studio:  # 工作室风格（专业灯光）
+        - id: 0  # 需要替换为实际的 Civitai LoRA ID
+          name: "Product Photography Pro"
+          weight: 0.9
+      lifestyle:  # 生活场景（自然氛围）
+        - id: 0  # 需要替换为实际的 Civitai LoRA ID
+          name: "Lifestyle Product"
+          weight: 0.85
+      minimal:  # 极简白底（纯净背景）
+        - id: 0  # 需要替换为实际的 Civitai LoRA ID
+          name: "Clean Minimal"
+          weight: 0.8
+
+  # 代理配置（host 留空则自动跟随系统代理；填写则强制使用指定代理）
+  proxy:
+    host: ""
+    port: 8086
+
+  # GPT-Image (linapi) 配置 — 支持多个 api-key 轮询，最多10个
+  gpt-image:
+    api-keys: []
+    base-url: "https://api.linapi.net"
+    key-base-urls: {}
+
+  # 路径配置
+  paths:
+    reference-dir: "./大参考"
+    output-dir: "./生成结果"
+    # Phase 1 临时归档：所有生图先落到这里，2 小时后自动清理；用户在前端点 💾 才 copy 到 output-dir
+    temp-output-dir: "./.temp-output"
+    # Phase 2 历史参考图归档：生图时把 ref 图复制一份到这里，DB 存路径让"重生历史"能恢复参考图
+    # 不参与 .temp-output 的 2h TTL 清理；只在用户手动删除历史条目时才一起清掉
+    history-refs-dir: "./.history-refs"
+    config-file: "./config.json"
+    prompts-dir: "./prompts"
+
+  # 本地 Stable Diffusion 配置（AutoDL 或本地部署）
+  local-sd:
+    api-url: "${LOCAL_SD_API_URL:http://localhost:7860}"  # WebUI API 地址
+    lora-name: "dianshangzhantaiXL"  # LoRA 文件名（不含 .safetensors）
+    lora-weight: 0.9  # LoRA 权重（0.1-1.0）
+
+  # ComfyUI 配置
+  comfyui:
+    api-url: "${COMFYUI_API_URL:http://localhost:8188}"  # ComfyUI API 地址
+    checkpoint: "sd_xl_base_1.0.safetensors"  # SDXL 主模型
+    lora-name: "dianshangzhantaiXL.safetensors"  # LoRA 文件名（含后缀）
+    lora-weight: 0.9  # LoRA 权重
+
+  # liblib AI 配置
+  liblib:
+    access-key: "${LIBLIB_ACCESS_KEY:}"
+    secret-key: "${LIBLIB_SECRET_KEY:${LIBLIB_API_KEY:}}"
+    api-key: "${LIBLIB_API_KEY:}"
+    base-url: "https://openapi.liblibai.cloud"
+    model: "sdxl"
+    lora-model-id: "${LIBLIB_LORA_MODEL_ID:}"  # 需要在 liblib.art 上传 LoRA 后填写
+    template-uuid: "${LIBLIB_TEMPLATE_UUID:}"
+    text-to-image-template-uuid: "${LIBLIB_TEXT_TO_IMAGE_TEMPLATE_UUID:5d7e67009b344550bc1aa6ccbfa1d7f4}"
+    image-to-image-template-uuid: "${LIBLIB_IMAGE_TO_IMAGE_TEMPLATE_UUID:07e00af4fc464c7ab55ff906f8acf1b7}"
+    lora-weight: 0.9
+    default-steps: 30
+    default-size: "1024x1024"
+    cfg-scale: 7.5
+    negative-prompt: "worst quality, low quality, blurry, text, watermark, logo, deformed, malformed, distorted, artifacts"
+
+  # 限流配置
+  api:
+    delay-seconds: 0        # 取消强制延迟 1→0（关键优化）
+    timeout-seconds: 60     # 降低超时 90→60 秒
+    max-retries: 2          # 减少重试 3→2 次
+    max-concurrent: 20      # 提升并发 12→20
+
+  # 积分计费与支付框架。默认不启用真实扣费，回调 token 留空时支付回调入口不可用。
+  billing:
+    charge-enabled: false
+    callback-token: "${BILLING_CALLBACK_TOKEN:}"
+    credential-secret: "${BILLING_CREDENTIAL_SECRET:}"
+    export-max-rows: "${BILLING_EXPORT_MAX_ROWS:10000}"
+    reconciliation-schedule-enabled: "${BILLING_RECONCILIATION_SCHEDULE_ENABLED:false}"
+    reconciliation-cron: "${BILLING_RECONCILIATION_CRON:0 0 3 * * *}"
+    reconciliation-schedule-mode: "${BILLING_RECONCILIATION_SCHEDULE_MODE:GLOBAL}"
+    reconciliation-user-batch-size: "${BILLING_RECONCILIATION_USER_BATCH_SIZE:100}"
+    reconciliation-lease-seconds: "${BILLING_RECONCILIATION_LEASE_SECONDS:900}"
+
+# 日志：级别 + 文件输出由 logback-spring.xml 统一配置（同时写控制台和 logs/app.log）。
+# 这里只保留级别声明；文件滚动策略见 src/main/resources/logback-spring.xml。
+logging:
+  level:
+    com.elebusiness: INFO
