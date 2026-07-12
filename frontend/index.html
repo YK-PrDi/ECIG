@@ -499,10 +499,24 @@
                                         <svg class="gf-select-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="gf-select-options">
+                                        <div class="gf-option" data-value="4" onclick="selectOption(this, event)">4 秒</div>
                                         <div class="gf-option" data-value="5" onclick="selectOption(this, event)">5 秒</div>
+                                        <div class="gf-option" data-value="6" onclick="selectOption(this, event)">6 秒</div>
                                         <div class="gf-option selected" data-value="8" onclick="selectOption(this, event)">8 秒</div>
-                                        <div class="gf-option" data-value="11" onclick="selectOption(this, event)">11 秒</div>
+                                        <div class="gf-option" data-value="10" onclick="selectOption(this, event)">10 秒</div>
+                                        <div class="gf-option" data-value="12" onclick="selectOption(this, event)">12 秒</div>
+                                        <div class="gf-option" data-value="15" onclick="selectOption(this, event)">15 秒</div>
+                                        <div class="gf-option" data-value="-1" onclick="selectOption(this, event)">智能自选</div>
                                     </div>
+                                </div>
+                            </div>
+                            <div class="config-group" style="width:100%; align-items:flex-start;">
+                                <button class="btn-outline" id="videoOptimizeBtn" style="border-color:var(--primary); color:var(--primary);" onclick="optimizeVideoPrompt()">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px;"><path d="M12 3v3m0 12v3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M3 12h3m12 0h3M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1"/></svg>
+                                    ✨ 优化提示词
+                                </button>
+                                <div style="font-size:0.72rem; color:var(--text-dim); line-height:1.4; margin-top:6px;">
+                                    💡 在输入框写脚本/想法，点此用 AI 优化成含运镜、音效、花字的规范视频提示词（≤500字），确认后再生成
                                 </div>
                             </div>
                         </div>
@@ -1260,7 +1274,8 @@
                         const hasChildren = !!(n.children && n.children.length);
                         const pathArr = fullPath.split(' > ');
                         results.push(`<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''}"
-                            onclick="customCatPickSearch(${ecEscAttr(JSON.stringify(pathArr))}, ${hasChildren})">
+                            data-fullpath="${ecEscAttr(JSON.stringify(pathArr))}" data-haschildren="${hasChildren}"
+                            onclick="customCatPickSearchEl(this)">
                             <span class="ec-cascader-label" style="font-size:0.72rem;">${ecEscAttr(fullPath)}</span>
                         </div>`);
                     }
@@ -1274,6 +1289,20 @@
 
         function customCatOnSearch(val) {
             customCatRefreshColumns();
+        }
+
+        // 从 DOM data-* 读参再调，避免路径/名称含引号破坏 onclick
+        function customCatPickSearchEl(el) {
+            if (!el) return;
+            let pathArr = [];
+            try { pathArr = JSON.parse(el.dataset.fullpath || '[]'); } catch (_) { pathArr = []; }
+            customCatPickSearch(pathArr, el.dataset.haschildren === 'true');
+        }
+
+        function customCatPickEl(el) {
+            if (!el) return;
+            const level = parseInt(el.dataset.level || '0', 10);
+            customCatPick(level, el.dataset.display || '', el.dataset.haschildren === 'true');
         }
 
         function customCatPickSearch(pathArr, hasChildren) {
@@ -1299,8 +1328,10 @@
                 (nodes || []).map(n => {
                     const hasChildren = !!(n.children && n.children.length);
                     const isActive = custCatPath[level] === n.display;
+                    // 用 data-* 传参，避免 display 含引号/反斜杠破坏 onclick（末级类目点不动的根因）
                     return `<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''} ${isActive ? 'active' : ''}"
-                        onclick="customCatPick(${level}, '${ecEscAttr(n.display)}', ${hasChildren})">
+                        data-level="${level}" data-display="${ecEscAttr(n.display)}" data-haschildren="${hasChildren}"
+                        onclick="customCatPickEl(this)">
                         <span class="ec-cascader-label">${ecEscAttr(n.display)}</span>
                         ${hasChildren ? `<span class="ec-cascader-arrow-r">›</span>` : ''}
                     </div>`;
@@ -3149,6 +3180,12 @@
             const promptInput = document.getElementById('promptInput');
             const prompt = promptInput.value.trim();
 
+            // 停止后回填用：快照本次提交的提示词原文 + 参考图（File 列表，浅拷贝）
+            window.__lastSubmitSnapshot = {
+                prompt: promptInput.value,
+                files: Array.isArray(droppedFiles) ? droppedFiles.slice() : []
+            };
+
             const agentId = document.getElementById('agentSelect').value;
             const ids = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
 
@@ -3565,7 +3602,15 @@
                 <div class="progress-card" data-task-id="${taskId}">
                     <div class="progress-card-header">
                         <span class="progress-card-title">⏳ 生成任务进行中</span>
-                        <span class="progress-card-count" data-role="count">0/0</span>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span class="progress-card-count" data-role="count">0/0</span>
+                            <button class="progress-stop-btn" title="终止生成" onclick="stopGeneration('${taskId}')" aria-label="终止生成">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"></rect>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="progress-card-bar-wrap">
                         <div class="progress-card-bar-fill" data-role="bar" style="width:0%"></div>
@@ -3579,6 +3624,65 @@
                 </div>`);
             const inputH = (document.querySelector('.input-area-wrapper') || {}).offsetHeight || 0;
             msgs.scrollTop = msgs.scrollHeight + inputH + 40;
+        }
+
+        // 视频模式：把输入框脚本用 AI 优化成规范视频提示词，结果写回输入框供用户确认/编辑
+        async function optimizeVideoPrompt() {
+            const promptInput = document.getElementById('promptInput');
+            const script = (promptInput?.value || '').trim();
+            if (!script) { alert('请先在输入框写下视频脚本或想法'); return; }
+            const btn = document.getElementById('videoOptimizeBtn');
+            const oldHtml = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 优化中…'; }
+            try {
+                const durationSeconds = parseInt(document.getElementById('videoDurationSec')?.value || '8');
+                const fd = new FormData();
+                fd.append('prompt', script);
+                fd.append('durationSeconds', String(durationSeconds));
+                if (typeof droppedFiles !== 'undefined' && droppedFiles) {
+                    droppedFiles.forEach(f => fd.append('images', f));
+                }
+                const resp = await fetch('/api/video/optimize_prompt', { method: 'POST', body: fd });
+                const data = await resp.json();
+                if (!resp.ok || data.error) throw new Error(data.error || '优化失败');
+                if (data.prompt) {
+                    promptInput.value = data.prompt;
+                    promptInput.focus();
+                    appendMessage('ai', '✨ 已优化视频提示词并填入输入框，你可以再修改后点击发送生成视频。');
+                }
+            } catch (e) {
+                appendMessage('ai', '视频提示词优化失败：' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; }
+            }
+        }
+
+        // 终止生成：调后端停止 → 停轮询 → 回填提示词和参考图，方便用户改完重发
+        async function stopGeneration(taskId) {
+            const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
+            const btn = card && card.querySelector('.progress-stop-btn');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+            try {
+                await fetch('/api/task/' + encodeURIComponent(taskId) + '/stop', { method: 'POST' });
+            } catch (e) {
+                // 网络失败也继续停轮询，避免卡住
+            }
+            if (typeof stopPollingTask === 'function') stopPollingTask(taskId);
+            if (card) card.remove();
+
+            // 回填上次提交的提示词 + 参考图
+            const snap = window.__lastSubmitSnapshot;
+            if (snap) {
+                const promptInput = document.getElementById('promptInput');
+                if (promptInput && snap.prompt) promptInput.value = snap.prompt;
+                if (Array.isArray(snap.files) && snap.files.length) {
+                    droppedFiles = snap.files.slice();
+                    const container = document.getElementById('imagePreviewContainer');
+                    if (container) container.style.display = '';
+                    renderPreviews();
+                }
+            }
+            appendMessage('ai', '⏹ 已终止生成，之前的提示词和参考图已回填，可修改后重新发送。');
         }
 
         function updateProgressCard(taskId, pct, countText, etaText, curText) {
@@ -4295,7 +4399,8 @@
         let ecPanelInit = false;
 
         function ecEscAttr(str) {
-            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\\/g,'&#92;');
         }
 
         // 上传 xlsx → 调 /api/import/xlsx → 显示脚本输出
@@ -4633,8 +4738,11 @@
                     const fullPath = path ? path + ' > ' + n.display : n.display;
                     if (n.display.toLowerCase().includes(q)) {
                         const hasChildren = !!(n.children && n.children.length);
+                        const pathArr = fullPath.split(' > ');
+                        // 用 data-* 传参，data-fullpath 存 JSON 路径，避免引号/反斜杠破坏 onclick
                         results.push(`<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''}"
-                            onclick="event.stopPropagation();ecPickCascaderItem(${(fullPath.split(' > ').length - 1)}, '${ecEscAttr(n.display)}', ${hasChildren}, ${ecEscAttr(JSON.stringify(fullPath.split(' > ')))})">
+                            data-level="${pathArr.length - 1}" data-display="${ecEscAttr(n.display)}" data-haschildren="${hasChildren}" data-fullpath="${ecEscAttr(JSON.stringify(pathArr))}"
+                            onclick="event.stopPropagation();ecPickCascaderItemEl(this)">
                             <span class="ec-cascader-label" style="font-size:0.72rem;">${ecEscAttr(fullPath)}</span>
                         </div>`);
                     }
@@ -4654,10 +4762,12 @@
             const items = (nodes || []).map(n => {
                 const hasChildren = n.children && n.children.length > 0;
                 const isActive    = ecCatPath[level] === n.display;
+                // 用 data-* 传参，onclick 只调 this，避免 display 含引号/反斜杠破坏 onclick 字符串
                 return `<div class="ec-cascader-item ${hasChildren ? 'has-children' : ''} ${isActive ? 'active' : ''}"
-                    onclick="event.stopPropagation();ecPickCascaderItem(${level}, '${ecEscAttr(n.display)}', ${hasChildren})">
+                    data-level="${level}" data-display="${ecEscAttr(n.display)}" data-haschildren="${hasChildren}"
+                    onclick="event.stopPropagation();ecPickCascaderItemEl(this)">
                     <span class="ec-cascader-label">${ecEscAttr(n.display)}</span>
-                    ${hasChildren ? `<span class="ec-cascader-arrow-r" onclick="event.stopPropagation();ecDrillDown(${level}, '${ecEscAttr(n.display)}')">›</span>` : ''}
+                    ${hasChildren ? `<span class="ec-cascader-arrow-r" data-level="${level}" data-display="${ecEscAttr(n.display)}" onclick="event.stopPropagation();ecDrillDownEl(this)">›</span>` : ''}
                 </div>`;
             }).join('');
             // 第 0 列额外添加"清空选择"快捷项
@@ -4762,6 +4872,26 @@
                 if (text) text.textContent = '—';
             }
             ecSel.sellings = [];
+        }
+
+        // 从 DOM 元素的 data-* 读参数再调 ecPickCascaderItem，避免 display 含引号/反斜杠破坏 onclick 字符串
+        function ecPickCascaderItemEl(el) {
+            if (!el) return;
+            const level = parseInt(el.dataset.level || '0', 10);
+            const display = el.dataset.display || '';
+            const hasChildren = el.dataset.haschildren === 'true';
+            let fullPathArr;
+            if (el.dataset.fullpath) {
+                try { fullPathArr = JSON.parse(el.dataset.fullpath); } catch (_) { fullPathArr = undefined; }
+            }
+            ecPickCascaderItem(level, display, hasChildren, fullPathArr);
+        }
+
+        function ecDrillDownEl(el) {
+            if (!el) return;
+            const level = parseInt(el.dataset.level || '0', 10);
+            const display = el.dataset.display || '';
+            ecDrillDown(level, display);
         }
 
         // 点击条目本体：任意级别都立即"选中"——更新 ecSel.category + 触发器文字 + 字段/卖点联动

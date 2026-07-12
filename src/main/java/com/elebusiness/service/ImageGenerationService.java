@@ -126,6 +126,49 @@ public class ImageGenerationService {
         return buildLocalFallbackCustomPrompts(userPrompt, safeCount);
     }
 
+    /**
+     * 视频模式：把用户脚本优化成 Seedance 规范的中文视频提示词（≤500字，含运镜/动作/音效/花字/真实感约束）。
+     * 复用 Gemini（OpenAI 兼容）分析基建；失败时抛异常由上层处理。
+     *
+     * @param script          用户输入的脚本/想法
+     * @param imageFiles       参考图（可选）
+     * @param durationSeconds  目标视频时长（秒），用于让镜头节奏匹配时长
+     */
+    public String optimizeVideoPrompt(String script, List<File> imageFiles, int durationSeconds) throws IOException {
+        String apiKey = appProperties.getGemini().getApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("Gemini API Key 未配置");
+        }
+        String systemText = promptTemplateLoader.load("prompt/video-prompt-optimize-system.txt",
+                "你是短视频导演，把用户脚本优化成 500 字以内的规范中文视频提示词。");
+
+        String durHint = durationSeconds > 0
+                ? "目标视频总时长约 " + durationSeconds + " 秒，请让分时段镜头的总时长与之匹配。"
+                : "请根据脚本内容合理安排镜头节奏。";
+        String userText = "用户视频脚本/想法：\n" + (script == null ? "" : script.trim())
+                + "\n\n" + durHint + "\n请按系统要求优化成一段可直接用于 Seedance 生成视频的中文提示词，控制在 500 字以内。";
+
+        ArrayNode userContent = objectMapper.createArrayNode();
+        userContent.addObject().put("type", "text").put("text", userText);
+        if (imageFiles != null) {
+            for (File f : imageFiles) {
+                if (f == null || !f.exists() || !f.isFile()) continue;
+                byte[] bytes = Files.readAllBytes(f.toPath());
+                String dataUrl = "data:" + getMimeType(f.getName()) + ";base64," + Base64.getEncoder().encodeToString(bytes);
+                userContent.addObject().put("type", "image_url").putObject("image_url").put("url", dataUrl);
+            }
+        }
+
+        String requestJson = buildOpenAIChatRequest(GEMINI_ANALYSIS_MODEL, systemText, userContent, 2000, 0.7);
+        Request request = new Request.Builder()
+                .url(appProperties.getGemini().getBaseUrl() + "/v1/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .post(RequestBody.create(requestJson, JSON_TYPE))
+                .build();
+
+        return executeAnalysisWithRetry(request, "Gemini 视频提示词优化");
+    }
+
     /** 千问 VL（OpenAI 兼容接口）调用分析 */
     private String requestQwenCustomPromptAnalysis(String prompt, List<File> imageFiles, int count, boolean withText) throws IOException {
         String apiKey = appProperties.getQwen().getApiKey();

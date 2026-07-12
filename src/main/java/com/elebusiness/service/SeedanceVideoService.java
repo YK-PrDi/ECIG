@@ -43,10 +43,17 @@ public class SeedanceVideoService {
     }
 
     public String generateVideo(Request req, String outputPath) throws Exception {
+        return generateVideo(req, outputPath, null);
+    }
+
+    /**
+     * @param isCancelled 取消检查回调，可为 null。轮询过程中每轮检查，返回 true 则中断轮询并抛"已取消"。
+     */
+    public String generateVideo(Request req, String outputPath, java.util.function.BooleanSupplier isCancelled) throws Exception {
         OkHttpClient client = buildClient();
         String taskId = submitTask(client, req);
         log.info("Seedance 任务已提交，taskId={}", taskId);
-        String videoUrl = pollTask(client, taskId);
+        String videoUrl = pollTask(client, taskId, isCancelled);
         downloadVideo(client, videoUrl, outputPath);
         log.info("Seedance 视频已保存: {}", outputPath);
         return outputPath;
@@ -67,11 +74,27 @@ public class SeedanceVideoService {
         return builder.build();
     }
 
+    // Seedance 官方建议中文提示词 ≤500 字，过长会信息分散。这里做兜底截断，优先在标点处优雅断句。
+    private static final int MAX_PROMPT_LEN = 500;
+
+    private String clampPrompt(String prompt) {
+        if (prompt == null) return "";
+        String p = prompt.trim();
+        if (p.length() <= MAX_PROMPT_LEN) return p;
+        String head = p.substring(0, MAX_PROMPT_LEN);
+        int cut = Math.max(head.lastIndexOf('。'),
+                  Math.max(head.lastIndexOf('；'),
+                  Math.max(head.lastIndexOf('，'), head.lastIndexOf('.'))));
+        if (cut >= MAX_PROMPT_LEN * 3 / 5) head = head.substring(0, cut + 1);
+        log.warn("Seedance 提示词超 {} 字（实际 {} 字），已截断以避免信息分散", MAX_PROMPT_LEN, p.length());
+        return head;
+    }
+
     private String submitTask(OkHttpClient client, Request req) throws IOException {
         AppProperties.Volcengine cfg = appProperties.getVolcengine();
 
         ArrayNode content = objectMapper.createArrayNode();
-        content.add(objectMapper.createObjectNode().put("type", "text").put("text", req.prompt));
+        content.add(objectMapper.createObjectNode().put("type", "text").put("text", clampPrompt(req.prompt)));
 
         if (req.imageUrls != null) {
             for (String url : req.imageUrls) {
@@ -100,7 +123,8 @@ public class SeedanceVideoService {
         body.set("content", content);
         body.put("generate_audio", req.generateAudio);
         body.put("ratio", req.aspectRatio == null || req.aspectRatio.isBlank() ? "16:9" : req.aspectRatio);
-        body.put("duration", req.durationSeconds > 0 ? req.durationSeconds : 8);
+        // -1 = 让模型智能自选时长；否则用指定值，非法值兜底 8
+        body.put("duration", req.durationSeconds == -1 ? -1 : (req.durationSeconds > 0 ? req.durationSeconds : 8));
         body.put("watermark", false);
 
         okhttp3.Request httpReq = new okhttp3.Request.Builder()
@@ -120,13 +144,19 @@ public class SeedanceVideoService {
         }
     }
 
-    private String pollTask(OkHttpClient client, String taskId) throws IOException, InterruptedException {
+    private String pollTask(OkHttpClient client, String taskId, java.util.function.BooleanSupplier isCancelled)
+            throws IOException, InterruptedException {
         AppProperties.Volcengine cfg = appProperties.getVolcengine();
         String url = cfg.getBaseUrl() + "/contents/generations/tasks/" + taskId;
         long deadline = System.currentTimeMillis() + MAX_WAIT_MS;
         int attempts = 0;
 
         while (System.currentTimeMillis() < deadline) {
+            // 用户已取消：立即中断轮询，不再空转查询火山引擎
+            if (isCancelled != null && isCancelled.getAsBoolean()) {
+                log.info("Seedance 任务已被用户取消，停止轮询 taskId={}", taskId);
+                throw new RuntimeException("已取消");
+            }
             attempts++;
             okhttp3.Request httpReq = new okhttp3.Request.Builder()
                     .url(url)

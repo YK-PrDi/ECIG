@@ -304,6 +304,37 @@ public class GenerateController {
         }
     }
 
+    /** 视频模式：把用户脚本用 Gemini 优化成 Seedance 规范中文视频提示词（≤500字），返回给前端确认/编辑。 */
+    @PostMapping("/api/video/optimize_prompt")
+    public ResponseEntity<Map<String, Object>> optimizeVideoPrompt(
+            @RequestParam(value = "images", required = false) List<MultipartFile> images,
+            @RequestParam(value = "prompt", defaultValue = "") String prompt,
+            @RequestParam(value = "durationSeconds", defaultValue = "8") int durationSeconds) {
+        if (prompt == null || prompt.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请先输入视频脚本或想法"));
+        }
+        List<File> tempFiles = new ArrayList<>();
+        try {
+            if (images != null) {
+                for (MultipartFile image : images) {
+                    if (image == null || image.isEmpty()) continue;
+                    File tmp = File.createTempFile("video_opt_", getSuffix(image.getOriginalFilename()));
+                    image.transferTo(tmp);
+                    tempFiles.add(tmp);
+                }
+            }
+            String optimized = imageGenerationService.optimizeVideoPrompt(prompt, tempFiles, durationSeconds);
+            return ResponseEntity.ok(Map.of("prompt", optimized));
+        } catch (Exception e) {
+            log.error("optimize_prompt 失败: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        } finally {
+            for (File f : tempFiles) {
+                if (f != null && f.exists()) f.delete();
+            }
+        }
+    }
+
     /**
      * 寮€鍝佹ā寮忓瑙傚垎鏋愶細鍩轰簬浜у搧鍥?鎻忚堪锛屾寜鍐呯疆 Excel 缁村害鐢熸垚缁撴瀯鍖栧瑙傚垎鏋愬崱鐗囥€?
      * 杩欐槸涓ゆ娴佺▼鐨勭涓€姝ワ紝杩斿洖鍙紪杈戝崱鐗囦緵鐢ㄦ埛纭鍚庝簩娆＄敓鍥俱€?

@@ -113,7 +113,7 @@ public class VideoController {
             try {
                 String savedPath;
                 if (isSeedance) {
-                    savedPath = seedanceVideoService.generateVideo(seedReq, outputPath);
+                    savedPath = seedanceVideoService.generateVideo(seedReq, outputPath, task::isCancelled);
                 } else {
                     savedPath = videoGenerationService.generateVideo(prompt, aspectRatio, dur, outputPath);
                 }

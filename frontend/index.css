@@ -1977,6 +1977,27 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 }
 .progress-card-title { font-weight: 500; }
 .progress-card-count { color: var(--text-dim); font-size: 12px; }
+.progress-stop-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, transform 0.1s;
+}
+.progress-stop-btn:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+    transform: scale(1.08);
+}
+.progress-stop-btn:active { transform: scale(0.95); }
+.progress-stop-btn:disabled { cursor: default; }
 .progress-card-bar-wrap {
     height: 6px;
     background: var(--bg-workspace, #f3f4f6);
