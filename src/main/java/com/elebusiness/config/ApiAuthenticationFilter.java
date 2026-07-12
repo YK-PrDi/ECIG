@@ -25,7 +25,7 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String uri = request.getRequestURI();
-        if (!uri.startsWith("/api/") || uri.startsWith("/api/auth/")) {
+        if (!uri.startsWith("/api/") || PublicApiPaths.isPublic(uri)) {
             filterChain.doFilter(request, response);
             return;
         }

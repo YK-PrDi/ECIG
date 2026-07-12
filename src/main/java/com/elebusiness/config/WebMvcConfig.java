@@ -32,9 +32,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
             @Override
             public boolean preHandle(HttpServletRequest req, HttpServletResponse res, Object handler) throws Exception {
                 String uri = req.getRequestURI();
-                // 白名单：登录接口本身不拦截
-                if (uri.startsWith("/api/auth/")) return true;
-                if (uri.startsWith("/api/prompts")) return true;
+                // 白名单：登录、提示词、类目索引等只读接口不拦截
+                if (PublicApiPaths.isPublic(uri)) return true;
                 // 只拦截 /api/** 接口，静态资源不拦截
                 if (!uri.startsWith("/api/")) return true;
                 Object auth = req.getSession(false) != null
