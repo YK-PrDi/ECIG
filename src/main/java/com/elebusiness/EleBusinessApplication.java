@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.awt.Desktop;
 import java.io.File;
@@ -17,6 +18,7 @@ import java.net.URI;
  */
 @SpringBootApplication
 @EnableConfigurationProperties
+@EnableScheduling
 public class EleBusinessApplication {
 
     private static final Logger log = LoggerFactory.getLogger(EleBusinessApplication.class);

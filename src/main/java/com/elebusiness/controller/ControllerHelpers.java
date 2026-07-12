@@ -23,6 +23,12 @@ final class ControllerHelpers {
     }
 
     /** 递归统计目录下的图片文件数（jpg/jpeg/png）。null/空目录返回 0。 */
+    static Map<String, Object> result(String name, String status, String message, String output, String localPath) {
+        Map<String, Object> m = result(name, status, message, output);
+        if (localPath != null && !localPath.isBlank()) m.put("localPath", localPath);
+        return m;
+    }
+
     static int countImages(File dir) {
         if (dir == null) return 0;
         File[] children = dir.listFiles();

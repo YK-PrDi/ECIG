@@ -1,89 +1,81 @@
 package com.elebusiness.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.elebusiness.service.workspace.UserStorageService;
+import com.elebusiness.service.workspace.UserWorkspaceDatabaseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.time.LocalDateTime;
 
-/**
- * 用户偏好配置：./user-prefs.json
- * 跟 config.json（钉钉/代理）独立 — 钉钉/代理是"应用配置"（往往一次性配好），
- * user-prefs 是"偏好配置"（用户随时可能改，比如换文件保存位置）。
- *
- * 当前字段：
- * - customOutputDir: 用户自选的图片保存位置；空 / 不可写时 ResourceController fallback 到默认 output-dir
- */
 @Service
 public class UserPrefsService {
 
     private static final Logger log = LoggerFactory.getLogger(UserPrefsService.class);
-    private static final String FILE_NAME = "user-prefs.json";
+    private static final long LEGACY_ADMIN_USER_ID = 1L;
+    private static final String CUSTOM_OUTPUT_DIR = "customOutputDir";
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private volatile Map<String, Object> cache;
+    private final UserWorkspaceDatabaseService databaseService;
+    private final UserStorageService storageService;
 
-    private File prefsFile() {
-        // 用 user.dir（项目根 / electron 启动目录），跟 config.json 同级
-        return new File(System.getProperty("user.dir"), FILE_NAME);
+    public UserPrefsService(UserWorkspaceDatabaseService databaseService, UserStorageService storageService) {
+        this.databaseService = databaseService;
+        this.storageService = storageService;
     }
 
-    @SuppressWarnings("unchecked")
-    private synchronized Map<String, Object> read() {
-        if (cache != null) return cache;
-        File f = prefsFile();
-        if (!f.exists()) {
-            cache = new HashMap<>();
-            return cache;
-        }
-        try {
-            cache = objectMapper.readValue(f, Map.class);
-            if (cache == null) cache = new HashMap<>();
-        } catch (IOException e) {
-            log.warn("user-prefs 读取失败，重置: {}", e.getMessage());
-            cache = new HashMap<>();
-        }
-        return cache;
-    }
-
-    private synchronized void write(Map<String, Object> data) {
-        cache = data;
-        try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(prefsFile(), data);
-        } catch (IOException e) {
-            log.error("user-prefs 写入失败: {}", e.getMessage(), e);
-        }
-    }
-
-    /** 用户自选的图片保存位置，空字符串表示未配置（caller fallback 到默认）。 */
     public String getCustomOutputDir() {
-        Object v = read().get("customOutputDir");
-        return v == null ? "" : String.valueOf(v).trim();
+        return getCustomOutputDir(LEGACY_ADMIN_USER_ID);
+    }
+
+    public String getCustomOutputDir(long userId) {
+        try (Connection conn = databaseService.openConnection(userId);
+             PreparedStatement ps = conn.prepareStatement("select pref_value from user_preferences where pref_key = ?")) {
+            ps.setString(1, CUSTOM_OUTPUT_DIR);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : "";
+            }
+        } catch (Exception e) {
+            log.warn("读取用户偏好失败: {}", e.getMessage());
+            return "";
+        }
     }
 
     public void setCustomOutputDir(String path) {
-        Map<String, Object> data = new HashMap<>(read());
-        if (path == null || path.isBlank()) {
-            data.remove("customOutputDir");
-        } else {
-            data.put("customOutputDir", path.trim());
-        }
-        write(data);
+        setCustomOutputDir(LEGACY_ADMIN_USER_ID, path);
     }
 
-    /**
-     * 校验目录可用：存在且可写；不存在时尝试创建。
-     * 返回 null = 校验通过；非 null = 错误信息（给前端 alert）。
-     */
+    public void setCustomOutputDir(long userId, String path) {
+        try (Connection conn = databaseService.openConnection(userId)) {
+            if (path == null || path.isBlank()) {
+                try (PreparedStatement ps = conn.prepareStatement("delete from user_preferences where pref_key = ?")) {
+                    ps.setString(1, CUSTOM_OUTPUT_DIR);
+                    ps.executeUpdate();
+                }
+                return;
+            }
+            try (PreparedStatement ps = conn.prepareStatement("""
+                    insert into user_preferences(pref_key, pref_value, updated_at)
+                    values (?, ?, ?)
+                    on conflict(pref_key) do update set pref_value = excluded.pref_value, updated_at = excluded.updated_at
+                    """)) {
+                ps.setString(1, CUSTOM_OUTPUT_DIR);
+                ps.setString(2, path.trim());
+                ps.setString(3, LocalDateTime.now().toString());
+                ps.executeUpdate();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("保存用户偏好失败", e);
+        }
+    }
+
     public String validateDir(String path) {
-        if (path == null || path.isBlank()) return null; // 空 = 用默认，不算错
+        if (path == null || path.isBlank()) return null;
         try {
             Path p = Paths.get(path).toAbsolutePath().normalize();
             File f = p.toFile();
@@ -92,7 +84,6 @@ public class UserPrefsService {
             }
             if (!f.isDirectory()) return "路径不是目录：" + p;
             if (!f.canWrite()) return "目录不可写：" + p;
-            // 进一步：尝试在目录内创建临时文件验证写权限
             File probe = new File(f, ".write-probe-" + System.nanoTime());
             try {
                 if (!probe.createNewFile()) return "目录写测试失败：" + p;
@@ -105,18 +96,19 @@ public class UserPrefsService {
         }
     }
 
-
-    /** 解析最终生效的输出目录：用户自选（验证通过）→ 否则 fallback 到 default。 */
     public File resolveOutputDir(String defaultDir) {
-        String custom = getCustomOutputDir();
+        return resolveOutputDir(LEGACY_ADMIN_USER_ID, defaultDir);
+    }
+
+    public File resolveOutputDir(long userId, String ignoredDefaultDir) {
+        String custom = getCustomOutputDir(userId);
         if (custom == null || custom.isBlank()) {
-            return new File(defaultDir);
+            return storageService.ensureDirectory(storageService.galleryRoot(userId)).toFile();
         }
-        // 校验失败时降级，不阻断生图主流程（A2 fallback 策略）
         String err = validateDir(custom);
         if (err != null) {
-            log.warn("customOutputDir 不可用 [{}]，降级到默认目录 [{}]: {}", custom, defaultDir, err);
-            return new File(defaultDir);
+            log.warn("customOutputDir 不可用 [{}]，降级到用户默认图库: {}", custom, err);
+            return storageService.ensureDirectory(storageService.galleryRoot(userId)).toFile();
         }
         return new File(custom);
     }

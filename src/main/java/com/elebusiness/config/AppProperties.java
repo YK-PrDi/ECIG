@@ -18,6 +18,7 @@ public class AppProperties {
     private Cos cos = new Cos();
     private Auth auth = new Auth();
     private Qwen qwen = new Qwen();
+    private Billing billing = new Billing();
 
     public Gemini getGemini() { return gemini; }
     public void setGemini(Gemini gemini) { this.gemini = gemini; }
@@ -41,6 +42,8 @@ public class AppProperties {
     public void setProxy(Proxy proxy) { this.proxy = proxy; }
     public Qwen getQwen() { return qwen; }
     public void setQwen(Qwen qwen) { this.qwen = qwen; }
+    public Billing getBilling() { return billing; }
+    public void setBilling(Billing billing) { this.billing = billing; }
 
     public static class Gemini {
         private String apiKey;
@@ -197,10 +200,16 @@ public class AppProperties {
     }
 
     public static class Auth {
+        private String username = "admin";
         private String password = "123456";
+        private String displayName = "Admin 用户";
 
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
+        public String getDisplayName() { return displayName; }
+        public void setDisplayName(String displayName) { this.displayName = displayName; }
     }
 
     public static class Qwen {
@@ -216,5 +225,51 @@ public class AppProperties {
         public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
 
         public boolean isEnabled() { return apiKey != null && !apiKey.isBlank(); }
+    }
+
+    public static class Billing {
+        private boolean chargeEnabled = false;
+        private int defaultImagePoints = 10;
+        private int defaultVideoBasePoints = 80;
+        private int defaultVideoSecondPoints = 5;
+        private String callbackToken = "";
+        private String credentialSecret = "";
+        private int exportMaxRows = 10000;
+        private boolean reconciliationScheduleEnabled = false;
+        private String reconciliationCron = "0 0 3 * * *";
+        private String reconciliationScheduleMode = "GLOBAL";
+        private int reconciliationUserBatchSize = 100;
+        private int reconciliationLeaseSeconds = 900;
+        private java.util.Map<String, Integer> imageAgentPoints = new java.util.LinkedHashMap<>();
+        private java.util.Map<String, Integer> videoModelBasePoints = new java.util.LinkedHashMap<>();
+
+        public boolean isChargeEnabled() { return chargeEnabled; }
+        public void setChargeEnabled(boolean chargeEnabled) { this.chargeEnabled = chargeEnabled; }
+        public int getDefaultImagePoints() { return defaultImagePoints; }
+        public void setDefaultImagePoints(int defaultImagePoints) { this.defaultImagePoints = defaultImagePoints; }
+        public int getDefaultVideoBasePoints() { return defaultVideoBasePoints; }
+        public void setDefaultVideoBasePoints(int defaultVideoBasePoints) { this.defaultVideoBasePoints = defaultVideoBasePoints; }
+        public int getDefaultVideoSecondPoints() { return defaultVideoSecondPoints; }
+        public void setDefaultVideoSecondPoints(int defaultVideoSecondPoints) { this.defaultVideoSecondPoints = defaultVideoSecondPoints; }
+        public String getCallbackToken() { return callbackToken; }
+        public void setCallbackToken(String callbackToken) { this.callbackToken = callbackToken; }
+        public String getCredentialSecret() { return credentialSecret; }
+        public void setCredentialSecret(String credentialSecret) { this.credentialSecret = credentialSecret; }
+        public int getExportMaxRows() { return exportMaxRows; }
+        public void setExportMaxRows(int exportMaxRows) { this.exportMaxRows = exportMaxRows; }
+        public boolean isReconciliationScheduleEnabled() { return reconciliationScheduleEnabled; }
+        public void setReconciliationScheduleEnabled(boolean reconciliationScheduleEnabled) { this.reconciliationScheduleEnabled = reconciliationScheduleEnabled; }
+        public String getReconciliationCron() { return reconciliationCron; }
+        public void setReconciliationCron(String reconciliationCron) { this.reconciliationCron = reconciliationCron; }
+        public String getReconciliationScheduleMode() { return reconciliationScheduleMode; }
+        public void setReconciliationScheduleMode(String reconciliationScheduleMode) { this.reconciliationScheduleMode = reconciliationScheduleMode; }
+        public int getReconciliationUserBatchSize() { return reconciliationUserBatchSize; }
+        public void setReconciliationUserBatchSize(int reconciliationUserBatchSize) { this.reconciliationUserBatchSize = reconciliationUserBatchSize; }
+        public int getReconciliationLeaseSeconds() { return reconciliationLeaseSeconds; }
+        public void setReconciliationLeaseSeconds(int reconciliationLeaseSeconds) { this.reconciliationLeaseSeconds = reconciliationLeaseSeconds; }
+        public java.util.Map<String, Integer> getImageAgentPoints() { return imageAgentPoints; }
+        public void setImageAgentPoints(java.util.Map<String, Integer> imageAgentPoints) { this.imageAgentPoints = imageAgentPoints; }
+        public java.util.Map<String, Integer> getVideoModelBasePoints() { return videoModelBasePoints; }
+        public void setVideoModelBasePoints(java.util.Map<String, Integer> videoModelBasePoints) { this.videoModelBasePoints = videoModelBasePoints; }
     }
 }

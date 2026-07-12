@@ -1,6 +1,7 @@
 package com.elebusiness.service.agent;
 
 import com.elebusiness.config.AppProperties;
+import com.elebusiness.service.provider.UserProviderCredentialService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class GptImageAgent implements ImageGeneratorAgent {
@@ -29,9 +31,12 @@ public class GptImageAgent implements ImageGeneratorAgent {
     private static final Logger log = LoggerFactory.getLogger(GptImageAgent.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final AppProperties appProperties;
+    private final UserProviderCredentialService credentialService;
 
-    public GptImageAgent(AppProperties appProperties) {
+    public GptImageAgent(AppProperties appProperties,
+                         UserProviderCredentialService credentialService) {
         this.appProperties = appProperties;
+        this.credentialService = credentialService;
     }
 
     private List<String> orderedKeys() {
@@ -61,6 +66,39 @@ public class GptImageAgent implements ImageGeneratorAgent {
     private String maskKey(String apiKey) {
         if (apiKey == null || apiKey.length() <= 6) return "***";
         return apiKey.substring(0, 4) + "***";
+    }
+
+    public List<RequestCredential> resolveRequestCredentials() {
+        Optional<UserProviderCredentialService.ResolvedCredential> userCredential =
+                GenerationInvocationContext.currentUserId()
+                        .flatMap(userId -> credentialService.resolveCredential(userId, "gpt-image", "default"));
+        if (userCredential.isPresent()) {
+            Map<String, Object> payload = userCredential.get().payload();
+            String apiKey = stringValue(payload.get("apiKey"));
+            if (apiKey != null && !apiKey.isBlank()) {
+                String baseUrl = stringValue(payload.get("baseUrl"));
+                return List.of(new RequestCredential(
+                        "user",
+                        apiKey,
+                        trimTrailingSlash(baseUrl != null && !baseUrl.isBlank()
+                                ? baseUrl
+                                : appProperties.getGptImage().getBaseUrl())
+                ));
+            }
+        }
+
+        List<RequestCredential> credentials = new ArrayList<>();
+        for (String apiKey : orderedKeys()) {
+            if (apiKey == null || apiKey.isBlank()) {
+                continue;
+            }
+            credentials.add(new RequestCredential("platform", apiKey, baseUrlForKey(apiKey)));
+        }
+        return List.copyOf(credentials);
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value).trim();
     }
 
     @Override
@@ -106,16 +144,17 @@ public class GptImageAgent implements ImageGeneratorAgent {
     @Override
     public boolean generateMulti(String prompt, List<String> refImagePaths,
                                  String whiteBgPath, String outputPath, String aspect) {
-        List<String> keys = appProperties.getGptImage().getApiKeys();
-        if (keys == null || keys.isEmpty()) {
+        List<RequestCredential> credentials = resolveRequestCredentials();
+        if (credentials.isEmpty()) {
             log.error("GPT-Image API Key 未配置");
             return false;
         }
 
         List<File> imageFiles = resolveImageFiles(refImagePaths);
         String size = pickSize(aspect);
-        for (String apiKey : orderedKeys()) {
-            String baseUrl = baseUrlForKey(apiKey);
+        for (RequestCredential credential : credentials) {
+            String apiKey = credential.apiKey();
+            String baseUrl = credential.baseUrl();
             log.info("GPT-Image 尝试 key [{}], baseUrl={}", maskKey(apiKey), baseUrl);
             boolean ok = !imageFiles.isEmpty()
                     ? generateWithImages(prompt, imageFiles, outputPath, apiKey, baseUrl, size)
@@ -262,16 +301,17 @@ public class GptImageAgent implements ImageGeneratorAgent {
     }
 
     public boolean generateWithMask(String prompt, File imageFile, File maskFile, String outputPath, String aspect) {
-        List<String> keys = appProperties.getGptImage().getApiKeys();
-        if (keys == null || keys.isEmpty()) {
+        List<RequestCredential> credentials = resolveRequestCredentials();
+        if (credentials.isEmpty()) {
             log.error("GPT-Image API Key 未配置");
             return false;
         }
 
         String size = pickSize(aspect);
         log.info("GPT-Image inpaint 使用 size={} (aspect={})", size, aspect);
-        for (String apiKey : orderedKeys()) {
-            String baseUrl = baseUrlForKey(apiKey);
+        for (RequestCredential credential : credentials) {
+            String apiKey = credential.apiKey();
+            String baseUrl = credential.baseUrl();
             log.info("GPT-Image inpaint 尝试 key [{}], baseUrl={}", maskKey(apiKey), baseUrl);
             boolean ok = doGenerateWithMask(prompt, imageFile, maskFile, outputPath, apiKey, baseUrl, size);
             if (ok) return true;
@@ -495,5 +535,8 @@ public class GptImageAgent implements ImageGeneratorAgent {
             log.error("GPT-Image 下载图片失败: {}", e.getMessage(), e);
             return false;
         }
+    }
+
+    public record RequestCredential(String source, String apiKey, String baseUrl) {
     }
 }

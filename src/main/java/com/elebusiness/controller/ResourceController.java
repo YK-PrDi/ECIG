@@ -6,6 +6,9 @@ import com.elebusiness.model.ProductInfo;
 import com.elebusiness.service.DingTalkService;
 import com.elebusiness.service.HistoryService;
 import com.elebusiness.service.UserPrefsService;
+import com.elebusiness.service.auth.CurrentUserService;
+import com.elebusiness.service.workspace.UserStorageService;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
@@ -17,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -34,13 +38,18 @@ public class ResourceController {
     private final AppProperties appProperties;
     private final UserPrefsService userPrefsService;
     private final HistoryService historyService;
+    private final CurrentUserService currentUserService;
+    private final UserStorageService userStorageService;
 
     public ResourceController(DingTalkService dingTalkService, AppProperties appProperties,
-                              UserPrefsService userPrefsService, HistoryService historyService) {
+                              UserPrefsService userPrefsService, HistoryService historyService,
+                              CurrentUserService currentUserService, UserStorageService userStorageService) {
         this.dingTalkService = dingTalkService;
         this.appProperties = appProperties;
         this.userPrefsService = userPrefsService;
         this.historyService = historyService;
+        this.currentUserService = currentUserService;
+        this.userStorageService = userStorageService;
     }
 
     @GetMapping("/api/products")
@@ -68,8 +77,12 @@ public class ResourceController {
     }
 
     @GetMapping("/api/image")
-    public ResponseEntity<FileSystemResource> getImage(@RequestParam String path) {
-        File file = new File(path);
+    public ResponseEntity<FileSystemResource> getImage(@RequestParam String path, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
+        File file = new File(path).getAbsoluteFile();
+        if (!userStorageService.isInsideUserFiles(userId, file.toPath())) {
+            return ResponseEntity.badRequest().build();
+        }
         if (!file.exists() || !file.isFile()) return ResponseEntity.notFound().build();
         String lower = path.toLowerCase();
         String mimeType = lower.endsWith(".png") ? "image/png"
@@ -81,8 +94,12 @@ public class ResourceController {
     }
 
     @GetMapping("/api/download")
-    public ResponseEntity<FileSystemResource> downloadImage(@RequestParam String path) {
-        File file = new File(path);
+    public ResponseEntity<FileSystemResource> downloadImage(@RequestParam String path, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
+        File file = new File(path).getAbsoluteFile();
+        if (!userStorageService.isInsideUserFiles(userId, file.toPath())) {
+            return ResponseEntity.badRequest().build();
+        }
         if (!file.exists() || !file.isFile()) return ResponseEntity.notFound().build();
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
@@ -129,15 +146,20 @@ public class ResourceController {
 
     @GetMapping("/api/gallery")
     public ResponseEntity<Map<String, Object>> listGallery(
-            @RequestParam(required = false) String path) {
+            @RequestParam(required = false) String path,
+            HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
         try {
-            File rootDir = new File(appProperties.getPaths().getOutputDir()).getCanonicalFile();
+            File rootDir = userPrefsService.resolveOutputDir(userId, appProperties.getPaths().getOutputDir()).getCanonicalFile();
+            Path galleryRoot = rootDir.toPath().toAbsolutePath().normalize();
+            Path tempRoot = userStorageService.tempOutputRoot(userId).toAbsolutePath().normalize();
             File target = (path == null || path.isBlank())
                     ? rootDir
                     : new File(path).getCanonicalFile();
+            Path targetPath = target.toPath().toAbsolutePath().normalize();
 
             // 安全检查：目标必须在 outputDir 内
-            if (!target.getAbsolutePath().startsWith(rootDir.getAbsolutePath())) {
+            if (!targetPath.startsWith(galleryRoot) && !targetPath.startsWith(tempRoot)) {
                 return ResponseEntity.badRequest().body(Map.of("error", "非法路径"));
             }
             if (!target.exists()) {
@@ -172,6 +194,7 @@ public class ResourceController {
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("path", target.getAbsolutePath());
             resp.put("root", rootDir.getAbsolutePath());
+            resp.put("tempRoot", tempRoot.toString());
             resp.put("items", items);
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
@@ -222,9 +245,10 @@ public class ResourceController {
     }
 
     @DeleteMapping("/api/gallery")
-    public ResponseEntity<Map<String, Object>> deleteGalleryItem(@RequestParam String path) {
+    public ResponseEntity<Map<String, Object>> deleteGalleryItem(@RequestParam String path, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
         try {
-            File rootDir = new File(appProperties.getPaths().getOutputDir()).getCanonicalFile();
+            File rootDir = userPrefsService.resolveOutputDir(userId, appProperties.getPaths().getOutputDir()).getCanonicalFile();
             File target = new File(path).getCanonicalFile();
             if (!target.getAbsolutePath().startsWith(rootDir.getAbsolutePath())) {
                 return ResponseEntity.badRequest().body(Map.of("success", false, "error", "非法路径"));
@@ -246,7 +270,8 @@ public class ResourceController {
      * body: { tempPath: 临时绝对路径, subDir?: 永久目录下的子目录名（默认按日期 yyyyMMdd） }
      */
     @PostMapping("/api/save-to-gallery")
-    public ResponseEntity<Map<String, Object>> saveToGallery(@RequestBody Map<String, String> body) {
+    public ResponseEntity<Map<String, Object>> saveToGallery(@RequestBody Map<String, String> body, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
         String tempPath = body == null ? null : body.get("tempPath");
         if (tempPath == null || tempPath.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "缺少 tempPath"));
@@ -259,7 +284,7 @@ public class ResourceController {
                 if (subDir == null || subDir.isBlank()) {
                     subDir = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
                 }
-                File baseDir = userPrefsService.resolveOutputDir(appProperties.getPaths().getOutputDir());
+                File baseDir = userPrefsService.resolveOutputDir(userId, appProperties.getPaths().getOutputDir());
                 log.info("解析输出目录: {}", baseDir.getAbsolutePath());
                 File targetDir = new File(baseDir, subDir);
                 if (!targetDir.exists()) {
@@ -295,7 +320,7 @@ public class ResourceController {
             // IOException("文件名、目录名或卷标语法不正确")。Path.normalize 是纯字符串规范化，跨平台稳定。
             // 前端把 \\ 替换成 / 后路径形如 D:/code/ele-business-java/./.temp-output/自定义模式生成/.../1.jpg，
             // normalize 会把 ./ 抹掉，得到干净的绝对路径。
-            java.nio.file.Path tempRoot = java.nio.file.Paths.get(appProperties.getPaths().getTempOutputDir())
+            java.nio.file.Path tempRoot = userStorageService.tempOutputRoot(userId)
                     .toAbsolutePath().normalize();
             java.nio.file.Path source = java.nio.file.Paths.get(tempPath)
                     .toAbsolutePath().normalize();
@@ -322,7 +347,7 @@ public class ResourceController {
                 subDir = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
             }
             // 用户在 ⚙️ 设置 里自选的保存位置；空 / 不可写时 resolveOutputDir 自动 fallback 到默认 output-dir (A2)
-            File baseDir = userPrefsService.resolveOutputDir(appProperties.getPaths().getOutputDir());
+            File baseDir = userPrefsService.resolveOutputDir(userId, appProperties.getPaths().getOutputDir());
             log.info("解析输出目录: {}", baseDir.getAbsolutePath());
             File targetDir = new File(baseDir, subDir);
             if (!targetDir.exists()) {
@@ -350,7 +375,7 @@ public class ResourceController {
             try {
                 java.nio.file.Path batchDir = source.getParent();
                 if (batchDir != null) {
-                    historyService.markSaved(batchDir.toString(), target.getAbsolutePath());
+                    historyService.markSaved(userId, batchDir.toString(), target.getAbsolutePath());
                 }
             } catch (Exception markErr) {
                 log.warn("markSaved 失败（不影响保存主流程）: {}", markErr.getMessage());
@@ -368,19 +393,21 @@ public class ResourceController {
     }
 
     @PostMapping("/api/feedback")
-    public ResponseEntity<Map<String, Object>> saveFeedback(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> saveFeedback(@RequestBody Map<String, Object> body,
+                                                            HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
         try {
-            String prompt    = String.valueOf(body.getOrDefault("prompt", ""));
-            String imagePath = String.valueOf(body.getOrDefault("imagePath", ""));
-            String rating    = String.valueOf(body.getOrDefault("rating", ""));
+            Map<String, Object> safeBody = body == null ? Map.of() : body;
+            String prompt    = String.valueOf(safeBody.getOrDefault("prompt", ""));
+            String imagePath = String.valueOf(safeBody.getOrDefault("imagePath", ""));
+            String rating    = String.valueOf(safeBody.getOrDefault("rating", ""));
             String time      = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
             String line = String.format("[%s] %s | 图片: %s | Prompt: %s%n", time, rating, imagePath, prompt);
 
-            File dir = new File(appProperties.getPaths().getOutputDir());
-            dir.mkdirs();
-            File feedbackFile = new File(dir, "feedback.txt");
-            java.nio.file.Files.writeString(feedbackFile.toPath(), line,
+            Path feedbackFile = userStorageService.ensureDirectory(userStorageService.filesRoot(userId))
+                    .resolve("feedback.txt");
+            java.nio.file.Files.writeString(feedbackFile, line,
                     StandardCharsets.UTF_8,
                     java.nio.file.StandardOpenOption.CREATE,
                     java.nio.file.StandardOpenOption.APPEND);

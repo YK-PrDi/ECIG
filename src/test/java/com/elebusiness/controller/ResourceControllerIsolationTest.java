@@ -1,0 +1,48 @@
+package com.elebusiness.controller;
+
+import com.elebusiness.config.AppProperties;
+import com.elebusiness.service.auth.AuthService;
+import com.elebusiness.service.auth.CurrentUserService;
+import com.elebusiness.service.workspace.UserStorageService;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.mock.web.MockHttpSession;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class ResourceControllerIsolationTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void feedbackIsStoredInCurrentUsersFileWorkspace() throws Exception {
+        AppProperties props = new AppProperties();
+        props.getPaths().setUserDataDir(tempDir.resolve("user-data").toString());
+        props.getPaths().setOutputDir(tempDir.resolve("global-output").toString());
+        UserStorageService storageService = new UserStorageService(props);
+        CurrentUserService currentUserService = new CurrentUserService();
+        MockHttpSession session = new MockHttpSession();
+        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER"));
+
+        ResourceController controller = new ResourceController(
+                null, props, null, null, currentUserService, storageService);
+
+        controller.saveFeedback(Map.<String, Object>of(
+                "prompt", "prompt-a",
+                "imagePath", "/tmp/a.jpg",
+                "rating", "good"
+        ), session);
+
+        Path userFeedback = storageService.filesRoot(1001L).resolve("feedback.txt");
+        assertTrue(Files.exists(userFeedback), "反馈必须写入当前用户文件空间");
+        assertTrue(Files.readString(userFeedback).contains("prompt-a"));
+        assertFalse(Files.exists(tempDir.resolve("global-output").resolve("feedback.txt")),
+                "反馈不能继续混写到全局输出目录");
+    }
+}

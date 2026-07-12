@@ -7,8 +7,13 @@ import com.elebusiness.service.CosService;
 import com.elebusiness.service.HistoryService;
 import com.elebusiness.service.ImageGenerationService;
 import com.elebusiness.service.KaiPinMaterialService;
+import com.elebusiness.service.auth.CurrentUserService;
+import com.elebusiness.service.billing.BillingService;
+import com.elebusiness.service.billing.GenerationPricingService;
+import com.elebusiness.service.workspace.UserStorageService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -34,6 +39,10 @@ public class KaiPinMaterialController {
     private final com.elebusiness.service.TaskService taskService;
     private final HistoryService historyService;
     private final CosService cosService;
+    private final CurrentUserService currentUserService;
+    private final UserStorageService userStorageService;
+    private final BillingService billingService;
+    private final GenerationPricingService pricingService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public KaiPinMaterialController(KaiPinMaterialService materialService,
@@ -41,13 +50,21 @@ public class KaiPinMaterialController {
                                     AppProperties appProperties,
                                     com.elebusiness.service.TaskService taskService,
                                     HistoryService historyService,
-                                    CosService cosService) {
+                                    CosService cosService,
+                                    CurrentUserService currentUserService,
+                                    UserStorageService userStorageService,
+                                    BillingService billingService,
+                                    GenerationPricingService pricingService) {
         this.materialService = materialService;
         this.imageGenerationService = imageGenerationService;
         this.appProperties = appProperties;
         this.taskService = taskService;
         this.historyService = historyService;
         this.cosService = cosService;
+        this.currentUserService = currentUserService;
+        this.userStorageService = userStorageService;
+        this.billingService = billingService;
+        this.pricingService = pricingService;
     }
 
     @PostMapping("/api/kaipin_material_prompt")
@@ -83,9 +100,11 @@ public class KaiPinMaterialController {
     public ResponseEntity<Map<String, Object>> saveMaterial(
             @RequestParam("image") MultipartFile image,
             @RequestParam(value = "title", defaultValue = "") String title,
-            @RequestParam(value = "prompt", defaultValue = "") String prompt) {
+            @RequestParam(value = "prompt", defaultValue = "") String prompt,
+            HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
         try {
-            KaiPinMaterial item = materialService.save(image, title, prompt);
+            KaiPinMaterial item = materialService.save(userId, image, title, prompt);
             return ResponseEntity.ok(Map.of("success", true, "item", materialService.toDto(item)));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
@@ -94,16 +113,19 @@ public class KaiPinMaterialController {
 
     @GetMapping("/api/kaipin_materials")
     public ResponseEntity<Map<String, Object>> listMaterials(
-            @RequestParam(value = "limit", defaultValue = "120") int limit) {
-        List<Map<String, Object>> items = materialService.list(limit).stream()
+            @RequestParam(value = "limit", defaultValue = "120") int limit,
+            HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
+        List<Map<String, Object>> items = materialService.list(userId, limit).stream()
                 .map(materialService::toDto)
                 .toList();
         return ResponseEntity.ok(Map.of("items", items));
     }
 
     @DeleteMapping("/api/kaipin_materials/{id}")
-    public ResponseEntity<Map<String, Object>> deleteMaterial(@PathVariable Long id) {
-        materialService.delete(id);
+    public ResponseEntity<Map<String, Object>> deleteMaterial(@PathVariable Long id, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
+        materialService.delete(userId, id);
         return ResponseEntity.ok(Map.of("success", true));
     }
 
@@ -115,7 +137,9 @@ public class KaiPinMaterialController {
             @RequestParam(value = "agentId", defaultValue = "gpt-image") String agentId,
             @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
             @RequestParam(value = "materialPromptOverrides", required = false) String materialPromptOverrides,
-            @RequestParam(value = "configJson", required = false) String configJson) {
+            @RequestParam(value = "configJson", required = false) String configJson,
+            HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
         if (whiteImage == null || whiteImage.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "请先上传白底产品图"));
         }
@@ -133,7 +157,7 @@ public class KaiPinMaterialController {
             whiteImage.transferTo(whiteTmp);
 
             Map<Long, KaiPinMaterial> byId = new LinkedHashMap<>();
-            for (KaiPinMaterial item : materialService.findAllByIds(ids)) {
+            for (KaiPinMaterial item : materialService.findAllByIds(userId, ids)) {
                 byId.put(item.getId(), item);
             }
             List<KaiPinMaterial> selected = ids.stream()
@@ -146,11 +170,13 @@ public class KaiPinMaterialController {
                 return ResponseEntity.badRequest().body(Map.of("error", "选中的素材图片不存在，请刷新素材库后重试"));
             }
 
-            GenerationTask task = taskService.createTask(selected.size());
+            GenerationTask task = taskService.createTask(userId, selected.size());
+            int estimatedPoints = pricingService.estimateImageGeneration("kaipin", generationAgentId, selected.size());
+            task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), "kaipin", generationAgentId, estimatedPoints).getId());
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-            String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
-                    "开品素材库融合/" + timestamp).getAbsolutePath();
-            new File(outputDir).mkdirs();
+            String outputDir = userStorageService.ensureDirectory(
+                    userStorageService.tempOutputRoot(userId).resolve("开品素材库融合").resolve(timestamp)
+            ).toFile().getAbsolutePath();
 
             final File whiteFinal = whiteTmp;
             final List<KaiPinMaterial> selectedFinal = new ArrayList<>(selected);
@@ -172,6 +198,7 @@ public class KaiPinMaterialController {
                     futures.add(CompletableFuture.supplyAsync(() -> {
                         if (task.isCancelled()) return "失败: 已取消";
                         boolean ok = imageGenerationService.generateImageMulti(
+                                userId,
                                 prompt,
                                 List.of(whiteFinal.getAbsolutePath(), materialImage.getAbsolutePath()),
                                 null,
@@ -205,7 +232,7 @@ public class KaiPinMaterialController {
                                 log.warn("COS 上传失败，降级本地路径: {}", ce.getMessage());
                             }
                         }
-                        task.addResult(ControllerHelpers.result(name, "success", null, outputRef));
+                        task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
                     }
                     task.incrementProgress();
                 }
@@ -218,8 +245,8 @@ public class KaiPinMaterialController {
                     List<File> refs = new ArrayList<>();
                     refs.add(whiteFinal);
                     for (KaiPinMaterial material : selectedFinal) refs.add(new File(material.getImagePath()));
-                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(refs);
-                    historyService.recordGeneration(sessionId, "kaipin",
+                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refs);
+                    historyService.recordGeneration(userId, sessionId, "kaipin",
                             basePromptFinal, generationAgentId, archive.refPaths, outputDir, configJson);
                 } catch (Exception e) {
                     log.warn("开品素材库融合写历史失败（不影响生图）: {}", e.getMessage());

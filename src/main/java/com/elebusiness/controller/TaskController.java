@@ -1,6 +1,8 @@
 package com.elebusiness.controller;
 
 import com.elebusiness.service.TaskService;
+import com.elebusiness.service.auth.CurrentUserService;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,15 +17,18 @@ import java.util.Map;
 public class TaskController {
 
     private final TaskService taskService;
+    private final CurrentUserService currentUserService;
 
-    public TaskController(TaskService taskService) {
+    public TaskController(TaskService taskService, CurrentUserService currentUserService) {
         this.taskService = taskService;
+        this.currentUserService = currentUserService;
     }
 
     /** 查询任务状态 */
     @GetMapping("/api/task/{taskId}")
-    public ResponseEntity<Map<String, Object>> getTaskStatus(@PathVariable String taskId) {
-        return taskService.getTask(taskId)
+    public ResponseEntity<Map<String, Object>> getTaskStatus(@PathVariable String taskId, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
+        return taskService.getTask(userId, taskId)
                 .map(task -> {
                     Map<String, Object> resp = new LinkedHashMap<>();
                     resp.put("taskId", task.getId());
@@ -39,8 +44,9 @@ public class TaskController {
 
     /** 停止任务 */
     @PostMapping("/api/task/{taskId}/stop")
-    public ResponseEntity<Map<String, Object>> stopTask(@PathVariable String taskId) {
-        boolean ok = taskService.cancel(taskId);
+    public ResponseEntity<Map<String, Object>> stopTask(@PathVariable String taskId, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
+        boolean ok = taskService.cancel(userId, taskId);
         return ResponseEntity.ok(Map.of("success", ok));
     }
 }

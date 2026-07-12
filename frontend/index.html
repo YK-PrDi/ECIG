@@ -94,6 +94,8 @@
             <img src="icon.png" alt="羽刃"
                 style="width: 48px; height: 48px; border-radius: 12px; margin: 0 auto 20px; display: block; object-fit: cover;">
             <h2>身份验证</h2>
+            <input type="text" class="input-field" style="margin:20px 0 0; padding:12px;" placeholder="请输入账号"
+                id="loginUser" value="admin">
             <input type="password" class="input-field" style="margin:20px 0; padding:12px;" placeholder="请输入访问密钥"
                 id="loginPass" onkeydown="if(event.key==='Enter')handleLogin()">
             <button class="btn-primary" style="width:100%; height:44px;" onclick="handleLogin()">进入工坊</button>
@@ -123,13 +125,13 @@
                 </svg>
             </button>
             <div class="user-menu-container">
-                <div class="avatar-btn" onclick="toggleUserMenu(event)">A</div>
+                <div class="avatar-btn" id="navUserAvatar" onclick="toggleUserMenu(event)">A</div>
                 <div class="user-dropdown" id="userMenu" onclick="event.stopPropagation()">
                     <div class="user-info">
-                        <div class="user-avatar-large">A</div>
+                        <div class="user-avatar-large" id="menuUserAvatar">A</div>
                         <div>
-                            <h4>Admin 用户</h4>
-                            <p>ID: 1008611</p>
+                            <h4 id="menuUserName">Admin 用户</h4>
+                            <p id="menuUserId">ID: 1</p>
                         </div>
                     </div>
                     <div class="user-balance">
@@ -161,7 +163,7 @@
                         <span id="autoBoardSwitch" style="margin-left:auto;font-size:0.72rem;color:var(--primary);">开</span>
                     </div>
                     <div style="height: 1px; background: var(--border); margin: 8px -20px 0;"></div>
-                    <div class="user-menu-item" style="color: #EF4444;" onclick="document.getElementById('loginOverlay').style.display='flex'">退出登录</div>
+                    <div class="user-menu-item" style="color: #EF4444;" onclick="handleLogout()">退出登录</div>
                 </div>
             </div>
         </div>
@@ -461,15 +463,13 @@
                                     <span style="font-weight:600; font-size:0.9rem;">启用 LoRA 增强</span>
                                 </label>
                                 <div id="loraPresetWrapper" style="display:none; flex-direction:column; gap:4px;">
-                                    <label style="font-size:0.85rem; color:var(--text-dim);">摄影风格</label>
-                                    <select id="loraPresetSelect" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid rgba(99,102,241,0.2); background:white; font-size:0.9rem;">
-                                        <option value="studio">工作室风格（专业灯光）</option>
-                                        <option value="lifestyle">生活场景（自然氛围）</option>
-                                        <option value="minimal">极简白底（纯净背景）</option>
-                                    </select>
+                                    <input type="hidden" id="loraPresetSelect" value="default">
+                                    <div style="font-size:0.82rem; color:var(--text-muted); line-height:1.5;">
+                                        当前使用统一电商摄影调性
+                                    </div>
                                 </div>
                                 <div style="font-size:0.75rem; color:var(--text-dim); line-height:1.4;">
-                                    💡 使用 Stable Diffusion + LoRA 提升产品摄影质感
+                                    💡 使用 Liblib LoRA 提升产品摄影质感，后续可扩展更多调性
                                 </div>
                             </div>
                         </div>
@@ -700,6 +700,10 @@
     <script src="data/categories/lin-yu-hua-sa-tao-zhuang.js"></script>
     <script src="data/categories/hua-sa-pen-tou.js"></script>
 
+    <script src="js/api-client.js"></script>
+    <script src="js/auth-session.js"></script>
+    <script src="js/task-polling.js"></script>
+
     <script>
         function escHtml(str) {
             const d = document.createElement('div');
@@ -746,44 +750,209 @@
             }
         };
 
-        const CUSTOM_IMAGE_STYLES = {
-            original: {
+        const CUSTOM_STYLE_OPTIONS = [
+            {
+                value: 'original',
                 label: '原图延展',
-                prompt: '【自定义改图风格】以白底产品图为主体基准，不强行套用夸张风格；根据用户需求自然扩写场景、光影、材质和卖点表达，保持产品外形、颜色、结构细节高度一致。'
+                category: 'neutral',
+                desc: '自然扩写，不强套风格',
+                prompt: '【自定义改图风格】以白底产品图为主体基准，不强行套用夸张风格；根据用户需求自然扩写场景、光影、材质和卖点表达，产品主体保持一致，保持产品外形、颜色、结构细节高度一致。'
             },
-            'tech-blue': {
+            {
+                value: 'tech-blue',
                 label: '科技蓝',
-                prompt: '【自定义改图风格·科技蓝】画面采用蓝白科技感背景、冷色调高光、玻璃/金属质感平台和精密商业棚拍布光，突出智能、高端、理性、专业。'
+                category: 'color',
+                desc: '蓝白冷光，智能精密',
+                prompt: '【自定义改图风格·科技蓝】配色提示词：蓝白科技感背景、冷色调高光、玻璃/金属质感平台、精密商业棚拍布光；突出智能、高端、理性、专业，产品主体保持一致。'
             },
-            'girl-pink': {
+            {
+                value: 'girl-pink',
                 label: '少女粉',
-                prompt: '【自定义改图风格·少女粉】画面采用柔和粉白色调、轻盈治愈氛围、圆润道具、细腻柔光和干净背景，突出亲和、精致、甜美但不过度幼稚。'
+                category: 'color',
+                desc: '粉白柔光，精致亲和',
+                prompt: '【自定义改图风格·少女粉】配色提示词：柔和粉白色调、轻盈治愈氛围、圆润道具、细腻柔光和干净背景；突出亲和、精致、甜美但不过度幼稚，产品主体保持一致。'
             },
-            'premium-gray': {
+            {
+                value: 'premium-gray',
                 label: '高级灰',
-                prompt: '【自定义改图风格·高级灰】画面采用浅灰到炭灰的层次背景、克制留白、柔和阴影和高端商业摄影质感，突出品质、专业、耐看和高客单价感。'
+                category: 'color',
+                desc: '克制留白，高客单质感',
+                prompt: '【自定义改图风格·高级灰】配色提示词：浅灰到炭灰的层次背景、克制留白、柔和阴影和高端商业摄影质感；突出品质、专业、耐看和高客单价感，产品主体保持一致。'
             },
-            'natural-green': {
+            {
+                value: 'natural-green',
                 label: '自然绿',
-                prompt: '【自定义改图风格·自然绿】画面采用低饱和植物绿、自然光、清爽生活方式场景、木质或石材细节，突出环保、健康、舒适和生活方式价值。'
+                category: 'color',
+                desc: '植物低饱和，健康舒适',
+                prompt: '【自定义改图风格·自然绿】配色提示词：低饱和植物绿、自然光、清爽生活方式场景、木质或石材细节；突出环保、健康、舒适和生活方式价值，产品主体保持一致。'
             },
-            'sunset-orange': {
+            {
+                value: 'sunset-orange',
                 label: '暖阳橙',
-                prompt: '【自定义改图风格·暖阳橙】画面采用暖橙夕阳光感、温暖渐变、柔和高光和长阴影，突出活力、温度、生活幸福感和情绪感染力。'
+                category: 'color',
+                desc: '暖橙夕阳，情绪感染',
+                prompt: '【自定义改图风格·暖阳橙】配色提示词：暖橙夕阳光感、温暖渐变、柔和高光和长阴影；突出活力、温度、生活幸福感和情绪感染力，产品主体保持一致。'
             },
-            'khaki': {
+            {
+                value: 'khaki',
                 label: '卡其色',
-                prompt: '【自定义改图风格·卡其色】画面采用温暖土黄卡其色调、哑光质感背景和柔和自然光，突出自然耐看的户外生活感。'
+                category: 'color',
+                desc: '土黄哑光，户外耐看',
+                prompt: '【自定义改图风格·卡其色】配色提示词：温暖土黄卡其色调、哑光质感背景、柔和自然光、低饱和暖棕渐变；突出自然、耐看、户外生活感，产品主体保持一致。'
             },
-            'light-yellow': {
+            {
+                value: 'light-yellow',
                 label: '淡黄色',
-                prompt: '【自定义改图风格·淡黄色】画面采用柔和浅黄渐变背景、清新明快光效，突出活泼亲切的清爽氛围。'
+                category: 'color',
+                desc: '浅黄通透，清新明快',
+                prompt: '【自定义改图风格·淡黄色】配色提示词：柔和浅黄渐变背景、清新明快光效、轻盈通透感、自然暖光；突出活泼、亲切、清爽，产品主体保持一致。'
             },
-            'beige': {
+            {
+                value: 'beige',
                 label: '米黄色',
-                prompt: '【自定义改图风格·米黄色】画面采用奶油米白渐变、细腻柔光和温柔哑光背景，突出温暖高级的舒适质感。'
+                category: 'color',
+                desc: '奶油米白，温柔高级',
+                prompt: '【自定义改图风格·米黄色】配色提示词：奶油米白渐变、细腻柔光、温柔哑光背景和干净高雅留白；突出温暖、高级、舒适质感，产品主体保持一致。'
+            },
+            {
+                value: 'cyber-black',
+                label: '赛博黑',
+                category: 'color',
+                desc: '黑紫霓虹，强视觉冲击',
+                prompt: '【自定义改图风格·赛博黑】配色提示词：深黑背景、紫蓝霓虹边缘光、金属反射、高对比暗调棚拍；突出未来感、酷感、先锋科技氛围，产品主体保持一致。'
+            },
+            {
+                value: 'mint-cyan',
+                label: '薄荷青',
+                category: 'color',
+                desc: '青绿色清爽，洁净轻盈',
+                prompt: '【自定义改图风格·薄荷青】配色提示词：薄荷青到浅青蓝渐变、干净水润高光、透明亚克力或清洁感道具；突出清爽、洁净、轻盈、年轻化，产品主体保持一致。'
+            },
+            {
+                value: 'lavender-purple',
+                label: '薰衣草紫',
+                category: 'color',
+                desc: '淡紫柔雾，精致治愈',
+                prompt: '【自定义改图风格·薰衣草紫】配色提示词：低饱和淡紫背景、柔雾光影、细腻渐变和轻奢小道具；突出精致、梦幻、治愈、女性向审美，产品主体保持一致。'
+            },
+            {
+                value: 'wine-red',
+                label: '酒红色',
+                category: 'color',
+                desc: '深红丝绒，礼赠高级',
+                prompt: '【自定义改图风格·酒红色】配色提示词：深酒红背景、柔和暗部、丝绒或皮革质感承托、金色微高光；突出礼赠、高级、沉稳、有记忆点，产品主体保持一致。'
+            },
+            {
+                value: 'clean-white',
+                label: '纯净白',
+                category: 'color',
+                desc: '白色留白，主图干净',
+                prompt: '【自定义改图风格·纯净白】配色提示词：高明度白色背景、轻微灰阶层次、自然接触阴影、无杂乱道具；突出干净、可信、电商主图级清晰感，产品主体保持一致。'
+            },
+            {
+                value: 'black-gold',
+                label: '黑金色',
+                category: 'color',
+                desc: '黑金对比，奢华稳定',
+                prompt: '【自定义改图风格·黑金色】配色提示词：深黑背景、低饱和金色边缘光、细腻金属反射和稳重台面；突出奢华、专业、礼盒感和高价值感，产品主体保持一致。'
+            },
+            {
+                value: 'sky-blue',
+                label: '天空蓝',
+                category: 'color',
+                desc: '浅蓝通透，清洁明亮',
+                prompt: '【自定义改图风格·天空蓝】配色提示词：浅天空蓝背景、明亮自然光、柔和白色平台和轻微空气感；突出清洁、明亮、轻松、可信赖，产品主体保持一致。'
+            },
+            {
+                value: 'ocean-teal',
+                label: '海盐青',
+                category: 'color',
+                desc: '青蓝海盐，清凉理性',
+                prompt: '【自定义改图风格·海盐青】配色提示词：青蓝海盐色、冷暖平衡光、细腻水波或磨砂玻璃质感；突出清凉、理性、专业、清洁感，产品主体保持一致。'
+            },
+            {
+                value: 'forest-green',
+                label: '森林绿',
+                category: 'color',
+                desc: '深绿自然，稳重环保',
+                prompt: '【自定义改图风格·森林绿】配色提示词：深森林绿背景、低饱和自然材质、木纹/石材承托和柔和侧光；突出稳重、环保、耐用、自然品质，产品主体保持一致。'
+            },
+            {
+                value: 'coffee-brown',
+                label: '咖啡棕',
+                category: 'color',
+                desc: '棕色暖调，居家耐看',
+                prompt: '【自定义改图风格·咖啡棕】配色提示词：咖啡棕暖调背景、木质台面、柔和窗光和细腻阴影；突出居家、温暖、耐看、成熟质感，产品主体保持一致。'
+            },
+            {
+                value: 'metal-silver',
+                label: '金属银',
+                category: 'color',
+                desc: '银灰高光，工业精密',
+                prompt: '【自定义改图风格·金属银】配色提示词：银灰金属渐变、精准高光线条、硬朗台面和冷静棚拍光；突出工业感、精密、可靠、高性能，产品主体保持一致。'
+            },
+            {
+                value: 'peach-cream',
+                label: '蜜桃奶油',
+                category: 'color',
+                desc: '桃粉奶油，柔和亲切',
+                prompt: '【自定义改图风格·蜜桃奶油】配色提示词：蜜桃粉到奶油白渐变、圆润柔光、轻巧道具和温和阴影；突出亲切、温柔、轻盈、好上手，产品主体保持一致。'
+            },
+            {
+                value: 'home-lifestyle',
+                label: '居家场景',
+                category: 'scene',
+                desc: '桌面家居，真实使用',
+                prompt: '【自定义改图风格·居家场景】场景提示词：把产品放入真实居家桌面或收纳环境，加入恰当生活道具、自然窗光和可验证使用动作；画面要说明产品如何被使用，产品主体保持一致。'
+            },
+            {
+                value: 'outdoor-camping',
+                label: '户外露营',
+                category: 'scene',
+                desc: '户外道具，耐用便携',
+                prompt: '【自定义改图风格·户外露营】场景提示词：户外露营、阳台或庭院环境，加入便携收纳、木桌、植物或自然地面材质；突出耐用、便携、适合户外生活，产品主体保持一致。'
+            },
+            {
+                value: 'office-desktop',
+                label: '办公桌面',
+                category: 'scene',
+                desc: '效率桌搭，专业秩序',
+                prompt: '【自定义改图风格·办公桌面】场景提示词：现代办公桌面、电脑/笔记本/文件等辅助道具、整洁秩序构图和专业自然光；突出效率、专业、稳定可靠，产品主体保持一致。'
+            },
+            {
+                value: 'bathroom-clean',
+                label: '浴室清洁',
+                category: 'scene',
+                desc: '瓷砖水光，洁净防潮',
+                prompt: '【自定义改图风格·浴室清洁】场景提示词：干净浴室、瓷砖或岩板背景、水润高光、防潮细节和整洁收纳道具；突出清洁、易打理、防水防潮或卫生感，产品主体保持一致。'
+            },
+            {
+                value: 'kitchen-counter',
+                label: '厨房台面',
+                category: 'scene',
+                desc: '厨房实用，明亮烟火气',
+                prompt: '【自定义改图风格·厨房台面】场景提示词：明亮厨房台面、餐厨器具或食材作为辅助道具、干净操作区和真实接触阴影；突出实用、易清洁、日常高频使用，产品主体保持一致。'
+            },
+            {
+                value: 'gift-holiday',
+                label: '礼赠节日',
+                category: 'scene',
+                desc: '礼盒氛围，适合送礼',
+                prompt: '【自定义改图风格·礼赠节日】场景提示词：礼盒、丝带、节日氛围小道具和温暖聚光，构图有开箱或陈列仪式感；突出送礼、惊喜、高价值感，产品主体保持一致。'
+            },
+            {
+                value: 'luxury-showroom',
+                label: '高端展厅',
+                category: 'scene',
+                desc: '展台陈列，高级商业',
+                prompt: '【自定义改图风格·高端展厅】场景提示词：高级展厅或品牌陈列台，干净几何空间、精准射灯、少量高质感道具和留白；突出品牌感、专业展示和高端商业质感，产品主体保持一致。'
             }
-        };
+        ];
+
+        const CUSTOM_IMAGE_STYLES = CUSTOM_STYLE_OPTIONS.reduce((acc, item) => {
+            acc[item.value] = item;
+            return acc;
+        }, {});
 
         function selectStdBgStyle(btn) {
             const panel = btn.closest('#standardConfig');
@@ -794,6 +963,7 @@
         }
 
         function openCustomStyleModal() {
+            renderCustomStyleCards();
             const modal = document.getElementById('customStyleModal');
             if (modal) modal.classList.add('show');
         }
@@ -801,6 +971,27 @@
         function closeCustomStyleModal() {
             const modal = document.getElementById('customStyleModal');
             if (modal) modal.classList.remove('show');
+        }
+
+        function customStyleCategoryLabel(category) {
+            if (category === 'scene') return '场景';
+            if (category === 'color') return '配色';
+            return '基础';
+        }
+
+        function renderCustomStyleCards() {
+            const grid = document.getElementById('customStyleCards');
+            if (!grid || grid.dataset.rendered === 'true') return;
+            const currentValue = document.getElementById('customStyle')?.value || 'original';
+            grid.innerHTML = CUSTOM_STYLE_OPTIONS.map(item => `
+                <button type="button" class="custom-style-card ${item.value === currentValue ? 'active' : ''}"
+                    data-value="${escHtml(item.value)}" onclick="selectCustomStyle(this)">
+                    <span class="custom-style-swatch bg-${escHtml(item.value)}"></span>
+                    <span>${escHtml(item.label)}</span>
+                    <small><strong>${customStyleCategoryLabel(item.category)}</strong>${escHtml(item.desc)}</small>
+                </button>
+            `).join('');
+            grid.dataset.rendered = 'true';
         }
 
         function selectCustomStyle(btn) {
@@ -841,7 +1032,10 @@
         }
 
         function resolveImageAgentId(agentId) {
-            return agentId === 'gemini' ? 'gpt-image' : (agentId || 'gpt-image');
+            // gemini 仅用于分析，生图时切换到 gpt-image
+            // liblib-lora 等其他 Agent 直接透传
+            if (agentId === 'gemini') return 'gpt-image';
+            return agentId || 'gpt-image';
         }
 
         function base64Utf8(str) {
@@ -860,7 +1054,6 @@
 
         let products = [];
         let currentMode = 'standard';
-        const __pollTimers = new Map(); // taskId -> { pollTimer, elapsedTimer, seenCount }
 
         // Phase 2：SESSION_ID 从服务端获取，实现跨浏览器会话的历史记录共享
         let SESSION_ID = 'sess_default';  // 初始值，启动时从服务端获取
@@ -1643,16 +1836,21 @@
                     prompts.forEach(p => formData.append('prompt', p));
                     formData.append('count', '1');
                     formData.append('multiPrompt', 'true');
-                    formData.append('agentId', agentId);
+
+                    // LoRA 参数检查（Gemini 批量模式）
+                    const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                    const loraPresetSelect = document.getElementById('loraPresetSelect');
+                    const isLoraMode = useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect;
+                    const finalAgentId = isLoraMode ? 'liblib-lora' : agentId;
+
+                    formData.append('agentId', finalAgentId);
                     formData.append('aspect', await resolveAspect(container._aspect !== undefined ? container._aspect : getCustomAspect(), files));
                     formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
                     formData.append('sessionId', SESSION_ID);
                     formData.append('mode', 'custom');
 
                     // LoRA 参数
-                    const useLoraCheckbox = document.getElementById('useLoraCheckbox');
-                    const loraPresetSelect = document.getElementById('loraPresetSelect');
-                    if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                    if (isLoraMode) {
                         formData.append('useLora', 'true');
                         formData.append('loraPreset', loraPresetSelect.value);
                     } else {
@@ -2054,37 +2252,32 @@
             if (icon) icon.style.transform = isOpen ? 'rotate(180deg)' : '';
         }
 
-        async function handleLogin() {
-            const pass = document.getElementById('loginPass').value;
-            try {
-                const r = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: pass })
-                });
-                const data = await r.json();
-                if (data.success) {
-                    document.getElementById('loginOverlay').style.display = 'none';
-                    initApp();
-                } else {
-                    alert('验证失败');
-                }
-            } catch (e) {
-                alert('登录请求失败：' + e.message);
-            }
+        function updateCurrentUser(user) {
+            if (!user) return;
+            window.CURRENT_USER = user;
+            const name = user.displayName || user.username || '用户';
+            const avatar = (user.username || name || 'U').slice(0, 1).toUpperCase();
+            const navAvatar = document.getElementById('navUserAvatar');
+            const menuAvatar = document.getElementById('menuUserAvatar');
+            const menuName = document.getElementById('menuUserName');
+            const menuUserId = document.getElementById('menuUserId');
+            if (navAvatar) navAvatar.textContent = avatar;
+            if (menuAvatar) menuAvatar.textContent = avatar;
+            if (menuName) menuName.textContent = name;
+            if (menuUserId) menuUserId.textContent = 'ID: ' + (user.id || '');
         }
 
-        // 页面加载时检查 session，已登录则直接进入
-        (async function checkSession() {
-            try {
-                const r = await fetch('/api/auth/check');
-                const data = await r.json();
-                if (data.authenticated) {
-                    document.getElementById('loginOverlay').style.display = 'none';
-                    initApp();
-                }
-            } catch (_) {}
-        })();
+        function isCurrentUserAdmin() {
+            const role = window.CURRENT_USER && window.CURRENT_USER.role;
+            return String(role || '').toUpperCase() === 'ADMIN';
+        }
+
+        function applySettingsRoleView() {
+            const admin = isCurrentUserAdmin();
+            document.querySelectorAll('[data-admin-setting="true"]').forEach(el => {
+                el.style.display = admin ? '' : 'none';
+            });
+        }
 
         async function initApp() {
             // 初始化 session（从服务端获取 SESSION_ID）
@@ -2094,13 +2287,25 @@
             await loadExtraCategoryScripts();
             // 静默检查配置状态；不再自动拉钉钉产品列表，改由用户在"同步配置"里点"保存并验证"触发
             try {
-                const cfg = await fetch('/api/config').then(r => r.json());
-                if (cfg.app_key && cfg.app_secret && cfg.union_id && cfg.app_uuid && cfg.sheet_id) {
+                const cfg = await fetch('/api/config/status').then(r => r.json());
+                if (cfg.dingtalkConfigured) {
                     isConfigured = true;
                 }
             } catch (_) {}
             loadCategories();
         }
+
+        function setLoginOverlayVisible(visible) {
+            const overlay = document.getElementById('loginOverlay');
+            if (overlay) overlay.style.display = visible ? 'flex' : 'none';
+        }
+
+        window.AiStudioAuth.configure({
+            updateCurrentUser,
+            initApp,
+            setLoginOverlayVisible
+        });
+        window.AiStudioAuth.checkSession();
 
         // 把还没在 index.html 里静态引入的品类 .js 动态加载进来（打包态用户导入产物的关键）
         async function loadExtraCategoryScripts() {
@@ -3005,16 +3210,23 @@
                     droppedFiles.forEach(f => formData.append('images', f));
                     formData.append('prompt', finalPrompt);
                     formData.append('count', String(count));
-                    formData.append('agentId', agentId);
+
+                    // LoRA 参数检查
+                    const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                    const loraPresetSelect = document.getElementById('loraPresetSelect');
+                    const isLoraMode = useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect;
+
+                    // LoRA 模式强制使用 liblib-lora，否则使用用户选择的 Agent
+                    const finalAgentId = isLoraMode ? 'liblib-lora' : agentId;
+                    formData.append('agentId', finalAgentId);
+
                     formData.append('sessionId', SESSION_ID);
                     formData.append('mode', 'standard');
                     formData.append('aspect', payload.aspect || '1:1');
                     if (payload.negativePrompt) formData.append('negativePrompt', payload.negativePrompt);
 
                     // LoRA 参数
-                    const useLoraCheckbox = document.getElementById('useLoraCheckbox');
-                    const loraPresetSelect = document.getElementById('loraPresetSelect');
-                    if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                    if (isLoraMode) {
                         formData.append('useLora', 'true');
                         formData.append('loraPreset', loraPresetSelect.value);
                     } else {
@@ -3107,7 +3319,7 @@
                 const customStylePrompt = buildCustomStylePrompt();
                 const finalPrompt = [prompt, customStylePrompt, selectedPrompt.prompt].filter(Boolean).join('\n') || '自动生成';
 
-                const effectiveAgentId = resolveImageAgentId(agentId);
+                // 直接使用 agentId，不再转换（liblib-lora 等新 Agent 需要原样传递）
                 payload.prompt = finalPrompt;
                 if (selectedPrompt.negativePrompt) payload.negativePrompt = selectedPrompt.negativePrompt;
 
@@ -3117,8 +3329,12 @@
                 for (const key in payload) {
                     formData.append(key, payload[key]);
                 }
-                // 覆盖 agentId，确保纯文生图时不用 gemini
-                formData.set('agentId', effectiveAgentId);
+                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                const loraPresetSelect = document.getElementById('loraPresetSelect');
+                const isLoraMode = useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect;
+                const finalAgentId = isLoraMode ? 'liblib-lora' : agentId;
+
+                formData.set('agentId', finalAgentId);
 
                 formData.set('aspect', await resolveAspect(getCustomAspect(), droppedFiles));
                 formData.append('denoising', document.getElementById('customDenoising') ? document.getElementById('customDenoising').value : 0.5);
@@ -3127,9 +3343,7 @@
                 formData.append('mode', 'custom');
 
                 // LoRA 参数
-                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
-                const loraPresetSelect = document.getElementById('loraPresetSelect');
-                if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                if (isLoraMode) {
                     formData.append('useLora', 'true');
                     formData.append('loraPreset', loraPresetSelect.value);
                 } else {
@@ -3142,13 +3356,13 @@
                 const imgDataUrl = await new Promise(res => {
                     const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(droppedFiles[0]);
                 });
-                appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>[${taskLabel}] 模型: ${effectiveAgentId}${agentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}<br>风格：${escHtml(customStyleInfo.label)}<br>${escHtml(finalPrompt).replace(/\n/g, '<br>')}</span>`, true);
+                appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>[${taskLabel}] 模型: ${finalAgentId}<br>风格：${escHtml(customStyleInfo.label)}<br>${escHtml(finalPrompt).replace(/\n/g, '<br>')}</span>`, true);
 
                 try {
 
                     promptInput.value = '';
 
-                    captureLastGen(apiPath, formData, `[${taskLabel}] 模型 ${effectiveAgentId}`);
+                    captureLastGen(apiPath, formData, `[${taskLabel}] 模型 ${finalAgentId}`);
                     const resp = await fetch(apiPath, { method: 'POST', body: formData });
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
@@ -3202,15 +3416,22 @@
                 }
                 promptsToSend.forEach(p => formData.append('prompt', p));
                 formData.append('count',   '1');
-                formData.append('agentId', agentId);
+
+                // LoRA 参数检查（电商模式）
+                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                const loraPresetSelect = document.getElementById('loraPresetSelect');
+                const isLoraMode = useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect;
+
+                // LoRA 模式强制使用 liblib-lora
+                const finalAgentId = isLoraMode ? 'liblib-lora' : agentId;
+                formData.append('agentId', finalAgentId);
+
                 formData.append('sessionId', SESSION_ID);
                 formData.append('mode', 'ecommerce');
                 if (isDetail) formData.append('aspect', '9:16');
 
                 // LoRA 参数
-                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
-                const loraPresetSelect = document.getElementById('loraPresetSelect');
-                if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                if (isLoraMode) {
                     formData.append('useLora', 'true');
                     formData.append('loraPreset', loraPresetSelect.value);
                 } else {
@@ -3335,87 +3556,6 @@
                     appendMessage('ai', '启动失败：' + e.message);
                 }
             }
-        }
-
-        function fmtSec(totalSec) {
-            if (!Number.isFinite(totalSec) || totalSec < 0) return '估算中…';
-            totalSec = Math.round(totalSec);
-            const m = Math.floor(totalSec / 60);
-            const s = totalSec % 60;
-            return `${m}:${String(s).padStart(2, '0')}`;
-        }
-
-        function startPolling(taskId) {
-            // 防止同一 taskId 重复注册
-            const existing = __pollTimers.get(taskId);
-            if (existing) {
-                clearInterval(existing.pollTimer);
-                clearInterval(existing.elapsedTimer);
-            }
-            const startTime = Date.now();
-            const entry = { pollTimer: null, elapsedTimer: null, seenCount: 0 };
-            __pollTimers.set(taskId, entry);
-
-            // 已用时秒级独立刷新
-            entry.elapsedTimer = setInterval(() => {
-                const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
-                if (!card) return;
-                const el = card.querySelector('[data-role="elapsed"]');
-                if (el) el.textContent = fmtSec((Date.now() - startTime) / 1000);
-            }, 1000);
-
-            entry.pollTimer = setInterval(async () => {
-                try {
-                    const res = await fetch(`/api/task/${taskId}`);
-                    const data = await res.json();
-                    const progress = data.progress || 0;
-                    const total = data.total || 1;
-                    const pct = Math.round((progress / total) * 100);
-                    const elapsedSec = (Date.now() - startTime) / 1000;
-                    let etaText = '估算中…';
-                    if (progress > 0 && progress < total) {
-                        etaText = fmtSec((elapsedSec / progress) * (total - progress));
-                    } else if (progress >= total) {
-                        etaText = '收尾中…';
-                    }
-                    const cur = data.currentProduct || '';
-                    const curText = cur
-                        ? `正在处理：${cur}`
-                        : (progress < total ? `正在生成第 ${progress + 1} 张…` : '');
-                    updateProgressCard(taskId, pct, `${progress}/${total}`, etaText, curText);
-
-                    // 逐张实时渲染：只处理本次轮询新增的成功结果
-                    const allResults = data.results || [];
-                    const t = __pollTimers.get(taskId);
-                    if (t) {
-                        const newItems = allResults.slice(t.seenCount);
-                        t.seenCount += newItems.length;
-                        const newSuccess = newItems.filter(r => r.status === 'success' && !(r.name || '').startsWith('__'));
-                        if (newSuccess.length > 0) {
-                            renderGeneratedImages(newSuccess);
-                            autoAddToBoard(newSuccess);
-                        }
-                    }
-
-                    if (data.status !== 'running' && data.status !== 'pending') {
-                        const t2 = __pollTimers.get(taskId);
-                        if (t2) {
-                            clearInterval(t2.pollTimer);
-                            clearInterval(t2.elapsedTimer);
-                            __pollTimers.delete(taskId);
-                        }
-                        finalizeProgressCard(taskId, data);
-                    }
-                } catch (e) { /* polling error */ }
-            }, 800);
-            // 立即触发一次，避免第一次 800ms 空等
-            setTimeout(() => {
-                const t = __pollTimers.get(taskId);
-                if (t && t.pollTimer) t.pollTimer._ref && clearTimeout(t.pollTimer._ref);
-                fetch(`/api/task/${taskId}`).then(r => r.json()).then(data => {
-                    updateProgressCard(taskId, Math.round(((data.progress||0)/(data.total||1))*100), `${data.progress||0}/${data.total||1}`, '估算中…', '');
-                }).catch(() => {});
-            }, 50);
         }
 
         function insertProgressCard(taskId) {
@@ -3693,7 +3833,14 @@
                 formData.append('materialIds', materialIds.join(','));
                 formData.append('materialPromptOverrides', JSON.stringify(materialPromptOverrides));
                 formData.append('basePrompt', prompt);
-                formData.append('agentId', agentId);
+
+                // LoRA 参数检查（开品模式）
+                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                const loraPresetSelect = document.getElementById('loraPresetSelect');
+                const isLoraMode = useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect;
+                const finalAgentId = isLoraMode ? 'liblib-lora' : agentId;
+
+                formData.append('agentId', finalAgentId);
                 formData.append('sessionId', SESSION_ID);
                 formData.append('configJson', configJson);
                 appendMessage('user', `[开品素材库融合] 模型: ${agentId}${selectedAgentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}\n白底产品图 + ${materialIds.length} 条数据库素材 → ${materialIds.length} 张图`);
@@ -3773,7 +3920,14 @@
                 }
                 formData.append('prompt', prompt);
                 formData.append('count', '1');
-                formData.append('agentId', agentId);
+
+                // LoRA 参数检查（开品模式 - 分析卡片生图）
+                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+                const loraPresetSelect = document.getElementById('loraPresetSelect');
+                const isLoraMode = useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect;
+                const finalAgentId = isLoraMode ? 'liblib-lora' : agentId;
+
+                formData.append('agentId', finalAgentId);
                 formData.append('sessionId', SESSION_ID);
                 formData.append('mode', 'product');
                 formData.append('aspect', 'auto');
@@ -3786,9 +3940,7 @@
                 }));
 
                 // LoRA 参数
-                const useLoraCheckbox = document.getElementById('useLoraCheckbox');
-                const loraPresetSelect = document.getElementById('loraPresetSelect');
-                if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+                if (isLoraMode) {
                     formData.append('useLora', 'true');
                     formData.append('loraPreset', loraPresetSelect.value);
                 } else {
@@ -3881,7 +4033,7 @@
 
                     if (isImageFile || isRemoteUrl) {
                         // 单张图片或远程URL，直接使用
-                        imageItems = [{ path: result.output }];
+                        imageItems = [{ path: result.output, savePath: result.localPath || result.output }];
                     } else {
                         // 本地文件夹，列出所有图片
                         const res = await fetch(`/api/gallery?path=${encodeURIComponent(result.output)}`);
@@ -3906,7 +4058,7 @@
                             // 改成短 key + window 全局映射：onclick 只传 alphanumeric key，函数内查表拿真实路径，零转义风险。
                             window.__pathMap = window.__pathMap || {};
                             const pathKey = 'p' + Math.random().toString(36).slice(2, 10);
-                            window.__pathMap[pathKey] = img.path;
+                            window.__pathMap[pathKey] = img.savePath || img.path;
                             const promptKey = 'pr' + Math.random().toString(36).slice(2, 10);
                             window.__pathMap[promptKey] = result.prompt || '';
                             htmlContent += `<div class="result-image-wrap" data-img-url="${imgUrl}">`;
@@ -5789,6 +5941,7 @@
             view.classList.add('active');
             isShowingSettings = true;
             document.getElementById('userMenu').classList.remove('show');
+            applySettingsRoleView();
             // 一次拉全部字段（钉钉 / 代理 / 自定义保存目录）
             fetch('/api/settings').then(r => r.json()).then(s => {
                 const dt = s.dingtalk || {};
@@ -5804,6 +5957,11 @@
                 document.getElementById('pxy_host').value = px.proxy_host || '';
                 document.getElementById('pxy_port').value = px.proxy_port || '8086';
                 document.getElementById('customOutputDir').value = s.customOutputDir || '';
+                if (isCurrentUserAdmin()) {
+                    const target = document.getElementById('billingTargetUserId');
+                    if (target && !target.value) target.value = (window.CURRENT_USER && window.CURRENT_USER.id) || '';
+                    loadBillingAdminData();
+                }
             }).catch(() => {});
         }
 
@@ -6103,6 +6261,407 @@
             }
         }
 
+        function billingTargetUserId() {
+            const value = Number(document.getElementById('billingTargetUserId')?.value || 0);
+            return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+        }
+
+        const billingAdminState = {
+            ledger: { items: [], nextCursor: null, hasMore: false },
+            usage: { items: [], nextCursor: null, hasMore: false },
+            payment: { items: [], nextCursor: null, hasMore: false }
+        };
+
+        function billingFilterValue(id) {
+            return (document.getElementById(id)?.value || '').trim();
+        }
+
+        function appendBillingParam(params, key, value) {
+            if (value !== undefined && value !== null && String(value).trim()) {
+                params.set(key, String(value).trim());
+            }
+        }
+
+        function buildBillingQuery(kind, userId, cursor) {
+            const params = new URLSearchParams();
+            if (userId) params.set('userId', String(userId));
+            params.set('limit', '50');
+            if (cursor) params.set('cursor', String(cursor));
+            appendBillingParam(params, 'from', billingFilterValue('billingFromTime'));
+            appendBillingParam(params, 'to', billingFilterValue('billingToTime'));
+            if (kind === 'ledger') {
+                appendBillingParam(params, 'type', billingFilterValue('billingLedgerType'));
+                appendBillingParam(params, 'direction', billingFilterValue('billingLedgerDirection'));
+            } else if (kind === 'usage') {
+                appendBillingParam(params, 'status', billingFilterValue('billingUsageStatus'));
+                appendBillingParam(params, 'provider', billingFilterValue('billingProviderFilter'));
+            } else if (kind === 'payment') {
+                appendBillingParam(params, 'status', billingFilterValue('billingOrderStatus'));
+                appendBillingParam(params, 'provider', billingFilterValue('billingProviderFilter'));
+            }
+            return params.toString();
+        }
+
+        async function fetchBillingJson(url, options) {
+            const resp = await fetch(url, options || {});
+            let data = {};
+            try { data = await resp.json(); } catch (_) {}
+            if (!resp.ok || data.error || data.success === false) {
+                throw new Error(data.error || ('请求失败：HTTP ' + resp.status));
+            }
+            return data;
+        }
+
+        async function loadBillingAdminData() {
+            if (!isCurrentUserAdmin()) return;
+            const userId = billingTargetUserId();
+            setBillingLoading(true);
+            try {
+                const [wallet, summary, ledger, usage, payment] = await Promise.all([
+                    userId ? fetchBillingJson('/api/billing/admin/wallet?userId=' + encodeURIComponent(userId)) : Promise.resolve(null),
+                    fetchBillingJson('/api/billing/admin/summary?' + buildBillingQuery('summary', userId)),
+                    fetchBillingJson('/api/billing/admin/ledger?' + buildBillingQuery('ledger', userId)),
+                    fetchBillingJson('/api/billing/admin/usage?' + buildBillingQuery('usage', userId)),
+                    fetchBillingJson('/api/billing/admin/payment-orders?' + buildBillingQuery('payment', userId))
+                ]);
+                renderBillingWallet(wallet, userId ? '' : '未指定用户，当前显示全局运营数据。');
+                renderBillingAdminSummary(summary);
+                setBillingPageState('ledger', ledger);
+                setBillingPageState('usage', usage);
+                setBillingPageState('payment', payment);
+                renderBillingLedger(billingAdminState.ledger.items);
+                renderBillingUsage(billingAdminState.usage.items);
+                renderBillingPaymentOrders(billingAdminState.payment.items);
+                updateBillingLoadMoreButtons();
+            } catch (e) {
+                renderBillingWallet(null, e.message || '账务数据加载失败');
+                renderBillingAdminSummary(null, e.message || '账务汇总加载失败');
+            } finally {
+                setBillingLoading(false);
+            }
+        }
+
+        function setBillingPageState(kind, page) {
+            const state = billingAdminState[kind];
+            if (!state) return;
+            state.items = Array.isArray(page?.items) ? page.items : [];
+            state.nextCursor = page?.nextCursor || null;
+            state.hasMore = !!page?.hasMore;
+        }
+
+        function appendBillingPageState(kind, page) {
+            const state = billingAdminState[kind];
+            if (!state) return;
+            const items = Array.isArray(page?.items) ? page.items : [];
+            state.items = state.items.concat(items);
+            state.nextCursor = page?.nextCursor || null;
+            state.hasMore = !!page?.hasMore;
+        }
+
+        async function loadMoreBillingAdminData(kind) {
+            if (!isCurrentUserAdmin()) return;
+            const state = billingAdminState[kind];
+            if (!state || !state.nextCursor) return;
+            const userId = billingTargetUserId();
+            const map = {
+                ledger: '/api/billing/admin/ledger',
+                usage: '/api/billing/admin/usage',
+                payment: '/api/billing/admin/payment-orders'
+            };
+            const btn = document.getElementById('billingLoadMore' + kind.charAt(0).toUpperCase() + kind.slice(1) + 'Btn');
+            if (btn) { btn.disabled = true; btn.textContent = '加载中...'; }
+            try {
+                const page = await fetchBillingJson(map[kind] + '?' + buildBillingQuery(kind, userId, state.nextCursor));
+                appendBillingPageState(kind, page);
+                if (kind === 'ledger') renderBillingLedger(state.items);
+                if (kind === 'usage') renderBillingUsage(state.items);
+                if (kind === 'payment') renderBillingPaymentOrders(state.items);
+                updateBillingLoadMoreButtons();
+            } catch (e) {
+                appendMessage('ai', '❌ 加载更多账务数据失败：' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; }
+                updateBillingLoadMoreButtons();
+            }
+        }
+
+        function updateBillingLoadMoreButtons() {
+            [
+                ['ledger', 'billingLoadMoreLedgerBtn', '加载更多流水'],
+                ['usage', 'billingLoadMoreUsageBtn', '加载更多调用'],
+                ['payment', 'billingLoadMorePaymentBtn', '加载更多订单']
+            ].forEach(([kind, id, text]) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                const state = billingAdminState[kind];
+                btn.style.display = state?.nextCursor && state?.hasMore ? '' : 'none';
+                btn.disabled = false;
+                btn.textContent = text;
+            });
+        }
+
+        function setBillingLoading(loading) {
+            const btn = document.getElementById('billingRefreshBtn');
+            if (!btn) return;
+            btn.disabled = loading;
+            btn.textContent = loading ? '加载中...' : '刷新账务';
+        }
+
+        function renderBillingWallet(wallet, message) {
+            const el = document.getElementById('billingWalletSummary');
+            if (!el) return;
+            if (!wallet) {
+                el.innerHTML = `<div class="billing-empty">${escHtml(message || '暂无钱包数据')}</div>`;
+                return;
+            }
+            el.innerHTML = `
+                <div><span>用户 ID</span><strong>${escHtml(wallet.userId)}</strong></div>
+                <div><span>总余额</span><strong>${formatPoints(wallet.balancePoints)}</strong></div>
+                <div><span>冻结积分</span><strong>${formatPoints(wallet.frozenPoints)}</strong></div>
+                <div><span>可用积分</span><strong>${formatPoints(wallet.availablePoints)}</strong></div>
+            `;
+        }
+
+        function renderBillingAdminSummary(summary, message) {
+            const el = document.getElementById('billingAdminSummary');
+            if (!el) return;
+            if (!summary) {
+                el.innerHTML = `<div class="billing-empty">${escHtml(message || '暂无运营汇总')}</div>`;
+                return;
+            }
+            el.innerHTML = `
+                <div><span>钱包数</span><strong>${formatPoints(summary.walletCount)}</strong></div>
+                <div><span>总余额</span><strong>${formatPoints(summary.balancePoints)}</strong></div>
+                <div><span>冻结积分</span><strong>${formatPoints(summary.frozenPoints)}</strong></div>
+                <div><span>入账积分</span><strong>${formatPoints(summary.inPoints)}</strong></div>
+                <div><span>扣费积分</span><strong>${formatPoints(summary.outPoints)}</strong></div>
+                <div><span>调用总数</span><strong>${formatPoints(summary.usageCount)}</strong></div>
+                <div><span>成功调用</span><strong>${formatPoints(summary.succeededUsageCount)}</strong></div>
+                <div><span>失败调用</span><strong>${formatPoints(summary.failedUsageCount)}</strong></div>
+                <div><span>待完成调用</span><strong>${formatPoints(summary.runningUsageCount)}</strong></div>
+                <div><span>已付订单</span><strong>${formatPoints(summary.paidOrderCount)}</strong></div>
+                <div><span>待付订单</span><strong>${formatPoints(summary.pendingOrderCount)}</strong></div>
+                <div><span>已付金额</span><strong>${formatMoneyCents(summary.paidAmountCents)}</strong></div>
+            `;
+        }
+
+        async function runBillingReconciliation() {
+            if (!isCurrentUserAdmin()) return;
+            const userId = billingTargetUserId();
+            const btn = document.getElementById('billingReconcileBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '检查中...'; }
+            try {
+                const params = new URLSearchParams();
+                if (userId) params.set('userId', String(userId));
+                const report = await fetchBillingJson('/api/billing/admin/reconciliation?' + params.toString());
+                renderBillingReconciliation(report);
+            } catch (e) {
+                renderBillingReconciliation(null, e.message || '一致性检查失败');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '一致性检查'; }
+            }
+        }
+
+        function renderBillingReconciliation(report, message) {
+            const el = document.getElementById('billingReconciliationPanel');
+            if (!el) return;
+            if (!report) {
+                el.innerHTML = `<div class="billing-empty">${escHtml(message || '暂无检查结果')}</div>`;
+                return;
+            }
+            const rows = (report.checks || []).map(item => `
+                <tr>
+                    <td>${billingStatusBadge(item.ok ? 'OK' : 'WARN')}</td>
+                    <td>${escHtml(item.name || item.code || '')}</td>
+                    <td>${formatPoints(item.expected)}</td>
+                    <td>${formatPoints(item.actual)}</td>
+                    <td class="${Number(item.difference || 0) === 0 ? 'billing-positive' : 'billing-negative'}">${formatPoints(item.difference)}</td>
+                </tr>
+            `).join('');
+            el.innerHTML = `
+                <div class="billing-reconciliation-summary ${report.healthy ? 'ok' : 'bad'}">
+                    ${report.healthy ? '一致性检查通过' : '一致性检查发现差异'}
+                </div>
+                <div class="billing-table">
+                    <table>
+                        <thead><tr><th>状态</th><th>检查项</th><th>期望值</th><th>实际值</th><th>差异</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderBillingLedger(items) {
+            const rows = (items || []).map(item => `
+                <tr>
+                    <td>${escHtml(item.createdAt || '')}</td>
+                    <td>${escHtml(item.type || '')}</td>
+                    <td>${escHtml(item.direction || '')}</td>
+                    <td class="${Number(item.pointsDelta || 0) < 0 ? 'billing-negative' : 'billing-positive'}">${formatPoints(item.pointsDelta)}</td>
+                    <td>${formatPoints(item.balanceBefore)} → ${formatPoints(item.balanceAfter)}</td>
+                    <td>${formatPoints(item.frozenBefore)} → ${formatPoints(item.frozenAfter)}</td>
+                    <td>${escHtml(item.remark || '')}</td>
+                </tr>
+            `).join('');
+            renderBillingTable('billingLedgerTable',
+                ['时间', '类型', '方向', '积分变化', '余额快照', '冻结快照', '备注'],
+                rows,
+                '暂无钱包流水');
+        }
+
+        function renderBillingUsage(items) {
+            const rows = (items || []).map(item => `
+                <tr>
+                    <td>${escHtml(item.startedAt || '')}</td>
+                    <td>${escHtml(item.mode || '')}</td>
+                    <td>${escHtml(item.agentId || '')}</td>
+                    <td>${escHtml(item.provider || '')}</td>
+                    <td>${formatPoints(item.estimatedPoints)} / ${formatPoints(item.actualPoints)}</td>
+                    <td>${billingStatusBadge(item.status)}</td>
+                    <td>${escHtml(item.errorMessage || '')}</td>
+                </tr>
+            `).join('');
+            renderBillingTable('billingUsageTable',
+                ['开始时间', '模式', '模型', '供应商', '预估/实际', '状态', '错误'],
+                rows,
+                '暂无调用审计');
+        }
+
+        function renderBillingPaymentOrders(items) {
+            const rows = (items || []).map(item => `
+                <tr>
+                    <td>${escHtml(item.createdAt || '')}</td>
+                    <td>${escHtml(item.orderNo || '')}</td>
+                    <td>${formatPoints(item.points)}</td>
+                    <td>${formatMoneyCents(item.amountCents)}</td>
+                    <td>${escHtml(item.provider || '')}</td>
+                    <td>${billingStatusBadge(item.status)}</td>
+                    <td>${escHtml(item.providerOrderNo || '')}</td>
+                </tr>
+            `).join('');
+            renderBillingTable('billingPaymentTable',
+                ['创建时间', '订单号', '积分', '金额', '渠道', '状态', '渠道单号'],
+                rows,
+                '暂无充值订单');
+        }
+
+        function renderBillingTable(containerId, headers, rowsHtml, emptyText) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!rowsHtml) {
+                el.innerHTML = `<div class="billing-empty">${escHtml(emptyText)}</div>`;
+                return;
+            }
+            el.innerHTML = `
+                <table>
+                    <thead><tr>${headers.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            `;
+        }
+
+        function switchBillingTab(tab) {
+            document.querySelectorAll('.billing-tab').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.billingTab === tab);
+            });
+            document.querySelectorAll('.billing-panel').forEach(panel => {
+                panel.classList.toggle('active', panel.dataset.billingPanel === tab);
+            });
+        }
+
+        function exportBillingAdminCsv(kind) {
+            if (!isCurrentUserAdmin()) return;
+            const map = {
+                ledger: '/api/billing/admin/ledger/export',
+                usage: '/api/billing/admin/usage/export',
+                payment: '/api/billing/admin/payment-orders/export'
+            };
+            const path = map[kind];
+            if (!path) return;
+            const userId = billingTargetUserId();
+            const query = buildBillingQuery(kind, userId);
+            window.open(path + (query ? ('?' + query) : ''), '_blank');
+        }
+
+        async function submitAdminCredit() {
+            const userId = billingTargetUserId();
+            const points = Number(document.getElementById('billingCreditPoints')?.value || 0);
+            const remark = (document.getElementById('billingCreditRemark')?.value || '').trim();
+            if (!userId || !points || points <= 0) {
+                appendMessage('ai', '❌ 请输入有效用户 ID 和入账积分');
+                return;
+            }
+            const btn = document.getElementById('billingCreditBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '入账中...'; }
+            try {
+                await fetchBillingJson('/api/billing/admin/credit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId,
+                        points,
+                        remark,
+                        idempotencyKey: 'admin-ui-credit:' + userId + ':' + Date.now()
+                    })
+                });
+                document.getElementById('billingCreditPoints').value = '';
+                document.getElementById('billingCreditRemark').value = '';
+                await loadBillingAdminData();
+                appendMessage('ai', '✅ 人工入账已完成');
+            } catch (e) {
+                appendMessage('ai', '❌ 人工入账失败：' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '入账'; }
+            }
+        }
+
+        async function markBillingOrderPaid() {
+            const orderNo = (document.getElementById('billingPaidOrderNo')?.value || '').trim();
+            const paidAmountCents = Number(document.getElementById('billingPaidAmount')?.value || 0);
+            const providerOrderNo = (document.getElementById('billingProviderOrderNo')?.value || '').trim();
+            if (!orderNo || !paidAmountCents || paidAmountCents <= 0) {
+                appendMessage('ai', '❌ 请输入订单号和支付金额');
+                return;
+            }
+            const btn = document.getElementById('billingPaidBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '确认中...'; }
+            try {
+                await fetchBillingJson('/api/billing/admin/payment-orders/' + encodeURIComponent(orderNo) + '/paid', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ providerOrderNo, paidAmountCents })
+                });
+                document.getElementById('billingPaidOrderNo').value = '';
+                document.getElementById('billingPaidAmount').value = '';
+                document.getElementById('billingProviderOrderNo').value = '';
+                await loadBillingAdminData();
+                appendMessage('ai', '✅ 订单支付已确认并入账');
+            } catch (e) {
+                appendMessage('ai', '❌ 确认支付失败：' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '确认'; }
+            }
+        }
+
+        function billingStatusBadge(status) {
+            const value = String(status || '').toUpperCase();
+            const cls = value === 'PAID' || value === 'SUCCEEDED' ? 'ok'
+                    : value === 'FAILED' || value === 'CANCELLED' ? 'bad'
+                    : 'pending';
+            return `<span class="billing-status ${cls}">${escHtml(status || '')}</span>`;
+        }
+
+        function formatPoints(value) {
+            const n = Number(value || 0);
+            return Number.isFinite(n) ? n.toLocaleString('zh-CN') : '0';
+        }
+
+        function formatMoneyCents(value) {
+            const n = Number(value || 0);
+            if (!Number.isFinite(n)) return '￥0.00';
+            return '￥' + (n / 100).toFixed(2);
+        }
+
         // 兼容旧调用：合并保存（不再被新 UI 使用，保留以防其它入口）
         function saveSettings() {
             saveDingTalkOnly();
@@ -6272,15 +6831,20 @@
 
             formData.append('promptGroups', JSON.stringify(promptGroups));
             formData.append('count', '1');
-            formData.append('agentId', agentId);
+
+            // LoRA 参数检查（电商批量模式）
+            const useLoraCheckbox = document.getElementById('useLoraCheckbox');
+            const loraPresetSelect = document.getElementById('loraPresetSelect');
+            const isLoraMode = useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect;
+            const finalAgentId = isLoraMode ? 'liblib-lora' : agentId;
+
+            formData.append('agentId', finalAgentId);
             formData.append('sessionId', SESSION_ID);
             formData.append('mode', 'ecommerce');
             if (ecSel.imageType === '详情页') formData.append('aspect', '9:16');
 
             // LoRA 参数
-            const useLoraCheckbox = document.getElementById('useLoraCheckbox');
-            const loraPresetSelect = document.getElementById('loraPresetSelect');
-            if (useLoraCheckbox && useLoraCheckbox.checked && loraPresetSelect) {
+            if (isLoraMode) {
                 formData.append('useLora', 'true');
                 formData.append('loraPreset', loraPresetSelect.value);
             } else {
@@ -7098,9 +7662,25 @@
             // LoRA 复选框切换逻辑
             const useLoraCheckbox = document.getElementById('useLoraCheckbox');
             const loraPresetWrapper = document.getElementById('loraPresetWrapper');
+            const agentSelectWrapper = document.getElementById('agentSelectWrapper');
+
             if (useLoraCheckbox && loraPresetWrapper) {
                 useLoraCheckbox.addEventListener('change', function() {
+                    // 显示/隐藏 LoRA 预设选择器
                     loraPresetWrapper.style.display = this.checked ? 'flex' : 'none';
+
+                    // LoRA 模式下禁用 Agent 选择器
+                    if (agentSelectWrapper) {
+                        if (this.checked) {
+                            agentSelectWrapper.style.opacity = '0.5';
+                            agentSelectWrapper.style.pointerEvents = 'none';
+                            agentSelectWrapper.title = 'LoRA 模式下自动使用 liblib AI + LoRA 引擎';
+                        } else {
+                            agentSelectWrapper.style.opacity = '1';
+                            agentSelectWrapper.style.pointerEvents = 'auto';
+                            agentSelectWrapper.title = '';
+                        }
+                    }
                 });
             }
         });
@@ -7290,13 +7870,13 @@
                 返回工作台
             </button>
             <h2>应用设置</h2>
-            <p>三段配置各自保存：钉钉、代理、文件保存位置。任一段保存失败不影响其它段。</p>
+            <p>各项配置独立保存：同步平台、代理、账务管理和文件保存位置互不影响。</p>
         </div>
 
-        <div style="max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:18px;">
+        <div style="max-width:1040px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:18px;">
 
             <!-- ① 同步平台 -->
-            <section class="settings-card">
+            <section class="settings-card" data-admin-setting="true">
                 <div class="settings-card-head">
                     <h3>① 同步平台</h3>
                     <button class="btn-primary" id="saveDingBtn" onclick="saveDingTalkOnly()" style="padding:6px 14px;">保存并验证</button>
@@ -7352,7 +7932,7 @@
             </section>
 
             <!-- ② 代理 -->
-            <section class="settings-card">
+            <section class="settings-card" data-admin-setting="true">
                 <div class="settings-card-head">
                     <h3>② 代理设置</h3>
                     <button class="btn-primary" id="saveProxyBtn" onclick="saveProxyOnly()" style="padding:6px 14px;">保存代理</button>
@@ -7370,10 +7950,139 @@
                 </div>
             </section>
 
+            <section class="settings-card" id="billingAdminCard" data-admin-setting="true">
+                <div class="settings-card-head">
+                    <h3>③ 账务管理</h3>
+                    <button class="btn-primary" id="billingRefreshBtn" onclick="loadBillingAdminData()" style="padding:6px 14px;">刷新账务</button>
+                </div>
+                <p class="modal-desc" style="margin-top:0;">查询钱包、流水、调用审计和充值订单；人工入账和确认订单支付都会写入流水。</p>
+
+                <div class="billing-admin-grid">
+                    <div class="form-item">
+                        <label>目标用户 ID</label>
+                        <input type="number" id="billingTargetUserId" class="input-field" placeholder="留空查看全局">
+                    </div>
+                    <div class="form-item">
+                        <label>开始时间</label>
+                        <input type="datetime-local" id="billingFromTime" class="input-field">
+                    </div>
+                    <div class="form-item">
+                        <label>结束时间</label>
+                        <input type="datetime-local" id="billingToTime" class="input-field">
+                    </div>
+                    <div class="billing-actions">
+                        <button type="button" class="btn-outline" onclick="loadBillingAdminData()">查询</button>
+                    </div>
+                </div>
+
+                <div class="billing-filter-grid">
+                    <div class="form-item">
+                        <label>流水类型</label>
+                        <input type="text" id="billingLedgerType" class="input-field" placeholder="PAYMENT_RECHARGE">
+                    </div>
+                    <div class="form-item">
+                        <label>流水方向</label>
+                        <select id="billingLedgerDirection" class="input-field">
+                            <option value="">全部</option>
+                            <option value="IN">IN</option>
+                            <option value="OUT">OUT</option>
+                            <option value="FREEZE">FREEZE</option>
+                            <option value="RELEASE">RELEASE</option>
+                        </select>
+                    </div>
+                    <div class="form-item">
+                        <label>调用状态</label>
+                        <select id="billingUsageStatus" class="input-field">
+                            <option value="">全部</option>
+                            <option value="STARTED">STARTED</option>
+                            <option value="SUCCEEDED">SUCCEEDED</option>
+                            <option value="FAILED">FAILED</option>
+                            <option value="CANCELLED">CANCELLED</option>
+                        </select>
+                    </div>
+                    <div class="form-item">
+                        <label>订单状态</label>
+                        <select id="billingOrderStatus" class="input-field">
+                            <option value="">全部</option>
+                            <option value="PENDING">PENDING</option>
+                            <option value="PAID">PAID</option>
+                            <option value="CANCELLED">CANCELLED</option>
+                        </select>
+                    </div>
+                    <div class="form-item">
+                        <label>供应商/渠道</label>
+                        <input type="text" id="billingProviderFilter" class="input-field" placeholder="liblib / manual">
+                    </div>
+                </div>
+
+                <div id="billingWalletSummary" class="billing-wallet-summary">
+                    <div class="billing-empty">查询后显示单用户钱包快照。</div>
+                </div>
+
+                <div id="billingAdminSummary" class="billing-wallet-summary billing-admin-summary">
+                    <div class="billing-empty">查询后显示运营汇总。</div>
+                </div>
+
+                <div class="billing-reconciliation-head">
+                    <button type="button" class="btn-outline" id="billingReconcileBtn" onclick="runBillingReconciliation()">一致性检查</button>
+                </div>
+                <div id="billingReconciliationPanel" class="billing-reconciliation-panel">
+                    <div class="billing-empty">点击一致性检查后显示钱包、流水、订单和调用日志的核对结果。</div>
+                </div>
+
+                <div class="billing-admin-grid billing-admin-ops">
+                    <div>
+                        <h4>人工入账</h4>
+                        <div class="billing-form-row">
+                            <input type="number" id="billingCreditPoints" class="input-field" placeholder="积分">
+                            <input type="text" id="billingCreditRemark" class="input-field" placeholder="备注">
+                            <button type="button" class="btn-primary" id="billingCreditBtn" onclick="submitAdminCredit()">入账</button>
+                        </div>
+                    </div>
+                    <div>
+                        <h4>确认订单支付</h4>
+                        <div class="billing-form-row">
+                            <input type="text" id="billingPaidOrderNo" class="input-field" placeholder="本地订单号">
+                            <input type="number" id="billingPaidAmount" class="input-field" placeholder="支付金额(分)">
+                            <input type="text" id="billingProviderOrderNo" class="input-field" placeholder="渠道单号">
+                            <button type="button" class="btn-primary" id="billingPaidBtn" onclick="markBillingOrderPaid()">确认</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="billing-tabs">
+                    <button type="button" class="billing-tab active" data-billing-tab="ledger" onclick="switchBillingTab('ledger')">钱包流水</button>
+                    <button type="button" class="billing-tab" data-billing-tab="usage" onclick="switchBillingTab('usage')">调用审计</button>
+                    <button type="button" class="billing-tab" data-billing-tab="payment" onclick="switchBillingTab('payment')">充值订单</button>
+                </div>
+
+                <div class="billing-panel active" data-billing-panel="ledger">
+                    <div class="billing-panel-toolbar">
+                        <button type="button" class="btn-outline" id="billingLoadMoreLedgerBtn" onclick="loadMoreBillingAdminData('ledger')" style="display:none;">加载更多流水</button>
+                        <button type="button" class="btn-outline" onclick="exportBillingAdminCsv('ledger')">导出流水 CSV</button>
+                    </div>
+                    <div id="billingLedgerTable" class="billing-table"></div>
+                </div>
+                <div class="billing-panel" data-billing-panel="usage">
+                    <div class="billing-panel-toolbar">
+                        <button type="button" class="btn-outline" id="billingLoadMoreUsageBtn" onclick="loadMoreBillingAdminData('usage')" style="display:none;">加载更多调用</button>
+                        <button type="button" class="btn-outline" onclick="exportBillingAdminCsv('usage')">导出调用 CSV</button>
+                    </div>
+                    <div id="billingUsageTable" class="billing-table"></div>
+                </div>
+                <div class="billing-panel" data-billing-panel="payment">
+                    <div class="billing-panel-toolbar">
+                        <button type="button" class="btn-outline" id="billingLoadMorePaymentBtn" onclick="loadMoreBillingAdminData('payment')" style="display:none;">加载更多订单</button>
+                        <button type="button" class="btn-outline" onclick="exportBillingAdminCsv('payment')">导出订单 CSV</button>
+                    </div>
+                    <div id="billingPaymentTable" class="billing-table"></div>
+                </div>
+            </section>
+
             <!-- ③ 文件保存位置 -->
             <section class="settings-card">
                 <div class="settings-card-head">
-                    <h3>③ 文件保存位置</h3>
+                    <h3>文件保存位置</h3>
                     <button class="btn-primary" id="saveDirBtn" onclick="saveOutputDirOnly()" style="padding:6px 14px;">保存目录</button>
                 </div>
                 <p class="modal-desc" style="margin-top:0;">用户点 💾 保存图片/视频时使用的目录。留空则使用程序默认目录。</p>
@@ -7655,53 +8364,7 @@
                 <button class="close-btn" onclick="closeCustomStyleModal()">×</button>
             </div>
             <p class="modal-desc" style="margin-top:0;">风格会参与 Gemini 分析和最终生图，产品主体仍以白底图为准。</p>
-            <div class="custom-style-grid custom-style-modal-grid">
-                <button type="button" class="custom-style-card active" data-value="original" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-original"></span>
-                    <span>原图延展</span>
-                    <small>自然扩写画面，不强套风格</small>
-                </button>
-                <button type="button" class="custom-style-card" data-value="tech-blue" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-tech-blue"></span>
-                    <span>科技蓝</span>
-                    <small>蓝白冷光、玻璃金属、智能感</small>
-                </button>
-                <button type="button" class="custom-style-card" data-value="girl-pink" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-girl-pink"></span>
-                    <span>少女粉</span>
-                    <small>粉白柔光、轻盈治愈、精致亲和</small>
-                </button>
-                <button type="button" class="custom-style-card" data-value="premium-gray" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-premium-gray"></span>
-                    <span>高级灰</span>
-                    <small>克制留白、柔和阴影、高客单质感</small>
-                </button>
-                <button type="button" class="custom-style-card" data-value="natural-green" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-natural-green"></span>
-                    <span>自然绿</span>
-                    <small>植物绿、自然光、环保生活方式</small>
-                </button>
-                <button type="button" class="custom-style-card" data-value="sunset-orange" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-sunset-orange"></span>
-                    <span>暖阳橙</span>
-                    <small>暖橙光感、情绪温度、生活氛围</small>
-                </button>
-                <button type="button" class="custom-style-card" data-value="khaki" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-khaki"></span>
-                    <span>卡其色</span>
-                    <small>土黄哑光、自然耐看、户外生活感</small>
-                </button>
-                <button type="button" class="custom-style-card" data-value="light-yellow" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-light-yellow"></span>
-                    <span>淡黄色</span>
-                    <small>柔和浅黄、清新明快、轻盈通透</small>
-                </button>
-                <button type="button" class="custom-style-card" data-value="beige" onclick="selectCustomStyle(this)">
-                    <span class="custom-style-swatch bg-beige"></span>
-                    <span>米黄色</span>
-                    <small>奶油米白、温柔哑光、高级舒适感</small>
-                </button>
-            </div>
+            <div id="customStyleCards" class="custom-style-grid custom-style-modal-grid"></div>
             <div class="modal-footer custom-style-modal-footer">
                 <button class="btn-outline" style="flex:1" onclick="closeCustomStyleModal()">完成</button>
             </div>

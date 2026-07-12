@@ -6,6 +6,11 @@ import com.elebusiness.service.HistoryService;
 import com.elebusiness.service.SeedanceVideoService;
 import com.elebusiness.service.TaskService;
 import com.elebusiness.service.VideoGenerationService;
+import com.elebusiness.service.auth.CurrentUserService;
+import com.elebusiness.service.billing.BillingService;
+import com.elebusiness.service.billing.GenerationPricingService;
+import com.elebusiness.service.workspace.UserStorageService;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
@@ -34,17 +39,29 @@ public class VideoController {
     private final TaskService taskService;
     private final AppProperties appProperties;
     private final HistoryService historyService;
+    private final CurrentUserService currentUserService;
+    private final UserStorageService userStorageService;
+    private final BillingService billingService;
+    private final GenerationPricingService pricingService;
 
     public VideoController(VideoGenerationService videoGenerationService,
                            SeedanceVideoService seedanceVideoService,
                            TaskService taskService,
                            AppProperties appProperties,
-                           HistoryService historyService) {
+                           HistoryService historyService,
+                           CurrentUserService currentUserService,
+                           UserStorageService userStorageService,
+                           BillingService billingService,
+                           GenerationPricingService pricingService) {
         this.videoGenerationService = videoGenerationService;
         this.seedanceVideoService = seedanceVideoService;
         this.taskService = taskService;
         this.appProperties = appProperties;
         this.historyService = historyService;
+        this.currentUserService = currentUserService;
+        this.userStorageService = userStorageService;
+        this.billingService = billingService;
+        this.pricingService = pricingService;
     }
 
     @PostMapping(value = "/generate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -57,7 +74,9 @@ public class VideoController {
             @RequestParam(value = "videoUrl", required = false) String videoUrl,
             @RequestParam(value = "audioUrl", required = false) String audioUrl,
             @RequestParam(value = "generateAudio", defaultValue = "true") boolean generateAudio,
-            @RequestParam(value = "sessionId", defaultValue = "default") String sessionId) {
+            @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
+            HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
 
         String prompt = promptParam == null ? "" : promptParam.trim();
         if (prompt.isEmpty()) {
@@ -66,12 +85,13 @@ public class VideoController {
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        // Phase 1：先落到临时归档 .temp-output/视频/，2 小时后自动清理；用户在前端点 💾 才 copy 到永久 outputDir
-        File videoTempDir = new File(appProperties.getPaths().getTempOutputDir(), "视频");
-        videoTempDir.mkdirs();
+        File videoTempDir = userStorageService.ensureDirectory(
+                userStorageService.tempOutputRoot(userId).resolve("视频")).toFile();
         String outputPath = new File(videoTempDir, "video_" + timestamp + ".mp4").getAbsolutePath();
 
-        GenerationTask task = taskService.createTask(1);
+        GenerationTask task = taskService.createTask(userId, 1);
+        int estimatedPoints = pricingService.estimateVideoGeneration(model, durationSeconds);
+        task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), "video", model, estimatedPoints).getId());
         final int dur = durationSeconds;
         final boolean isSeedance = model.startsWith("doubao-seedance");
 
@@ -111,10 +131,10 @@ public class VideoController {
                             refs.add(t);
                         }
                     }
-                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(refs);
+                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refs);
                     String configJson = "{\"model\":\"" + model + "\",\"aspectRatio\":\"" + aspectRatio
                             + "\",\"durationSeconds\":" + dur + "}";
-                    historyService.recordGeneration(sessionId, "video", prompt, model,
+                    historyService.recordGeneration(userId, sessionId, "video", prompt, model,
                             archive.refPaths, savedPath, configJson);
                     for (java.io.File r : refs) r.delete();
                 } catch (Exception he) {
@@ -148,15 +168,14 @@ public class VideoController {
     }
 
     @GetMapping("/file")
-    public ResponseEntity<FileSystemResource> file(@RequestParam String filename) {
+    public ResponseEntity<FileSystemResource> file(@RequestParam String filename, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
         if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
             return ResponseEntity.badRequest().build();
         }
-        // Phase 1：视频可能在临时归档（.temp-output/视频/）也可能已被用户保存到永久 outputDir/视频/
-        // 先查临时再查永久，向后兼容（前端不用改 src 路径）
-        File f = new File(new File(appProperties.getPaths().getTempOutputDir(), "视频"), filename);
+        File f = userStorageService.tempOutputRoot(userId).resolve("视频").resolve(filename).toFile();
         if (!f.exists()) {
-            f = new File(new File(appProperties.getPaths().getOutputDir(), "视频"), filename);
+            f = userStorageService.galleryRoot(userId).resolve("视频").resolve(filename).toFile();
         }
         if (!f.exists()) {
             return ResponseEntity.notFound().build();

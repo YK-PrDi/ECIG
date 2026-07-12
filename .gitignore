@@ -55,6 +55,11 @@ app.db
 app.db-journal
 app.db-shm
 app.db-wal
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+users/
 
 # 用户偏好（含 customOutputDir 自选路径）
 user-prefs.json

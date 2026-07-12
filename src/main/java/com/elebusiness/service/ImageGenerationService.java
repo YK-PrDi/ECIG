@@ -1,6 +1,7 @@
 package com.elebusiness.service;
 
 import com.elebusiness.config.AppProperties;
+import com.elebusiness.service.agent.GenerationInvocationContext;
 import com.elebusiness.service.agent.ImageGeneratorAgent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -587,6 +588,12 @@ public class ImageGenerationService {
         return agent.generate(enforcedPrompt, refImagePath, whiteBgPath, outputPath);
     }
 
+    public boolean generateImage(long userId, String prompt, String refImagePath,
+                                 String whiteBgPath, String outputPath, String agentId) {
+        return GenerationInvocationContext.withUserId(userId,
+                () -> generateImage(prompt, refImagePath, whiteBgPath, outputPath, agentId));
+    }
+
     /**
      * 多参考图重载（品牌/产品一致性场景）。
      * 当 agent 未覆写 generateMulti 时，默认实现会自动降级到单参考图版本。
@@ -599,6 +606,13 @@ public class ImageGenerationService {
                 refImagePaths == null ? 0 : refImagePaths.size(), aspect);
         String enforcedPrompt = enforceNoIntersectionPrompt(prompt);
         return agent.generateMulti(enforcedPrompt, refImagePaths, whiteBgPath, outputPath, aspect);
+    }
+
+    public boolean generateImageMulti(long userId, String prompt, List<String> refImagePaths,
+                                      String whiteBgPath, String outputPath,
+                                      String agentId, String aspect) {
+        return GenerationInvocationContext.withUserId(userId,
+                () -> generateImageMulti(prompt, refImagePaths, whiteBgPath, outputPath, agentId, aspect));
     }
 
     private String enforceNoIntersectionPrompt(String prompt) {

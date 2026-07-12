@@ -1,18 +1,27 @@
 package com.elebusiness.controller;
 
 import com.elebusiness.config.AppProperties;
+import com.elebusiness.config.LiblibConfig;
 import com.elebusiness.model.DingTalkRecord;
 import com.elebusiness.model.GenerateRequest;
 import com.elebusiness.model.GenerationTask;
+import com.elebusiness.model.entity.GenerationUsageLog;
 import com.elebusiness.model.ProductInfo;
 import com.elebusiness.service.CivitaiLoraService;
 import com.elebusiness.service.DingTalkService;
 import com.elebusiness.service.HistoryService;
 import com.elebusiness.service.ImageGenerationService;
 import com.elebusiness.service.TaskService;
+import com.elebusiness.service.auth.CurrentUserService;
+import com.elebusiness.service.agent.GenerationInvocationContext;
 import com.elebusiness.service.agent.GptImageAgent;
+import com.elebusiness.service.agent.ImageGeneratorAgent;
 import com.elebusiness.service.CosService;
+import com.elebusiness.service.billing.BillingService;
+import com.elebusiness.service.billing.GenerationPricingService;
+import com.elebusiness.service.workspace.UserStorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.poi.xssf.usermodel.XSSFPictureData;
@@ -29,6 +38,12 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -36,8 +51,8 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * 图像生成核心接口：标准模式 / 自定义模式 / 局部重绘 / GPT-Image 直连。
- * 从 ApiController 拆出（A.1 重构），业务逻辑零变动。
+ * 鍥惧儚鐢熸垚鏍稿績鎺ュ彛锛氭爣鍑嗘ā寮?/ 鑷畾涔夋ā寮?/ 灞€閮ㄩ噸缁?/ GPT-Image 鐩磋繛銆?
+ * 浠?ApiController 鎷嗗嚭锛圓.1 閲嶆瀯锛夛紝涓氬姟閫昏緫闆跺彉鍔ㄣ€?
  */
 @RestController
 public class GenerateController {
@@ -52,13 +67,23 @@ public class GenerateController {
     private final HistoryService historyService;
     private final CosService cosService;
     private final CivitaiLoraService civitaiLoraService;
+    private final List<ImageGeneratorAgent> agents;
+    private final CurrentUserService currentUserService;
+    private final UserStorageService userStorageService;
+    private final BillingService billingService;
+    private final GenerationPricingService pricingService;
 
     public GenerateController(DingTalkService dingTalkService,
                               ImageGenerationService imageGenerationService,
                               AppProperties appProperties, TaskService taskService,
                               GptImageAgent gptImageAgent,
                               HistoryService historyService, CosService cosService,
-                              CivitaiLoraService civitaiLoraService) {
+                              CivitaiLoraService civitaiLoraService,
+                              List<ImageGeneratorAgent> agents,
+                              CurrentUserService currentUserService,
+                              UserStorageService userStorageService,
+                              BillingService billingService,
+                              GenerationPricingService pricingService) {
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
         this.appProperties = appProperties;
@@ -67,20 +92,28 @@ public class GenerateController {
         this.historyService = historyService;
         this.cosService = cosService;
         this.civitaiLoraService = civitaiLoraService;
+        this.agents = agents;
+        this.currentUserService = currentUserService;
+        this.userStorageService = userStorageService;
+        this.billingService = billingService;
+        this.pricingService = pricingService;
     }
 
-    /** 异步提交生成任务，立即返回 taskId，前端轮询 /api/task/{taskId} 获取进度 */
+    /** 寮傛鎻愪氦鐢熸垚浠诲姟锛岀珛鍗宠繑鍥?taskId锛屽墠绔疆璇?/api/task/{taskId} 鑾峰彇杩涘害 */
     @PostMapping("/api/generate")
-    public ResponseEntity<Map<String, Object>> generate(@RequestBody GenerateRequest request) {
+    public ResponseEntity<Map<String, Object>> generate(@RequestBody GenerateRequest request, HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
         List<String> selectedIds = request.getProductIds();
         if (selectedIds == null || selectedIds.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "未选择产品"));
+            return ResponseEntity.badRequest().body(Map.of("error", "鏈€夋嫨浜у搧"));
         }
 
         String agentId = request.getAgentId();
         String userPrompt = request.getPrompt();
         String sessionId = request.getSessionId() == null ? "default" : request.getSessionId();
-        GenerationTask task = taskService.createTask(selectedIds.size());
+        GenerationTask task = taskService.createTask(userId, selectedIds.size());
+        int estimatedPoints = pricingService.estimateImageGeneration("standard", agentId, selectedIds.size());
+        task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), "standard", agentId, estimatedPoints).getId());
 
         taskService.submit(task, () -> {
             for (String recordId : selectedIds) {
@@ -90,8 +123,8 @@ public class GenerateController {
                 try {
                     record = dingTalkService.getRecordById(recordId);
                 } catch (Exception e) {
-                    log.error("获取记录 {} 失败: {}", recordId, e.getMessage());
-                    task.addResult(ControllerHelpers.result(recordId, "error", "获取记录失败: " + e.getMessage(), null));
+                    log.error("鑾峰彇璁板綍 {} 澶辫触: {}", recordId, e.getMessage());
+                    task.addResult(ControllerHelpers.result(recordId, "error", "鑾峰彇璁板綍澶辫触: " + e.getMessage(), null));
                     task.incrementProgress();
                     continue;
                 }
@@ -103,12 +136,12 @@ public class GenerateController {
                 task.setCurrentProduct(productName);
 
                 if (category == null || category.isBlank()) {
-                    task.addResult(ControllerHelpers.result(productName, "error", "未找到类别", null));
+                    task.addResult(ControllerHelpers.result(productName, "error", "?????", null));
                     task.incrementProgress();
                     continue;
                 }
 
-                List<Map<String, Object>> attachments = record.getFieldAsImageList("图片和附件");
+                List<Map<String, Object>> attachments = record.getFieldAsImageList("?????");
                 String whiteBgUrl = null;
                 if (attachments != null) {
                     for (Map<String, Object> img : attachments) {
@@ -120,35 +153,35 @@ public class GenerateController {
                 }
 
                 if (whiteBgUrl == null) {
-                    task.addResult(ControllerHelpers.result(productName, "error", "没有白底图", null));
+                    task.addResult(ControllerHelpers.result(productName, "error", "?????", null));
                     task.incrementProgress();
                     continue;
                 }
 
                 File categoryDir = new File(appProperties.getPaths().getReferenceDir(), category);
                 if (!categoryDir.exists()) {
-                    task.addResult(ControllerHelpers.result(productName, "error", "未找到类别 " + category + " 的参考图", null));
+                    task.addResult(ControllerHelpers.result(productName, "error", "????? " + category + " ????", null));
                     task.incrementProgress();
                     continue;
                 }
 
                 File[] refFolders = categoryDir.listFiles(
-                        f -> f.isDirectory() && f.getName().startsWith("参考图"));
+                        f -> f.isDirectory() && f.getName().startsWith("鍙傝€冨浘"));
                 if (refFolders == null || refFolders.length == 0) {
-                    task.addResult(ControllerHelpers.result(productName, "error", "未找到参考图文件夹", null));
+                    task.addResult(ControllerHelpers.result(productName, "error", "?????????", null));
                     task.incrementProgress();
                     continue;
                 }
 
                 File refPath = refFolders[new Random().nextInt(refFolders.length)];
-                String cleanName = productName.replaceAll("（.+?）", "");
-                // Phase 1：先落到临时归档，2 小时后自动清理；用户在前端点 💾 才 copy 到永久 outputDir
-                String categoryOutputDir = new File(appProperties.getPaths().getTempOutputDir(), category).getAbsolutePath();
+                String cleanName = productName.replaceAll("?.+??", "");
+                // Phase 1锛氬厛钀藉埌涓存椂褰掓。锛? 灏忔椂鍚庤嚜鍔ㄦ竻鐞嗭紱鐢ㄦ埛鍦ㄥ墠绔偣 馃捑 鎵?copy 鍒版案涔?outputDir
+                String categoryOutputDir = userTempOutputDir(userId, category);
                 int nextNum = imageGenerationService.getNextOutputNumber(categoryOutputDir, cleanName);
                 String outputFolder = new File(categoryOutputDir, cleanName + "_" + nextNum).getAbsolutePath();
                 new File(outputFolder).mkdirs();
 
-                log.info("开始生成: {} -> {} [agent={}]", productName, outputFolder, agentId);
+                log.info("寮€濮嬬敓鎴? {} -> {} [agent={}]", productName, outputFolder, agentId);
 
                 int generatedCount = 0;
 
@@ -169,37 +202,37 @@ public class GenerateController {
                 }
 
                 if (generatedCount == 0) {
-                    task.addResult(ControllerHelpers.result(productName, "error", "所有图片生成失败，请检查 API Key 或网络", outputFolder));
+                    task.addResult(ControllerHelpers.result(productName, "error", "???????????? API Key ???", outputFolder));
                 } else {
                     task.addResult(ControllerHelpers.result(productName, "success", null, outputFolder));
-                    // Phase 2：标准模式无用户上传 ref（参考图来自 categoryDir，不归档）；只记元信息
+                    // Phase 2锛氭爣鍑嗘ā寮忔棤鐢ㄦ埛涓婁紶 ref锛堝弬鑰冨浘鏉ヨ嚜 categoryDir锛屼笉褰掓。锛夛紱鍙鍏冧俊鎭?
                     try {
                         String configJson = "{\"productId\":\"" + recordId + "\",\"productName\":\""
                                 + productName.replace("\"", "\\\"") + "\",\"category\":\""
                                 + (category == null ? "" : category.replace("\"", "\\\"")) + "\"}";
-                        historyService.recordGeneration(sessionId, "standard",
+                        historyService.recordGeneration(userId, sessionId, "standard",
                                 userPrompt == null ? "" : userPrompt,
                                 agentId, java.util.Collections.emptyList(),
                                 outputFolder, configJson);
                     } catch (Exception e) {
-                        log.warn("standard 模式写历史失败: {}", e.getMessage());
+                        log.warn("standard 妯″紡鍐欏巻鍙插け璐? {}", e.getMessage());
                     }
                 }
                 task.incrementProgress();
             }
 
-            // 标准模式的思考信息：展示用户 prompt + 模型
+            // 鏍囧噯妯″紡鐨勬€濊€冧俊鎭細灞曠ず鐢ㄦ埛 prompt + 妯″瀷
             task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
-                "【提示词直送（未经 LLM 处理）】\n模型: " + agentId
-                + "\n\n【用户附加提示词】\n" + (userPrompt == null || userPrompt.isBlank() ? "（无）" : userPrompt)
-                + "\n\n注：标准模式下每张图的最终 prompt 由系统根据产品类别、主图/SKU/详情场景模板拼装，详见后台日志。",
+                "????????? LLM ????\n??: " + agentId
+                + "\n\n?????????\n" + (userPrompt == null || userPrompt.isBlank() ? "???" : userPrompt)
+                + "\n\n????????????? prompt ????????????/SKU/????????????????",
                 null));
         });
 
         return ResponseEntity.ok(Map.of("taskId", task.getId()));
     }
 
-    /** 开品模式第一步：上传产品图 + 分析提示词，返回可编辑结构化卡片字段。 */
+    /** 寮€鍝佹ā寮忕涓€姝ワ細涓婁紶浜у搧鍥?+ 鍒嗘瀽鎻愮ず璇嶏紝杩斿洖鍙紪杈戠粨鏋勫寲鍗＄墖瀛楁銆?*/
     @PostMapping("/api/product_analyze")
     public ResponseEntity<Map<String, Object>> productAnalyze(
             @RequestParam(value = "image", required = false) MultipartFile image,
@@ -208,7 +241,7 @@ public class GenerateController {
             @RequestParam(value = "agentId", defaultValue = "gemini") String agentId) {
         prompt = decodePrompt(prompt, promptBase64);
         if (prompt == null || prompt.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "请输入分析提示词"));
+            return ResponseEntity.badRequest().body(Map.of("error", "璇疯緭鍏ュ垎鏋愭彁绀鸿瘝"));
         }
 
         File imageTmp = null;
@@ -228,24 +261,24 @@ public class GenerateController {
             List<Map<String, String>> fields = imageGenerationService.analyzeProductText(prompt, imageTmp, agentId);
             return ResponseEntity.ok(Map.of("fields", fields));
         } catch (Exception e) {
-            log.error("product_analyze 失败: {}", e.getMessage(), e);
+            log.error("product_analyze 澶辫触: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         } finally {
             if (imageTmp != null && imageTmp.exists()) imageTmp.delete();
         }
     }
 
-    /** 自定义模式：上传白底图 + 用户要求，用 Gemini 扩写为多段可编辑生图提示词。 */
+    /** 鑷畾涔夋ā寮忥細涓婁紶鐧藉簳鍥?+ 鐢ㄦ埛瑕佹眰锛岀敤 Gemini 鎵╁啓涓哄娈靛彲缂栬緫鐢熷浘鎻愮ず璇嶃€?*/
     @PostMapping("/api/custom_analyze")
     public ResponseEntity<Map<String, Object>> customAnalyze(
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
             @RequestParam(value = "prompt", defaultValue = "") String prompt,
             @RequestParam(value = "count", defaultValue = "1") int count,
             @RequestParam(value = "withText", defaultValue = "true") boolean withText) {
-        log.info("[custom_analyze 入参] images={}, count={}, withText={}, promptLen={}",
+        log.info("[custom_analyze 鍏ュ弬] images={}, count={}, withText={}, promptLen={}",
                 images == null ? 0 : images.size(), count, withText, prompt == null ? 0 : prompt.length());
         if (images == null || images.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "请先上传白底产品图"));
+            return ResponseEntity.badRequest().body(Map.of("error", "?????????"));
         }
 
         List<File> tempFiles = new ArrayList<>();
@@ -257,12 +290,12 @@ public class GenerateController {
                 tempFiles.add(tmp);
             }
             if (tempFiles.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "请先上传有效图片"));
+                return ResponseEntity.badRequest().body(Map.of("error", "璇峰厛涓婁紶鏈夋晥鍥剧墖"));
             }
             String text = imageGenerationService.analyzeCustomImagePrompts(prompt, tempFiles, count, withText);
             return ResponseEntity.ok(Map.of("text", text));
         } catch (Exception e) {
-            log.error("custom_analyze 失败: {}", e.getMessage(), e);
+            log.error("custom_analyze 澶辫触: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         } finally {
             for (File f : tempFiles) {
@@ -272,8 +305,8 @@ public class GenerateController {
     }
 
     /**
-     * 开品模式外观分析：基于产品图/描述，按内置 Excel 维度生成结构化外观分析卡片。
-     * 这是两步流程的第一步，返回可编辑卡片供用户确认后二次生图。
+     * 寮€鍝佹ā寮忓瑙傚垎鏋愶細鍩轰簬浜у搧鍥?鎻忚堪锛屾寜鍐呯疆 Excel 缁村害鐢熸垚缁撴瀯鍖栧瑙傚垎鏋愬崱鐗囥€?
+     * 杩欐槸涓ゆ娴佺▼鐨勭涓€姝ワ紝杩斿洖鍙紪杈戝崱鐗囦緵鐢ㄦ埛纭鍚庝簩娆＄敓鍥俱€?
      */
     @PostMapping("/api/kaipin_analyze")
     public ResponseEntity<Map<String, Object>> kaipinAnalyze(
@@ -287,24 +320,24 @@ public class GenerateController {
             @RequestParam(value = "style", defaultValue = "") String style,
             @RequestParam(value = "styleText", required = false) String styleText) {
 
-        // 参数规范化
+        // 鍙傛暟瑙勮寖鍖?
         productA = normalizeMultipartText(productA);
         productB = normalizeMultipartText(productB);
         selling = normalizeMultipartText(selling);
         if (focusText != null) focusText = normalizeMultipartText(focusText);
         if (styleText != null) styleText = normalizeMultipartText(styleText);
 
-        // 新版开品模式：按固定外观维度分析单个产品，至少提供一份文字或图片材料即可。
+        // 鏂扮増寮€鍝佹ā寮忥細鎸夊浐瀹氬瑙傜淮搴﹀垎鏋愬崟涓骇鍝侊紝鑷冲皯鎻愪緵涓€浠芥枃瀛楁垨鍥剧墖鏉愭枡鍗冲彲銆?
         boolean hasA = (productA != null && !productA.isBlank()) || (imageA != null && !imageA.isEmpty());
         boolean hasB = (productB != null && !productB.isBlank()) || (imageB != null && !imageB.isEmpty());
         if (!hasA && !hasB) {
-            return ResponseEntity.badRequest().body(Map.of("error", "开品模式需要至少提供一张产品图或一段产品描述"));
+            return ResponseEntity.badRequest().body(Map.of("error", "??????????????????????"));
         }
 
         File imageATmp = null;
         File imageBTmp = null;
         try {
-            // 保存上传的图片到临时文件
+            // 淇濆瓨涓婁紶鐨勫浘鐗囧埌涓存椂鏂囦欢
             if (imageA != null && !imageA.isEmpty()) {
                 String suffixA = getSuffix(imageA.getOriginalFilename());
                 imageATmp = File.createTempFile("kaipin_A_", suffixA);
@@ -316,13 +349,13 @@ public class GenerateController {
                 imageB.transferTo(imageBTmp);
             }
 
-            // 调用融合分析服务
+            // 璋冪敤铻嶅悎鍒嗘瀽鏈嶅姟
             List<Map<String, String>> fields = imageGenerationService.analyzeKaiPin(
                     productA, productB, selling, focus, focusText, style, styleText, imageATmp, imageBTmp);
 
             return ResponseEntity.ok(Map.of("fields", fields));
         } catch (Exception e) {
-            log.error("kaipin_analyze 失败: {}", e.getMessage(), e);
+            log.error("kaipin_analyze 澶辫触: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         } finally {
             if (imageATmp != null && imageATmp.exists()) imageATmp.delete();
@@ -350,8 +383,8 @@ public class GenerateController {
 
     private String normalizeMultipartText(String value) {
         if (value == null) return "";
-        if (!(value.contains("Ã") || value.contains("Â") || value.contains("ä")
-                || value.contains("å") || value.contains("ç") || value.contains("ï¿½"))) {
+        if (!(value.contains("脙") || value.contains("脗") || value.contains("盲")
+                || value.contains("氓") || value.contains("莽") || value.contains("茂驴陆"))) {
             return value;
         }
         try {
@@ -362,8 +395,8 @@ public class GenerateController {
     }
 
     /**
-     * 开品 Excel 批量生成：豆包/视觉分析只对白底产品图执行一轮。
-     * Excel 里的图片只作为逐张创新参考图，与白底产品图配对生成。
+     * 寮€鍝?Excel 鎵归噺鐢熸垚锛氳眴鍖?瑙嗚鍒嗘瀽鍙鐧藉簳浜у搧鍥炬墽琛屼竴杞€?
+     * Excel 閲岀殑鍥剧墖鍙綔涓洪€愬紶鍒涙柊鍙傝€冨浘锛屼笌鐧藉簳浜у搧鍥鹃厤瀵圭敓鎴愩€?
      */
     @PostMapping("/api/kaipin_excel_generate")
     public ResponseEntity<Map<String, Object>> kaipinExcelGenerate(
@@ -373,13 +406,15 @@ public class GenerateController {
             @RequestParam(value = "countPerRef", defaultValue = "1") int countPerRef,
             @RequestParam(value = "agentId", defaultValue = "gpt-image") String agentId,
             @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
-            @RequestParam(value = "configJson", required = false) String configJson) {
+            @RequestParam(value = "configJson", required = false) String configJson,
+            HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
 
         if (whiteImage == null || whiteImage.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Excel 批量开品需要上传白底产品图"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Excel 鎵归噺寮€鍝侀渶瑕佷笂浼犵櫧搴曚骇鍝佸浘"));
         }
         if (excel == null || excel.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "请上传包含参考图片的 .xlsx 文件"));
+            return ResponseEntity.badRequest().body(Map.of("error", "璇蜂笂浼犲寘鍚弬鑰冨浘鐗囩殑 .xlsx 鏂囦欢"));
         }
 
         File whiteTmp = null;
@@ -395,23 +430,23 @@ public class GenerateController {
             if (excelRefs.isEmpty()) {
                 if (whiteTmp.exists()) whiteTmp.delete();
                 if (excelTmp.exists()) excelTmp.delete();
-                return ResponseEntity.badRequest().body(Map.of("error", "Excel 中没有提取到图片，请确认图片是插入到 .xlsx 文件内，而不是外部链接"));
+                return ResponseEntity.badRequest().body(Map.of("error", "Excel ????????????????? .xlsx ???"));
             }
 
             int safeCount = Math.max(1, Math.min(50, countPerRef));
             int total = excelRefs.size() * safeCount;
-            GenerationTask task = taskService.createTask(total);
+            GenerationTask task = taskService.createTask(userId, total);
+            int estimatedPoints = pricingService.estimateImageGeneration("kaipin", agentId, total);
+            task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), "kaipin", agentId, estimatedPoints).getId());
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-            String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
-                    "开品Excel批量/" + timestamp).getAbsolutePath();
-            new File(outputDir).mkdirs();
+            String outputDir = userTempOutputDir(userId, "开品Excel批量/" + timestamp);
 
             final File whiteFinal = whiteTmp;
             final File excelFinal = excelTmp;
             final List<File> refsFinal = new ArrayList<>(excelRefs);
             final int countFinal = safeCount;
             final String promptFinalBase = basePrompt == null || basePrompt.isBlank()
-                    ? "基于白底产品图保持产品主体一致，并结合 Excel 参考图提取创新造型、色彩、材质或结构灵感，生成新的开品概念图。"
+                    ? "??????????????????? Excel ???????????????????????????????"
                     : basePrompt;
 
             taskService.submit(task, () -> {
@@ -428,50 +463,51 @@ public class GenerateController {
                         final File refFinal = excelRef;
                         final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                         futures.add(CompletableFuture.supplyAsync(() -> {
-                            if (task.isCancelled()) return "失败: 已取消";
+                            if (task.isCancelled()) return "??: ???";
                             boolean ok = imageGenerationService.generateImageMulti(
+                                    userId,
                                     prompt,
                                     List.of(whiteFinal.getAbsolutePath(), refFinal.getAbsolutePath()),
                                     null,
                                     outputPath,
                                     agentId,
                                     aspect);
-                            return ok ? outputPath : "失败: 生成未返回图片";
+                            return ok ? outputPath : "??: ???????";
                         }, executor));
                     }
                 }
 
-                // 【优化】使用 allOf 并行等待所有任务完成，而非串行阻塞
-                log.info("[开品 Excel 批量] 等待 {} 张图片并行生成完成", futures.size());
+                // 銆愪紭鍖栥€戜娇鐢?allOf 骞惰绛夊緟鎵€鏈変换鍔″畬鎴愶紝鑰岄潪涓茶闃诲
+                log.info("[?? Excel ??] ?? {} ?????????", futures.size());
                 try {
                     CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
                             .get(10, TimeUnit.MINUTES);
                 } catch (TimeoutException te) {
-                    log.warn("[开品 Excel 批量] 整体超时(>10分钟)，取消未完成任务");
+                    log.warn("[寮€鍝?Excel 鎵归噺] 鏁翠綋瓒呮椂(>10鍒嗛挓)锛屽彇娑堟湭瀹屾垚浠诲姟");
                     for (CompletableFuture<String> f : futures) {
                         if (!f.isDone()) f.cancel(true);
                     }
                 } catch (Exception e) {
-                    log.error("[开品 Excel 批量] 等待任务完成异常: {}", e.getMessage());
+                    log.error("[寮€鍝?Excel 鎵归噺] 绛夊緟浠诲姟瀹屾垚寮傚父: {}", e.getMessage());
                 }
 
-                // 收集所有任务结果
+                // 鏀堕泦鎵€鏈変换鍔＄粨鏋?
                 int n = 1;
                 for (CompletableFuture<String> f : futures) {
                     String r;
                     if (f.isCancelled()) {
-                        r = "失败: 已取消";
+                        r = "??: ???";
                     } else if (!f.isDone()) {
-                        r = "失败: 未完成";
+                        r = "??: ???";
                     } else {
                         try {
-                            r = f.get(100, TimeUnit.MILLISECONDS); // 已完成，快速获取
+                            r = f.get(100, TimeUnit.MILLISECONDS); // 宸插畬鎴愶紝蹇€熻幏鍙?
                         } catch (Exception e) {
-                            r = "失败: " + e.getMessage();
+                            r = "澶辫触: " + e.getMessage();
                         }
                     }
                     String name = n++ + ".jpg";
-                    if (r.startsWith("失败")) {
+                    if (r.startsWith("澶辫触")) {
                         task.addResult(ControllerHelpers.result(name, "error", r, null));
                     } else {
                         String outputRef = r;
@@ -479,28 +515,28 @@ public class GenerateController {
                             try {
                                 outputRef = cosService.upload(new File(r), name);
                             } catch (Exception ce) {
-                                log.warn("COS 上传失败，降级本地路径: {}", ce.getMessage());
+                                log.warn("COS 涓婁紶澶辫触锛岄檷绾ф湰鍦拌矾寰? {}", ce.getMessage());
                             }
                         }
-                        task.addResult(ControllerHelpers.result(name, "success", null, outputRef));
+                        task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
                     }
                     task.incrementProgress();
                 }
 
                 task.addResult(ControllerHelpers.result("__OUTPUT_DIR__", "info", null, outputDir));
                 task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
-                        "【开品 Excel 批量】豆包/视觉分析仅执行 1 轮：对白底产品图形成结构化卡片；Excel 内 "
-                                + refsFinal.size() + " 张图片仅作为逐张创新参考图参与融合生成。", null));
+                        "??? Excel ?????????? 1 ??Excel ???????????????????? "
+                                + refsFinal.size() + " ??????", null));
 
                 try {
                     List<File> refsForArchive = new ArrayList<>();
                     refsForArchive.add(whiteFinal);
                     refsForArchive.addAll(refsFinal);
-                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(refsForArchive);
-                    historyService.recordGeneration(sessionId, "kaipin",
+                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refsForArchive);
+                    historyService.recordGeneration(userId, sessionId, "kaipin",
                             promptFinalBase, agentId, archive.refPaths, outputDir, configJson);
                 } catch (Exception e) {
-                    log.warn("开品 Excel 批量写历史失败（不影响生图）: {}", e.getMessage());
+                    log.warn("寮€鍝?Excel 鎵归噺鍐欏巻鍙插け璐ワ紙涓嶅奖鍝嶇敓鍥撅級: {}", e.getMessage());
                 }
 
                 if (whiteFinal.exists()) whiteFinal.delete();
@@ -514,7 +550,7 @@ public class GenerateController {
                     "output_dir", outputDir
             ));
         } catch (Exception e) {
-            log.error("kaipin_excel_generate 失败: {}", e.getMessage(), e);
+            log.error("kaipin_excel_generate 澶辫触: {}", e.getMessage(), e);
             if (whiteTmp != null && whiteTmp.exists()) whiteTmp.delete();
             if (excelTmp != null && excelTmp.exists()) excelTmp.delete();
             for (File ref : excelRefs) if (ref.exists()) ref.delete();
@@ -537,133 +573,76 @@ public class GenerateController {
             @RequestParam(value = "useLora", defaultValue = "false") boolean useLora,
             @RequestParam(value = "loraPreset", required = false) String loraPreset,
             MultipartHttpServletRequest request) {
+        long userId = currentUserService.requireUserId(request.getSession());
 
-        // 不能用 @RequestParam List<String> prompts —— Spring 会按英文逗号自动拆分
-        // （ConversionService 默认行为，详见 spring-framework reference 6.2 / RequestHeader 章节，
-        //   List<String> 参数会把 comma-separated string 转成 List）。
-        // 我们的 prompt 里嵌了大量英文 negative（"worst quality, low quality, blurry, ..."），
-        // 一条会被切成 N 条 → 后端 promptList.size() 暴涨 → 一次提交跑出 N 张图。
-        // 直接读 multipart 原始 String[]，保留同名字段的原值不做任何拆分。
+        // 涓嶈兘鐢?@RequestParam List<String> prompts 鈥斺€?Spring 浼氭寜鑻辨枃閫楀彿鑷姩鎷嗗垎
+        // 锛圕onversionService 榛樿琛屼负锛岃瑙?spring-framework reference 6.2 / RequestHeader 绔犺妭锛?
+        //   List<String> 鍙傛暟浼氭妸 comma-separated string 杞垚 List锛夈€?
+        // 鎴戜滑鐨?prompt 閲屽祵浜嗗ぇ閲忚嫳鏂?negative锛?worst quality, low quality, blurry, ..."锛夛紝
+        // 涓€鏉′細琚垏鎴?N 鏉?鈫?鍚庣 promptList.size() 鏆存定 鈫?涓€娆℃彁浜よ窇鍑?N 寮犲浘銆?
+        // 鐩存帴璇?multipart 鍘熷 String[]锛屼繚鐣欏悓鍚嶅瓧娈电殑鍘熷€间笉鍋氫换浣曟媶鍒嗐€?
         String[] rawPrompts = request.getParameterValues("prompt");
         List<String> prompts = rawPrompts == null ? List.of() : Arrays.asList(rawPrompts);
 
         boolean hasImages = images != null && !images.isEmpty();
-        String generationAgentId = "gemini".equalsIgnoreCase(agentId) ? "gpt-image" : agentId;
-        if (!Objects.equals(generationAgentId, agentId)) {
-            log.info("[custom_generate] Gemini only analyzes prompts; image generation switched to {}", generationAgentId);
+        String effectiveLoraPreset = LiblibConfig.normalizeLoraPreset(loraPreset);
+        boolean loraMode = useLora;
+        String requestedAgentId = "gemini".equalsIgnoreCase(agentId) ? "gpt-image" : agentId;
+        String generationAgentId = loraMode ? "liblib-lora" : requestedAgentId;
+        if (!Objects.equals(requestedAgentId, agentId)) {
+            log.info("[custom_generate] Gemini only analyzes prompts; image generation switched to {}", requestedAgentId);
+        }
+        if (loraMode && !Objects.equals(generationAgentId, requestedAgentId)) {
+            log.info("[custom_generate] LoRA enabled; forcing image generation agent to {} (requested={})", generationAgentId, requestedAgentId);
         }
 
-        // 诊断日志：51 任务排查 — 看清楚这次请求到底来了几条 prompt / 几张图 / 是否 pair
-        log.info("[custom_generate 入参] prompts={}, images={}, pairImages={}, count={}, agentId={}, aspect={}, useLora={}, loraPreset={}",
+        log.info("[custom_generate input] prompts={}, images={}, pairImages={}, count={}, agentId={}, aspect={}, useLora={}, loraPreset={}",
                 prompts.size(),
                 images == null ? 0 : images.size(),
-                pairImages, count, generationAgentId, aspect, useLora, loraPreset);
+                pairImages, count, generationAgentId, aspect, useLora, effectiveLoraPreset);
 
-        // LoRA 模式：使用 Civitai API 生成
-        if (useLora && loraPreset != null && !loraPreset.isBlank()) {
-            log.info("[custom_generate] 启用 LoRA 模式，预设={}", loraPreset);
-
-            // LoRA 模式下需要至少一张参考图
-            if (images == null || images.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "LoRA 模式需要上传产品图"));
-            }
-
-            // LoRA 模式只支持单图单提示词简单生成
-            String prompt = prompts.isEmpty() ? "" : prompts.get(0);
-
-            try {
-                // 保存上传的图片
-                File whiteBgFile = File.createTempFile("lora_ref_", ".jpg");
-                images.get(0).transferTo(whiteBgFile);
-
-                // 输出路径
-                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-                String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
-                        "自定义模式生成/" + timestamp).getAbsolutePath();
-                new File(outputDir).mkdirs();
-                String outputPath = new File(outputDir, "output_0.jpg").getAbsolutePath();
-
-                // 调用 Civitai LoRA 服务
-                boolean success = civitaiLoraService.generateWithLora(
-                    prompt,
-                    whiteBgFile.getAbsolutePath(),
-                    outputPath,
-                    aspect,
-                    loraPreset
-                );
-
-                // 清理临时文件
-                whiteBgFile.delete();
-
-                if (success) {
-                    // 记录到历史
-                    HistoryService.ArchiveResult archiveResult = historyService.archiveRefs(images);
-                    historyService.recordGeneration(
-                        sessionId,
-                        "custom",
-                        prompt,
-                        "civitai-lora-" + loraPreset,
-                        archiveResult.refPaths,
-                        outputPath,
-                        configJson
-                    );
-
-                    return ResponseEntity.ok(Map.of(
-                        "success", true,
-                        "outputDir", outputDir,
-                        "message", "LoRA 生成成功"
-                    ));
-                } else {
-                    return ResponseEntity.ok(Map.of(
-                        "success", false,
-                        "error", "Civitai LoRA 生成失败，请检查日志"
-                    ));
-                }
-            } catch (Exception e) {
-                log.error("[custom_generate] LoRA 模式异常: {}", e.getMessage(), e);
-                return ResponseEntity.internalServerError().body(Map.of(
-                    "error", "LoRA 生成异常: " + e.getMessage()
-                ));
+        // LoRA mode uses one unified liblib-lora tone for now; preset is kept only for future expansion.
+        if (loraMode) {
+            log.info("[custom_generate] using liblib-lora, tone={}, rawPreset={}", effectiveLoraPreset, loraPreset);
+            if (!hasImages) {
+                return ResponseEntity.badRequest().body(Map.of("error", "LoRA mode requires product image"));
             }
         }
 
-        // 过滤空 prompt
+        // 杩囨护绌?prompt
         List<String> promptList = new ArrayList<>();
         for (String p : prompts) if (p != null && !p.isBlank()) promptList.add(p);
         if (promptList.isEmpty() && !hasImages) {
-            return ResponseEntity.badRequest().body(Map.of("error", "纯文生图模式需要提供提示词"));
+            return ResponseEntity.badRequest().body(Map.of("error", "绾枃鐢熷浘妯″紡闇€瑕佹彁渚涙彁绀鸿瘝"));
         }
         if (promptList.isEmpty()) promptList.add("");
         int requestedCount = Math.max(1, Math.min(50, count));
 
-        // 自定义模式的“生成数量”是最终总张数，不是 prompt 数量 × 每条 prompt 张数。
-        // 防御异常请求带入多条 prompt 时出现 4×4=16 这类倍增。
+        // 鑷畾涔夋ā寮忕殑鈥滅敓鎴愭暟閲忊€濇槸鏈€缁堟€诲紶鏁帮紝涓嶆槸 prompt 鏁伴噺 脳 姣忔潯 prompt 寮犳暟銆?
+        // 闃插尽寮傚父璇锋眰甯﹀叆澶氭潯 prompt 鏃跺嚭鐜?4脳4=16 杩欑被鍊嶅銆?
         if ("custom".equalsIgnoreCase(mode) && multiPrompt && promptList.size() > 1) {
             requestedCount = 1;
-            log.info("[custom_generate] 自定义模式显式批量 prompt：{} 条，每条固定生成 1 张", promptList.size());
+            log.info("[custom_generate] ????????? prompt?{} ???????? 1 ?", promptList.size());
         } else if ("custom".equalsIgnoreCase(mode) && promptList.size() > 1) {
-            log.warn("[custom_generate] 自定义模式收到多条 prompt（{} 条），已收敛为 1 条，避免 count 倍增", promptList.size());
+            log.warn("[custom_generate] 鑷畾涔夋ā寮忔敹鍒板鏉?prompt锛坽} 鏉★級锛屽凡鏀舵暃涓?1 鏉★紝閬垮厤 count 鍊嶅", promptList.size());
             promptList = new ArrayList<>(List.of(String.join("\n\n", promptList)));
         }
 
-        // 收集提示词思考过程，回传前端展示（已移除 Gemini 压缩步骤，直接透传原文）
+        // 鏀堕泦鎻愮ず璇嶆€濊€冭繃绋嬶紝鍥炰紶鍓嶇灞曠ず锛堝凡绉婚櫎 Gemini 鍘嬬缉姝ラ锛岀洿鎺ラ€忎紶鍘熸枃锛?
         List<String> thoughts = new ArrayList<>();
         for (String p : promptList) {
             thoughts.add(
-                "【提示词直送（未经 LLM 处理）】\n模型: " + generationAgentId
-                + "\n长度: " + p.length() + " 字\n\n【最终提示词】\n" + p
+                "銆愭彁绀鸿瘝鐩撮€侊紙鏈粡 LLM 澶勭悊锛夈€慭n妯″瀷: " + generationAgentId
+                + "\n闀垮害: " + p.length() + " 瀛梊n\n銆愭渶缁堟彁绀鸿瘝銆慭n" + p
             );
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        // Phase 1：先落到临时归档，2 小时后自动清理；用户在前端点 💾 才 copy 到永久 outputDir
-        String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
-                "自定义模式生成/" + timestamp).getAbsolutePath();
-        new File(outputDir).mkdirs();
+        String outputDir = userTempOutputDir(userId, "自定义模式生成/" + timestamp);
 
-        // 解析 promptGroups（批量生图分组配对）：[{promptIdx, imageIndices:[..]}, ...]
-        // 非空时走分组分支：第 promptIdx 条 prompt 用 imageIndices 指向的图片子集。
-        List<int[]> groupImageIdx = new ArrayList<>(); // 每条 prompt 对应的 image 索引数组
+        // 瑙ｆ瀽 promptGroups锛堟壒閲忕敓鍥惧垎缁勯厤瀵癸級锛歔{promptIdx, imageIndices:[..]}, ...]
+        // 闈炵┖鏃惰蛋鍒嗙粍鍒嗘敮锛氱 promptIdx 鏉?prompt 鐢?imageIndices 鎸囧悜鐨勫浘鐗囧瓙闆嗐€?
+        List<int[]> groupImageIdx = new ArrayList<>(); // 姣忔潯 prompt 瀵瑰簲鐨?image 绱㈠紩鏁扮粍
         List<Integer> groupPromptIdx = new ArrayList<>();
         boolean useGroups = promptGroups != null && !promptGroups.isBlank();
         if (useGroups) {
@@ -679,15 +658,15 @@ public class GenerateController {
                     groupImageIdx.add(idxs);
                 }
             } catch (Exception e) {
-                return ResponseEntity.badRequest().body(Map.of("error", "promptGroups 解析失败: " + e.getMessage()));
+                return ResponseEntity.badRequest().body(Map.of("error", "promptGroups 瑙ｆ瀽澶辫触: " + e.getMessage()));
             }
         }
 
-        // multipart 必须在请求线程内落盘，提交到异步任务前先把上传文件持久化
+        // multipart 蹇呴』鍦ㄨ姹傜嚎绋嬪唴钀界洏锛屾彁浜ゅ埌寮傛浠诲姟鍓嶅厛鎶婁笂浼犳枃浠舵寔涔呭寲
         File refTempFile = null;
         List<File> whiteTempFiles = new ArrayList<>();
         List<File> pairRefs        = new ArrayList<>();
-        List<File> groupFiles      = new ArrayList<>(); // promptGroups 模式：所有 image 按索引落盘
+        List<File> groupFiles      = new ArrayList<>(); // promptGroups 妯″紡锛氭墍鏈?image 鎸夌储寮曡惤鐩?
         if (hasImages) {
             try {
                 if (useGroups) {
@@ -713,7 +692,7 @@ public class GenerateController {
                 }
             } catch (Exception e) {
                 return ResponseEntity.internalServerError()
-                        .body(Map.of("error", "处理上传文件失败: " + e.getMessage()));
+                        .body(Map.of("error", "澶勭悊涓婁紶鏂囦欢澶辫触: " + e.getMessage()));
             }
         }
 
@@ -722,7 +701,9 @@ public class GenerateController {
                   : pairImages ? (pairN * requestedCount)
                   : (promptList.size() * requestedCount);
 
-        GenerationTask task = taskService.createTask(total);
+        GenerationTask task = taskService.createTask(userId, total);
+        int estimatedPoints = pricingService.estimateImageGeneration(mode, generationAgentId, total);
+        task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), mode, generationAgentId, estimatedPoints).getId());
         final File refFinal = refTempFile;
         final List<File> whiteFinal = whiteTempFiles;
         final List<File> pairRefsFinal = pairRefs;
@@ -744,7 +725,7 @@ public class GenerateController {
             int[] idx = {1};
 
             if (useGroupsFinal) {
-                // 批量分组：第 g 组用 promptsFinal[promptIdx] + imageIndices 指向的图片子集
+                // 鎵归噺鍒嗙粍锛氱 g 缁勭敤 promptsFinal[promptIdx] + imageIndices 鎸囧悜鐨勫浘鐗囧瓙闆?
                 for (int g = 0; g < groupPromptIdxFinal.size(); g++) {
                     int pIdx = groupPromptIdxFinal.get(g);
                     final String promptFinal = (pIdx >= 0 && pIdx < promptsFinal.size())
@@ -760,10 +741,10 @@ public class GenerateController {
                         final int n = idx[0]++;
                         final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                         futures.add(CompletableFuture.supplyAsync(() -> {
-                            if (task.isCancelled()) return "失败: 已取消";
+                            if (task.isCancelled()) return "??: ???";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, refsFinal, null, outputPath, generationAgentId, aspectForGroup);
-                            return ok ? outputPath : "失败: 生成未返回图片";
+                                    userId, promptFinal, refsFinal, null, outputPath, generationAgentId, aspectForGroup);
+                            return ok ? outputPath : "??: ???????";
                         }, executor));
                     }
                 }
@@ -776,10 +757,10 @@ public class GenerateController {
                         final int n = idx[0]++;
                         final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                         futures.add(CompletableFuture.supplyAsync(() -> {
-                            if (task.isCancelled()) return "失败: 已取消";
+                            if (task.isCancelled()) return "??: ???";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, generationAgentId, aspectForRef);
-                            return ok ? outputPath : "失败: 生成未返回图片";
+                                    userId, promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, generationAgentId, aspectForRef);
+                            return ok ? outputPath : "??: ???????";
                         }, executor));
                     }
                 }
@@ -790,16 +771,16 @@ public class GenerateController {
                         final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
                         final String promptFinal = p;
                         futures.add(CompletableFuture.supplyAsync(() -> {
-                            if (task.isCancelled()) return "失败: 已取消";
+                            if (task.isCancelled()) return "??: ???";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    promptFinal, List.of(), null, outputPath, generationAgentId, requestedAspect);
-                            return ok ? outputPath : "失败: 生成未返回图片";
+                                    userId, promptFinal, List.of(), null, outputPath, generationAgentId, requestedAspect);
+                            return ok ? outputPath : "??: ???????";
                         }, executor));
                     }
                 }
             } else {
-                // 【自定义模式·混合并行生成】第1张串行，第2-N张并行
-                // 策略：第1张用白底图建立基调，第2-N张全部参考白底图+第1张并发生成
+                // 銆愯嚜瀹氫箟妯″紡路娣峰悎骞惰鐢熸垚銆戠1寮犱覆琛岋紝绗?-N寮犲苟琛?
+                // 绛栫暐锛氱1寮犵敤鐧藉簳鍥惧缓绔嬪熀璋冿紝绗?-N寮犲叏閮ㄥ弬鑰冪櫧搴曞浘+绗?寮犲苟鍙戠敓鎴?
                 List<String> baseRefs = new ArrayList<>();
                 baseRefs.add(refFinal.getAbsolutePath());
                 for (File wf : whiteFinal) baseRefs.add(wf.getAbsolutePath());
@@ -810,42 +791,42 @@ public class GenerateController {
                 final String aspectForRefs = resolveAutoAspect(requestedAspect, refsForAspect);
 
                 for (String p : promptsFinal) {
-                    // Phase 1: 生成第1张（串行）
+                    // Phase 1: 鐢熸垚绗?寮狅紙涓茶锛?
                     final int n1 = idx[0]++;
                     final String outputPath1 = new File(outputDir, n1 + ".jpg").getAbsolutePath();
                     final List<String> refs1 = new ArrayList<>(baseRefs);
                     final String prompt1 = buildSeriesPrompt(p, 1, countFinal);
 
                     CompletableFuture<String> future1 = CompletableFuture.supplyAsync(() -> {
-                        if (task.isCancelled()) return "失败: 已取消";
-                        log.info("[自定义模式] 生成第1张（基调图），参考图数量: {}", refs1.size());
+                        if (task.isCancelled()) return "??: ???";
+                        log.info("[鑷畾涔夋ā寮廬 鐢熸垚绗?寮狅紙鍩鸿皟鍥撅級锛屽弬鑰冨浘鏁伴噺: {}", refs1.size());
                         boolean ok = imageGenerationService.generateImageMulti(
-                                prompt1, refs1, null, outputPath1, generationAgentId, aspectForRefs);
-                        return ok ? outputPath1 : "失败: 生成未返回图片";
+                                userId, prompt1, refs1, null, outputPath1, generationAgentId, aspectForRefs);
+                        return ok ? outputPath1 : "??: ???????";
                     }, executor);
 
                     futures.add(future1);
 
-                    // 等待第1张完成
+                    // 绛夊緟绗?寮犲畬鎴?
                     String result1;
                     try {
                         result1 = future1.get(5, TimeUnit.MINUTES);
-                        if (result1.startsWith("失败") || !new File(result1).exists()) {
-                            log.warn("[自定义模式] 第1张生成失败: {}，后续图片将降级为仅参考白底图", result1);
-                            result1 = null; // 标记为失败，后续不使用
+                        if (result1.startsWith("澶辫触") || !new File(result1).exists()) {
+                            log.warn("[鑷畾涔夋ā寮廬 绗?寮犵敓鎴愬け璐? {}锛屽悗缁浘鐗囧皢闄嶇骇涓轰粎鍙傝€冪櫧搴曞浘", result1);
+                            result1 = null; // 鏍囪涓哄け璐ワ紝鍚庣画涓嶄娇鐢?
                         } else {
-                            log.info("[自定义模式] 第1张生成成功: {}", result1);
+                            log.info("[鑷畾涔夋ā寮廬 绗?寮犵敓鎴愭垚鍔? {}", result1);
                         }
                     } catch (TimeoutException te) {
                         future1.cancel(true);
-                        log.error("[自定义模式] 第1张生成超时");
+                        log.error("[?????] ?1?????");
                         result1 = null;
                     } catch (Exception e) {
-                        log.error("[自定义模式] 第1张生成异常: {}", e.getMessage());
+                        log.error("[鑷畾涔夋ā寮廬 绗?寮犵敓鎴愬紓甯? {}", e.getMessage());
                         result1 = null;
                     }
 
-                    // Phase 2: 并行生成第2-N张（所有都参考白底图+第1张）
+                    // Phase 2: 骞惰鐢熸垚绗?-N寮狅紙鎵€鏈夐兘鍙傝€冪櫧搴曞浘+绗?寮狅級
                     if (countFinal > 1) {
                         final String firstImagePath = result1; // final for lambda
                         List<CompletableFuture<String>> parallelFutures = new ArrayList<>();
@@ -855,7 +836,7 @@ public class GenerateController {
                             final int n = idx[0]++;
                             final String outputPath = new File(outputDir, n + ".jpg").getAbsolutePath();
 
-                            // 构建参考图列表：白底图 + 第1张（如果第1张生成成功）
+                            // 鏋勫缓鍙傝€冨浘鍒楄〃锛氱櫧搴曞浘 + 绗?寮狅紙濡傛灉绗?寮犵敓鎴愭垚鍔燂級
                             final List<String> currentRefs = new ArrayList<>(baseRefs);
                             if (firstImagePath != null) {
                                 currentRefs.add(firstImagePath);
@@ -864,19 +845,19 @@ public class GenerateController {
                             final String enhancedPrompt = buildSeriesPrompt(p, imageIndex, countFinal);
 
                             CompletableFuture<String> currentFuture = CompletableFuture.supplyAsync(() -> {
-                                if (task.isCancelled()) return "失败: 已取消";
-                                log.info("[自定义模式并行] 开始生成第 {} 张，参考图数量: {}", imageIndex, currentRefs.size());
+                                if (task.isCancelled()) return "??: ???";
+                                log.info("[鑷畾涔夋ā寮忓苟琛宂 寮€濮嬬敓鎴愮 {} 寮狅紝鍙傝€冨浘鏁伴噺: {}", imageIndex, currentRefs.size());
                                 boolean ok = imageGenerationService.generateImageMulti(
-                                        enhancedPrompt, currentRefs, null, outputPath, generationAgentId, aspectForRefs);
-                                return ok ? outputPath : "失败: 生成未返回图片";
+                                        userId, enhancedPrompt, currentRefs, null, outputPath, generationAgentId, aspectForRefs);
+                                return ok ? outputPath : "??: ???????";
                             }, executor);
 
                             futures.add(currentFuture);
                             parallelFutures.add(currentFuture);
                         }
 
-                        // 等待所有并行任务完成（注意：不在这里做额外等待，统一在后面收集结果时处理）
-                        log.info("[自定义模式并行] 已提交 {} 张图片并行生成", parallelFutures.size());
+                        // 绛夊緟鎵€鏈夊苟琛屼换鍔″畬鎴愶紙娉ㄦ剰锛氫笉鍦ㄨ繖閲屽仛棰濆绛夊緟锛岀粺涓€鍦ㄥ悗闈㈡敹闆嗙粨鏋滄椂澶勭悊锛?
+                        log.info("[???????] ??? {} ???????", parallelFutures.size());
                     }
                 }
             }
@@ -885,43 +866,43 @@ public class GenerateController {
             for (CompletableFuture<String> f : futures) {
                 String r;
                 if (f.isCancelled()) {
-                    r = "失败: 已取消";
+                    r = "??: ???";
                 } else if (!f.isDone()) {
-                    // 任务还未完成，等待它（单张最多10分钟）
+                    // 浠诲姟杩樻湭瀹屾垚锛岀瓑寰呭畠锛堝崟寮犳渶澶?0鍒嗛挓锛?
                     try {
                         r = f.get(10, TimeUnit.MINUTES);
                     } catch (TimeoutException te) {
                         f.cancel(true);
-                        r = "失败: 单张图超时 (>10 分钟)";
+                        r = "澶辫触: 鍗曞紶鍥捐秴鏃?(>10 鍒嗛挓)";
                     } catch (CancellationException ce) {
-                        r = "失败: 已取消";
+                        r = "??: ???";
                     } catch (Exception e) {
-                        r = "失败: " + e.getMessage();
+                        r = "澶辫触: " + e.getMessage();
                     }
                 } else {
-                    // 任务已完成，直接获取结果（不会阻塞）
+                    // 浠诲姟宸插畬鎴愶紝鐩存帴鑾峰彇缁撴灉锛堜笉浼氶樆濉烇級
                     try {
                         r = f.get(100, TimeUnit.MILLISECONDS);
                     } catch (CancellationException ce) {
-                        r = "失败: 已取消";
+                        r = "??: ???";
                     } catch (Exception e) {
-                        r = "失败: " + e.getMessage();
+                        r = "澶辫触: " + e.getMessage();
                     }
                 }
                 String name = n++ + ".jpg";
-                if (r.startsWith("失败")) {
+                if (r.startsWith("澶辫触")) {
                     task.addResult(ControllerHelpers.result(name, "error", r, null));
                 } else {
-                    // COS 已配置时上传，返回 URL；否则返回本地路径（开发态兜底）
+                    // COS 宸查厤缃椂涓婁紶锛岃繑鍥?URL锛涘惁鍒欒繑鍥炴湰鍦拌矾寰勶紙寮€鍙戞€佸厹搴曪級
                     String outputRef = r;
                     if (cosService.isEnabled()) {
                         try {
                             outputRef = cosService.upload(new File(r), name);
                         } catch (Exception ce) {
-                            log.warn("COS 上传失败，降级本地路径: {}", ce.getMessage());
+                            log.warn("COS 涓婁紶澶辫触锛岄檷绾ф湰鍦拌矾寰? {}", ce.getMessage());
                         }
                     }
-                    task.addResult(ControllerHelpers.result(name, "success", null, outputRef));
+                    task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
                 }
                 task.incrementProgress();
             }
@@ -937,22 +918,22 @@ public class GenerateController {
             for (File pr : pairRefsFinal) pr.delete();
         });
 
-        // Phase 2：写一条 GenerationHistory（per-batch；outputPath = 批次目录）。
-        // 异步任务还没跑完没关系，记录的是"提交了这次生图请求"的元信息；
-        // 用户后续点 💾 保存其中一张时，ResourceController.saveToGallery 会按 parent dir 匹配回填 savedPath。
+        // Phase 2锛氬啓涓€鏉?GenerationHistory锛坧er-batch锛沷utputPath = 鎵规鐩綍锛夈€?
+        // 寮傛浠诲姟杩樻病璺戝畬娌″叧绯伙紝璁板綍鐨勬槸"鎻愪氦浜嗚繖娆＄敓鍥捐姹?鐨勫厓淇℃伅锛?
+        // 鐢ㄦ埛鍚庣画鐐?馃捑 淇濆瓨鍏朵腑涓€寮犳椂锛孯esourceController.saveToGallery 浼氭寜 parent dir 鍖归厤鍥炲～ savedPath銆?
         try {
-            // 归档参考图（pair / ref+white / no images 三种入参形态都覆盖）
+            // 褰掓。鍙傝€冨浘锛坧air / ref+white / no images 涓夌鍏ュ弬褰㈡€侀兘瑕嗙洊锛?
             List<File> refsForArchive = new ArrayList<>();
             if (refTempFile != null) refsForArchive.add(refTempFile);
             for (File wf : whiteTempFiles) refsForArchive.add(wf);
             for (File pr : pairRefs)       refsForArchive.add(pr);
-            // 注意：这里 archiveRefFiles 是同步 copy 一次，跟 lambda 里之后的 .delete() 无竞争
-            HistoryService.ArchiveResult archive = historyService.archiveRefFiles(refsForArchive);
+            // 娉ㄦ剰锛氳繖閲?archiveRefFiles 鏄悓姝?copy 涓€娆★紝璺?lambda 閲屼箣鍚庣殑 .delete() 鏃犵珵浜?
+            HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refsForArchive);
             String promptJoined = String.join(" || ", promptList);
-            historyService.recordGeneration(sessionId, mode, promptJoined, generationAgentId,
+            historyService.recordGeneration(userId, sessionId, mode, promptJoined, generationAgentId,
                     archive.refPaths, outputDir, configJson);
         } catch (Exception e) {
-            log.warn("写历史记录失败（不影响生图）: {}", e.getMessage());
+            log.warn("鍐欏巻鍙茶褰曞け璐ワ紙涓嶅奖鍝嶇敓鍥撅級: {}", e.getMessage());
         }
 
         return ResponseEntity.ok(Map.of("taskId", task.getId(), "output_dir", outputDir));
@@ -964,8 +945,8 @@ public class GenerateController {
     }
 
     /**
-     * 自定义模式的“自动”应尽量跟随参考图比例，而不是落回模型默认方图。
-     * 用户显式选择 1:1 / 9:16 / 16:9 等比例时不改动，电商详情页强制 9:16 也不受影响。
+     * 鑷畾涔夋ā寮忕殑鈥滆嚜鍔ㄢ€濆簲灏介噺璺熼殢鍙傝€冨浘姣斾緥锛岃€屼笉鏄惤鍥炴ā鍨嬮粯璁ゆ柟鍥俱€?
+     * 鐢ㄦ埛鏄惧紡閫夋嫨 1:1 / 9:16 / 16:9 绛夋瘮渚嬫椂涓嶆敼鍔紝鐢靛晢璇︽儏椤靛己鍒?9:16 涔熶笉鍙楀奖鍝嶃€?
      */
     private String resolveAutoAspect(String requestedAspect, List<File> refs) {
         String normalized = normalizeAspect(requestedAspect);
@@ -978,11 +959,11 @@ public class GenerateController {
                 BufferedImage image = ImageIO.read(ref);
                 if (image == null || image.getWidth() <= 0 || image.getHeight() <= 0) continue;
                 String inferred = nearestAspect(image.getWidth(), image.getHeight());
-                log.info("自定义模式 auto 尺寸按参考图推断为 {} ({}x{}, file={})",
+                log.info("鑷畾涔夋ā寮?auto 灏哄鎸夊弬鑰冨浘鎺ㄦ柇涓?{} ({}x{}, file={})",
                         inferred, image.getWidth(), image.getHeight(), ref.getName());
                 return inferred;
             } catch (Exception e) {
-                log.warn("读取参考图尺寸失败，保持 auto: {}", e.getMessage());
+                log.warn("璇诲彇鍙傝€冨浘灏哄澶辫触锛屼繚鎸?auto: {}", e.getMessage());
             }
         }
         return "auto";
@@ -1010,61 +991,61 @@ public class GenerateController {
     }
 
     /**
-     * 构建系列连贯性提示词：根据图片序号增强约束，确保同场景多角度拍摄效果
+     * 鏋勫缓绯诲垪杩炶疮鎬ф彁绀鸿瘝锛氭牴鎹浘鐗囧簭鍙峰寮虹害鏉燂紝纭繚鍚屽満鏅瑙掑害鎷嶆憚鏁堟灉
      *
-     * @param basePrompt 用户原始提示词
-     * @param currentIndex 当前图片序号（1-based）
-     * @param totalCount 总图片数量
-     * @return 增强后的提示词
+     * @param basePrompt 鐢ㄦ埛鍘熷鎻愮ず璇?
+     * @param currentIndex 褰撳墠鍥剧墖搴忓彿锛?-based锛?
+     * @param totalCount 鎬诲浘鐗囨暟閲?
+     * @return 澧炲己鍚庣殑鎻愮ず璇?
      */
     private String buildSeriesPrompt(String basePrompt, int currentIndex, int totalCount) {
         String base = basePrompt == null ? "" : basePrompt.trim();
 
-        // 系列连贯性核心约束
+        // 绯诲垪杩炶疮鎬ф牳蹇冪害鏉?
         String seriesConstraint = String.format("""
 
-                【系列连贯性·最高优先级】这是同一场景系列拍摄的第 %d/%d 张：
-                1. 产品主体必须100%%一致：外形、颜色、材质、品牌标识、关键结构完全相同
-                2. **产品原生文字必须与第1张完全相同**：
-                   - 产品本体上的文字：LOGO、品牌名称、型号标识、按钮标签、刻度数字、接口标识等
-                   - 这些文字的字形、字体、位置、颜色、清晰度必须保持一致，禁止模糊、变形、消失或改变内容
-                   - **注意**：画面上的营销卖点文案（如"持久续航"、"智能降噪"等）属于本图卖点的一部分，每张图可以不同，这是正常的
-                3. **两类文字的区分**：
-                   - 产品原生文字（必须一致）：产品包装、外壳、屏幕、按键上印刷/显示的文字
-                   - 画面营销文案（可以不同）：漂浮在场景中的卖点标题、副标题、标签，用于强调本图的差异化卖点
-                4. 场景类型必须完全一致：如果是浴室就保持浴室，厨房就保持厨房，办公室就保持办公室
-                5. 整体色调、光线氛围、背景材质必须保持一致，营造"同一时间同一地点"的连续感
-                6. 允许变化的部分：
-                   - 产品拍摄角度（正面→侧面→俯视→仰视等自然过渡）
-                   - 产品在场景中的摆放位置（左→中→右，或前→后景深变化）
-                   - 场景中的道具细节（同类型道具的不同摆放，但风格保持一致）
-                   - 光照角度的微调（但整体亮度和色温保持一致）
-                   - **画面营销文案**：每张图根据本图卖点展示不同的营销标题和标签，这是系列图的核心价值
-                7. 禁止出现：场景类型切换、色调剧变、产品变形、产品原生文字错误/模糊/消失、风格跳跃、不同时间段的光线
-                8. 最终效果：看起来像是摄影师在同一场景中走动，用不同角度拍摄同一产品的连续镜头；每张图通过不同的拍摄角度和营销文案强调不同卖点，但产品本身始终是同一个
+                銆愮郴鍒楄繛璐€锋渶楂樹紭鍏堢骇銆戣繖鏄悓涓€鍦烘櫙绯诲垪鎷嶆憚鐨勭 %d/%d 寮狅細
+                1. 浜у搧涓讳綋蹇呴』100%%涓€鑷达細澶栧舰銆侀鑹层€佹潗璐ㄣ€佸搧鐗屾爣璇嗐€佸叧閿粨鏋勫畬鍏ㄧ浉鍚?
+                2. **浜у搧鍘熺敓鏂囧瓧蹇呴』涓庣1寮犲畬鍏ㄧ浉鍚?*锛?
+                   - 浜у搧鏈綋涓婄殑鏂囧瓧锛歀OGO銆佸搧鐗屽悕绉般€佸瀷鍙锋爣璇嗐€佹寜閽爣绛俱€佸埢搴︽暟瀛椼€佹帴鍙ｆ爣璇嗙瓑
+                   - 杩欎簺鏂囧瓧鐨勫瓧褰€佸瓧浣撱€佷綅缃€侀鑹层€佹竻鏅板害蹇呴』淇濇寔涓€鑷达紝绂佹妯＄硦銆佸彉褰€佹秷澶辨垨鏀瑰彉鍐呭
+                   - **娉ㄦ剰**锛氱敾闈笂鐨勮惀閿€鍗栫偣鏂囨锛堝"鎸佷箙缁埅"銆?鏅鸿兘闄嶅櫔"绛夛級灞炰簬鏈浘鍗栫偣鐨勪竴閮ㄥ垎锛屾瘡寮犲浘鍙互涓嶅悓锛岃繖鏄甯哥殑
+                3. **涓ょ被鏂囧瓧鐨勫尯鍒?*锛?
+                   - 浜у搧鍘熺敓鏂囧瓧锛堝繀椤讳竴鑷达級锛氫骇鍝佸寘瑁呫€佸澹炽€佸睆骞曘€佹寜閿笂鍗板埛/鏄剧ず鐨勬枃瀛?
+                   - 鐢婚潰钀ラ攢鏂囨锛堝彲浠ヤ笉鍚岋級锛氭紓娴湪鍦烘櫙涓殑鍗栫偣鏍囬銆佸壇鏍囬銆佹爣绛撅紝鐢ㄤ簬寮鸿皟鏈浘鐨勫樊寮傚寲鍗栫偣
+                4. 鍦烘櫙绫诲瀷蹇呴』瀹屽叏涓€鑷达細濡傛灉鏄荡瀹ゅ氨淇濇寔娴村锛屽帹鎴垮氨淇濇寔鍘ㄦ埧锛屽姙鍏灏变繚鎸佸姙鍏
+                5. 鏁翠綋鑹茶皟銆佸厜绾挎皼鍥淬€佽儗鏅潗璐ㄥ繀椤讳繚鎸佷竴鑷达紝钀ラ€?鍚屼竴鏃堕棿鍚屼竴鍦扮偣"鐨勮繛缁劅
+                6. 鍏佽鍙樺寲鐨勯儴鍒嗭細
+                   - 浜у搧鎷嶆憚瑙掑害锛堟闈⑩啋渚ч潰鈫掍刊瑙嗏啋浠拌绛夎嚜鐒惰繃娓★級
+                   - 浜у搧鍦ㄥ満鏅腑鐨勬憜鏀句綅缃紙宸︹啋涓啋鍙筹紝鎴栧墠鈫掑悗鏅繁鍙樺寲锛?
+                   - 鍦烘櫙涓殑閬撳叿缁嗚妭锛堝悓绫诲瀷閬撳叿鐨勪笉鍚屾憜鏀撅紝浣嗛鏍间繚鎸佷竴鑷达級
+                   - 鍏夌収瑙掑害鐨勫井璋冿紙浣嗘暣浣撲寒搴﹀拰鑹叉俯淇濇寔涓€鑷达級
+                   - **鐢婚潰钀ラ攢鏂囨**锛氭瘡寮犲浘鏍规嵁鏈浘鍗栫偣灞曠ず涓嶅悓鐨勮惀閿€鏍囬鍜屾爣绛撅紝杩欐槸绯诲垪鍥剧殑鏍稿績浠峰€?
+                7. 绂佹鍑虹幇锛氬満鏅被鍨嬪垏鎹€佽壊璋冨墽鍙樸€佷骇鍝佸彉褰€佷骇鍝佸師鐢熸枃瀛楅敊璇?妯＄硦/娑堝け銆侀鏍艰烦璺冦€佷笉鍚屾椂闂存鐨勫厜绾?
+                8. 鏈€缁堟晥鏋滐細鐪嬭捣鏉ュ儚鏄憚褰卞笀鍦ㄥ悓涓€鍦烘櫙涓蛋鍔紝鐢ㄤ笉鍚岃搴︽媿鎽勫悓涓€浜у搧鐨勮繛缁暅澶达紱姣忓紶鍥鹃€氳繃涓嶅悓鐨勬媿鎽勮搴﹀拰钀ラ攢鏂囨寮鸿皟涓嶅悓鍗栫偣锛屼絾浜у搧鏈韩濮嬬粓鏄悓涓€涓?
                 """.trim(), currentIndex, totalCount);
 
-        // 角度差异化约束（替换原有的位置引导）
+        // 瑙掑害宸紓鍖栫害鏉燂紙鏇挎崲鍘熸湁鐨勪綅缃紩瀵硷級
         String angleConstraint = buildAngleConstraint(currentIndex, totalCount);
 
         return base + seriesConstraint + angleConstraint;
     }
 
     /**
-     * 构建角度差异化约束
-     * @param currentIndex 当前图片序号（1-based）
-     * @param totalCount 总图片数量
-     * @return 角度约束提示词
+     * 鏋勫缓瑙掑害宸紓鍖栫害鏉?
+     * @param currentIndex 褰撳墠鍥剧墖搴忓彿锛?-based锛?
+     * @param totalCount 鎬诲浘鐗囨暟閲?
+     * @return 瑙掑害绾︽潫鎻愮ず璇?
      */
     private String buildAngleConstraint(int currentIndex, int totalCount) {
         if (currentIndex == 1) {
             return """
 
-                【第1张·基调建立】
-                产品主视角（正面或正面45度），清晰展示产品正面特征、品牌LOGO、核心卖点。
-                这张图将作为后续图片的参考基准，必须完整呈现产品全貌。
-                **产品原生文字重点**：清晰展示产品本体上的所有文字、LOGO、品牌标识、按钮标签等细节，确保可读且完整
-                **画面营销文案**：根据basePrompt中的卖点，设计本图的营销文案（主标题、副标题、卖点标签），用于强调第1个核心卖点
+                銆愮1寮犅峰熀璋冨缓绔嬨€?
+                浜у搧涓昏瑙掞紙姝ｉ潰鎴栨闈?5搴︼級锛屾竻鏅板睍绀轰骇鍝佹闈㈢壒寰併€佸搧鐗孡OGO銆佹牳蹇冨崠鐐广€?
+                杩欏紶鍥惧皢浣滀负鍚庣画鍥剧墖鐨勫弬鑰冨熀鍑嗭紝蹇呴』瀹屾暣鍛堢幇浜у搧鍏ㄨ矊銆?
+                **浜у搧鍘熺敓鏂囧瓧閲嶇偣**锛氭竻鏅板睍绀轰骇鍝佹湰浣撲笂鐨勬墍鏈夋枃瀛椼€丩OGO銆佸搧鐗屾爣璇嗐€佹寜閽爣绛剧瓑缁嗚妭锛岀‘淇濆彲璇讳笖瀹屾暣
+                **鐢婚潰钀ラ攢鏂囨**锛氭牴鎹産asePrompt涓殑鍗栫偣锛岃璁℃湰鍥剧殑钀ラ攢鏂囨锛堜富鏍囬銆佸壇鏍囬銆佸崠鐐规爣绛撅級锛岀敤浜庡己璋冪1涓牳蹇冨崠鐐?
                 """;
         }
 
@@ -1074,54 +1055,54 @@ public class GenerateController {
 
         return String.format("""
 
-                【第%d张·角度约束·强制执行】
-                产品必须采用%s。
+                銆愮%d寮犅疯搴︾害鏉熉峰己鍒舵墽琛屻€?
+                浜у搧蹇呴』閲囩敤%s銆?
 
-                **角度定义**：
-                - 保持产品主体完整可见，不得被遮挡或裁切
-                - 该角度必须与前面已生成的图片角度明显不同
-                - 展示该角度下产品的独特特征和细节
-                - 光线和阴影要符合该视角的物理规律
+                **瑙掑害瀹氫箟**锛?
+                - 淇濇寔浜у搧涓讳綋瀹屾暣鍙锛屼笉寰楄閬尅鎴栬鍒?
+                - 璇ヨ搴﹀繀椤讳笌鍓嶉潰宸茬敓鎴愮殑鍥剧墖瑙掑害鏄庢樉涓嶅悓
+                - 灞曠ず璇ヨ搴︿笅浜у搧鐨勭嫭鐗圭壒寰佸拰缁嗚妭
+                - 鍏夌嚎鍜岄槾褰辫绗﹀悎璇ヨ瑙掔殑鐗╃悊瑙勫緥
 
-                **禁止**：
-                - 禁止使用与第1张相同或相似的正面角度
-                - 禁止使用与前面已生成图片重复的角度
-                - 禁止因为角度改变而修改产品结构或比例
+                **绂佹**锛?
+                - 绂佹浣跨敤涓庣1寮犵浉鍚屾垨鐩镐技鐨勬闈㈣搴?
+                - 绂佹浣跨敤涓庡墠闈㈠凡鐢熸垚鍥剧墖閲嶅鐨勮搴?
+                - 绂佹鍥犱负瑙掑害鏀瑰彉鑰屼慨鏀逛骇鍝佺粨鏋勬垨姣斾緥
 
-                **产品原生文字约束**：参考第1张图片，确保产品本体上的文字/LOGO/标识与第1张完全相同，位置、字体、清晰度一致
-                **画面营销文案**：可以与前面不同，根据basePrompt设计新的营销标题和标签来强调第%d个卖点或从新角度证明功能
+                **浜у搧鍘熺敓鏂囧瓧绾︽潫**锛氬弬鑰冪1寮犲浘鐗囷紝纭繚浜у搧鏈綋涓婄殑鏂囧瓧/LOGO/鏍囪瘑涓庣1寮犲畬鍏ㄧ浉鍚岋紝浣嶇疆銆佸瓧浣撱€佹竻鏅板害涓€鑷?
+                **鐢婚潰钀ラ攢鏂囨**锛氬彲浠ヤ笌鍓嶉潰涓嶅悓锛屾牴鎹産asePrompt璁捐鏂扮殑钀ラ攢鏍囬鍜屾爣绛炬潵寮鸿皟绗?d涓崠鐐规垨浠庢柊瑙掑害璇佹槑鍔熻兘
                 """, currentIndex, currentAngle, currentIndex);
     }
 
     /**
-     * 根据总图片数量选择合适的角度序列
-     * @param totalCount 总图片数量
-     * @return 角度描述数组
+     * 鏍规嵁鎬诲浘鐗囨暟閲忛€夋嫨鍚堥€傜殑瑙掑害搴忓垪
+     * @param totalCount 鎬诲浘鐗囨暟閲?
+     * @return 瑙掑害鎻忚堪鏁扮粍
      */
     private String[] selectAngleSequence(int totalCount) {
         if (totalCount <= 3) {
-            // 3张及以下：正面+侧面+俯视/仰视
+            // 3寮犲強浠ヤ笅锛氭闈?渚ч潰+淇/浠拌
             return new String[]{
-                "侧面90度视角（展示产品左侧或右侧完整轮廓，侧面平行于画面）",
-                "俯视45度视角（从斜上方45度向下拍摄，展示产品顶部特征和整体布局）"
+                "渚ч潰90搴﹁瑙掞紙灞曠ず浜у搧宸︿晶鎴栧彸渚у畬鏁磋疆寤擄紝渚ч潰骞宠浜庣敾闈級",
+                "??45????????45????????????????????"
             };
         } else if (totalCount <= 5) {
-            // 4-5张：正面+左右侧+俯视+微仰视
+            // 4-5寮狅細姝ｉ潰+宸﹀彸渚?淇+寰话瑙?
             return new String[]{
-                "左侧面70度视角（产品主体向左旋转70度，展示左侧面和部分正面）",
-                "右侧面70度视角（产品主体向右旋转70度，展示右侧面和部分正面）",
-                "俯视45度视角（从斜上方45度向下拍摄，展示顶部细节）",
-                "正面微仰视30度视角（相机位置略低于产品中心，向上仰拍30度）"
+                "???70????????????70?????????????",
+                "???70????????????70?????????????",
+                "??45????????45?????????????",
+                "姝ｉ潰寰话瑙?0搴﹁瑙掞紙鐩告満浣嶇疆鐣ヤ綆浜庝骇鍝佷腑蹇冿紝鍚戜笂浠版媿30搴︼級"
             };
         } else {
-            // 6张及以上：全方位多角度
+            // 6寮犲強浠ヤ笂锛氬叏鏂逛綅澶氳搴?
             return new String[]{
-                "左侧面90度视角（产品完全侧面展示，左侧面平行于画面）",
-                "右侧面90度视角（产品完全侧面展示，右侧面平行于画面）",
-                "俯视60度视角（从较陡的斜上方60度向下拍摄，强调顶部视角）",
-                "仰视30度视角（相机位置明显低于产品，向上仰拍30度）",
-                "左前45度斜视角（从产品左前方45度角拍摄，兼顾正面和左侧）",
-                "右后45度斜视角（从产品右后方45度角拍摄，展示背面和右侧）"
+                "宸︿晶闈?0搴﹁瑙掞紙浜у搧瀹屽叏渚ч潰灞曠ず锛屽乏渚ч潰骞宠浜庣敾闈級",
+                "鍙充晶闈?0搴﹁瑙掞紙浜у搧瀹屽叏渚ч潰灞曠ず锛屽彸渚ч潰骞宠浜庣敾闈級",
+                "??60???????????60?????????????",
+                "浠拌30搴﹁瑙掞紙鐩告満浣嶇疆鏄庢樉浣庝簬浜у搧锛屽悜涓婁话鎷?0搴︼級",
+                "??45???????????45?????????????",
+                "??45???????????45?????????????"
             };
         }
     }
@@ -1146,18 +1127,18 @@ public class GenerateController {
 
     private String buildKaiPinExcelFusionPrompt(String basePrompt, int index, int total) {
         return """
-                【开品 Excel 批量融合】
-                本次豆包/视觉分析只对白底产品图执行一轮。请严格以第 1 张参考图（白底产品图）为产品主体，保持品类、核心结构、功能识别点、比例关系和可制造性一致。
-                第 2 张参考图来自 Excel，是第 %d / %d 张创新参考图。不要直接复制或替换成该参考图里的产品，只提取它的造型语言、CMF 色彩策略、材质质感、结构细节、装饰节奏或使用场景作为创新点。
+                銆愬紑鍝?Excel 鎵归噺铻嶅悎銆?
+                鏈璞嗗寘/瑙嗚鍒嗘瀽鍙鐧藉簳浜у搧鍥炬墽琛屼竴杞€傝涓ユ牸浠ョ 1 寮犲弬鑰冨浘锛堢櫧搴曚骇鍝佸浘锛変负浜у搧涓讳綋锛屼繚鎸佸搧绫汇€佹牳蹇冪粨鏋勩€佸姛鑳借瘑鍒偣銆佹瘮渚嬪叧绯诲拰鍙埗閫犳€т竴鑷淬€?
+                绗?2 寮犲弬鑰冨浘鏉ヨ嚜 Excel锛屾槸绗?%d / %d 寮犲垱鏂板弬鑰冨浘銆備笉瑕佺洿鎺ュ鍒舵垨鏇挎崲鎴愯鍙傝€冨浘閲岀殑浜у搧锛屽彧鎻愬彇瀹冪殑閫犲瀷璇█銆丆MF 鑹插僵绛栫暐銆佹潗璐ㄨ川鎰熴€佺粨鏋勭粏鑺傘€佽楗拌妭濂忔垨浣跨敤鍦烘櫙浣滀负鍒涙柊鐐广€?
 
-                【白底产品分析结论】
+                銆愮櫧搴曚骇鍝佸垎鏋愮粨璁恒€?
                 %s
 
-                【融合要求】
-                1. 主体必须仍然是白底产品图里的产品，不丢失原产品身份。
-                2. 将 Excel 参考图的创新点融合到主体的外观设计中，形成新的开品概念。
-                3. 画面只呈现一个清晰主产品，结构真实、材质可信、光影自然。
-                4. 禁止多产品拼贴、低清晰度、畸变、漂浮部件、不可制造结构、品牌 logo、水印、纯文字海报。
+                銆愯瀺鍚堣姹傘€?
+                1. 涓讳綋蹇呴』浠嶇劧鏄櫧搴曚骇鍝佸浘閲岀殑浜у搧锛屼笉涓㈠け鍘熶骇鍝佽韩浠姐€?
+                2. 灏?Excel 鍙傝€冨浘鐨勫垱鏂扮偣铻嶅悎鍒颁富浣撶殑澶栬璁捐涓紝褰㈡垚鏂扮殑寮€鍝佹蹇点€?
+                3. 鐢婚潰鍙憟鐜颁竴涓竻鏅颁富浜у搧锛岀粨鏋勭湡瀹炪€佹潗璐ㄥ彲淇°€佸厜褰辫嚜鐒躲€?
+                4. 绂佹澶氫骇鍝佹嫾璐淬€佷綆娓呮櫚搴︺€佺暩鍙樸€佹紓娴儴浠躲€佷笉鍙埗閫犵粨鏋勩€佸搧鐗?logo銆佹按鍗般€佺函鏂囧瓧娴锋姤銆?
                 """.formatted(index, total, basePrompt == null ? "" : basePrompt);
     }
 
@@ -1166,29 +1147,28 @@ public class GenerateController {
             @RequestParam("image")  MultipartFile image,
             @RequestParam("mask")   MultipartFile mask,
             @RequestParam("prompt") String prompt,
-            @RequestParam(value = "sessionId", defaultValue = "default") String sessionId) {
+            @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
+            HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
 
         if (image == null || image.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "缺少原图"));
+            return ResponseEntity.badRequest().body(Map.of("error", "缂哄皯鍘熷浘"));
         }
         if (mask == null || mask.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "缺少蒙版"));
+            return ResponseEntity.badRequest().body(Map.of("error", "缂哄皯钂欑増"));
         }
         if (prompt == null || prompt.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "缺少提示词"));
+            return ResponseEntity.badRequest().body(Map.of("error", "?????"));
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        // Phase 1：先落到临时归档，2 小时后自动清理；用户在前端点 💾 才 copy 到永久 outputDir
-        String outputDir = new File(appProperties.getPaths().getTempOutputDir(),
-                "局部编辑/" + timestamp).getAbsolutePath();
-        new File(outputDir).mkdirs();
+        String outputDir = userTempOutputDir(userId, "局部编辑/" + timestamp);
         String outputPath = new File(outputDir, "1.png").getAbsolutePath();
 
         File imageTmp = null;
         File maskTmp  = null;
         try {
-            // 上传文件落到系统 temp，避免污染用户输出目录；finally 里清理
+            // 涓婁紶鏂囦欢钀藉埌绯荤粺 temp锛岄伩鍏嶆薄鏌撶敤鎴疯緭鍑虹洰褰曪紱finally 閲屾竻鐞?
             imageTmp = File.createTempFile("inpaint_image_", ".png");
             maskTmp  = File.createTempFile("inpaint_mask_",  ".png");
             image.transferTo(imageTmp);
@@ -1196,31 +1176,34 @@ public class GenerateController {
             log.info("inpaint: image={} mask={}", imageTmp.getAbsolutePath(), maskTmp.getAbsolutePath());
 
             String inferredAspect = resolveAutoAspect("auto", List.of(imageTmp));
-            boolean ok = gptImageAgent.generateWithMask(prompt, imageTmp, maskTmp, outputPath, inferredAspect);
+            File finalImageTmp = imageTmp;
+            File finalMaskTmp = maskTmp;
+            boolean ok = GenerationInvocationContext.withUserId(userId,
+                    () -> gptImageAgent.generateWithMask(prompt, finalImageTmp, finalMaskTmp, outputPath, inferredAspect));
             if (!ok) {
                 return ResponseEntity.internalServerError()
-                        .body(Map.of("error", "GPT-Image 局部重绘失败，请检查 API Key 或网络"));
+                        .body(Map.of("error", "GPT-Image ?????????? API Key ???"));
             }
-            // Phase 2：归档原图 + mask 作为 ref；写历史记录
+            // Phase 2锛氬綊妗ｅ師鍥?+ mask 浣滀负 ref锛涘啓鍘嗗彶璁板綍
             try {
-                HistoryService.ArchiveResult archive = historyService.archiveRefFiles(
+                HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId,
                         java.util.List.of(imageTmp, maskTmp));
-                historyService.recordGeneration(sessionId, "inpaint", prompt, "gpt-image",
+                historyService.recordGeneration(userId, sessionId, "inpaint", prompt, "gpt-image",
                         archive.refPaths, outputDir, null);
             } catch (Exception e) {
-                log.warn("inpaint 写历史失败: {}", e.getMessage());
+                log.warn("inpaint 鍐欏巻鍙插け璐? {}", e.getMessage());
             }
-            // COS 上传
+            // COS 涓婁紶
             String resultRef = outputPath;
             if (cosService.isEnabled()) {
                 try { resultRef = cosService.upload(new File(outputPath), "inpaint.png"); }
-                catch (Exception ce) { log.warn("inpaint COS 上传失败: {}", ce.getMessage()); }
+                catch (Exception ce) { log.warn("inpaint COS 涓婁紶澶辫触: {}", ce.getMessage()); }
             }
             return ResponseEntity.ok(Map.of(
                 "results", List.of(resultRef),
                 "output_dir", outputDir,
-                "thought", "【局部重绘 · 提示词直送（未经 LLM 处理）】\n模型: gpt-image\n"
-                    + "长度: " + prompt.length() + " 字\n\n【最终提示词】\n" + prompt
+                "thought", "銆愬眬閮ㄩ噸缁?路 鎻愮ず璇嶇洿閫侊紙鏈粡 LLM 澶勭悊锛夈€慭n妯″瀷: gpt-image\n"
+                    + "闀垮害: " + prompt.length() + " 瀛梊n\n銆愭渶缁堟彁绀鸿瘝銆慭n" + prompt
             ));
         } catch (Exception e) {
             log.error("inpaint error: {}", e.getMessage(), e);
@@ -1232,30 +1215,46 @@ public class GenerateController {
     }
 
     @PostMapping("/api/gpt-image/generate")
-    public ResponseEntity<Map<String, Object>> gptImageGenerate(@RequestBody Map<String, Object> body) {
-        List<String> keys = appProperties.getGptImage().getApiKeys();
-        String baseUrl = appProperties.getGptImage().getBaseUrl();
-        if (keys == null || keys.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "GPT-Image API Key 未配置"));
+    public ResponseEntity<Map<String, Object>> gptImageGenerate(@RequestBody Map<String, Object> body,
+                                                                HttpSession httpSession) {
+        long userId = currentUserService.requireUserId(httpSession);
+        Map<String, Object> safeBody = body == null ? Map.of() : body;
+        String agentId = String.valueOf(safeBody.getOrDefault("model", "gpt-image-2"));
+        int estimatedPoints = pricingService.estimateImageGeneration("direct-gpt-image", agentId, 1);
+        GenerationUsageLog usageLog = billingService.recordGenerationStarted(
+                userId, "", "direct-gpt-image", agentId, estimatedPoints);
+
+        List<GptImageAgent.RequestCredential> credentials = GenerationInvocationContext.withUserId(
+                userId,
+                gptImageAgent::resolveRequestCredentials
+        );
+        if (credentials.isEmpty()) {
+            billingService.markGenerationFailed(usageLog.getId(), "GPT-Image API Key 未配置");
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "GPT-Image API Key ???"));
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("model", "gpt-image-2");
-        payload.put("prompt", body.getOrDefault("prompt", ""));
-        payload.put("size",    body.getOrDefault("size",    "1024x1024"));
-        payload.put("quality", body.getOrDefault("quality", "auto"));
-        payload.put("background",   body.getOrDefault("background",   "auto"));
-        payload.put("output_format", body.getOrDefault("output_format", "png"));
+        payload.put("model", agentId);
+        payload.put("prompt", safeBody.getOrDefault("prompt", ""));
+        payload.put("size",    safeBody.getOrDefault("size",    "1024x1024"));
+        payload.put("quality", safeBody.getOrDefault("quality", "auto"));
+        payload.put("background",   safeBody.getOrDefault("background",   "auto"));
+        payload.put("output_format", safeBody.getOrDefault("output_format", "png"));
 
         ObjectMapper mapper = new ObjectMapper();
         String jsonBody;
         try { jsonBody = mapper.writeValueAsString(payload); }
-        catch (Exception e) { return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage())); }
+        catch (Exception e) {
+            billingService.markGenerationFailed(usageLog.getId(), e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage()));
+        }
 
-        // 按序轮询 key：遇 429/5xx 或网络异常则尝试下一个；2xx 或其他 4xx 立刻返回
-        String lastError = "所有 key 均不可用";
+        // 鎸夊簭杞 key锛氶亣 429/5xx 鎴栫綉缁滃紓甯稿垯灏濊瘯涓嬩竴涓紱2xx 鎴栧叾浠?4xx 绔嬪埢杩斿洖
+        String lastError = "鎵€鏈?key 鍧囦笉鍙敤";
         int lastStatus = 500;
-        for (String apiKey : keys) {
+        for (GptImageAgent.RequestCredential credential : credentials) {
+            String apiKey = credential.apiKey();
+            String baseUrl = credential.baseUrl();
             if (apiKey == null || apiKey.isBlank()) continue;
             try {
                 URL url = new URL(baseUrl + "/v1/images/generations");
@@ -1272,7 +1271,7 @@ public class GenerateController {
 
                 int status = conn.getResponseCode();
                 String respBody;
-                // try-with-resources 关 stream，conn.disconnect() 不保证关闭内部流（B 阶段审查 #2）
+                // try-with-resources 鍏?stream锛宑onn.disconnect() 涓嶄繚璇佸叧闂唴閮ㄦ祦锛圔 闃舵瀹℃煡 #2锛?
                 try (java.io.InputStream is =
                         (status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream())) {
                     respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
@@ -1283,24 +1282,37 @@ public class GenerateController {
                 if (status >= 200 && status < 300) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> resp = mapper.readValue(respBody, Map.class);
+                    billingService.markGenerationSucceeded(usageLog.getId(), 0);
                     return ResponseEntity.ok(Map.of("success", true, "data", resp));
                 }
                 lastStatus = status;
                 lastError = respBody;
                 if (status != 429 && status < 500) {
+                    billingService.markGenerationFailed(usageLog.getId(), respBody);
                     return ResponseEntity.status(status).body(Map.of("success", false, "error", respBody));
                 }
-                log.warn("GPT-Image key 尾号[{}] 返回 {}，尝试下一个",
+                log.warn("GPT-Image key ??[{}] ?? {}??????",
                         apiKey.length() > 4 ? apiKey.substring(0, 4) + "***" : "***", status);
             } catch (Exception e) {
                 lastError = e.getMessage();
-                log.warn("GPT-Image key 尾号[{}] 异常: {}",
+                log.warn("GPT-Image key 灏惧彿[{}] 寮傚父: {}",
                         apiKey.length() > 4 ? apiKey.substring(0, 4) + "***" : "***", e.getMessage());
             }
         }
-        log.error("gptImageGenerate 所有 key 均失败: {}", lastError);
+        log.error("gptImageGenerate 鎵€鏈?key 鍧囧け璐? {}", lastError);
+        billingService.markGenerationFailed(usageLog.getId(), lastError);
         return ResponseEntity.status(lastStatus).body(Map.of("success", false, "error", lastError));
     }
 
-    // 私有 result() / countImages() 已抽到 ControllerHelpers（B 阶段审查 #10）
+    private String userTempOutputDir(long userId, String relativeDir) {
+        try {
+            Path dir = userStorageService.tempOutputRoot(userId).resolve(relativeDir).normalize();
+            Files.createDirectories(dir);
+            return dir.toFile().getAbsolutePath();
+        } catch (Exception e) {
+            throw new IllegalStateException("无法创建用户临时输出目录: " + relativeDir, e);
+        }
+    }
+
+    // 绉佹湁 result() / countImages() 宸叉娊鍒?ControllerHelpers锛圔 闃舵瀹℃煡 #10锛?
 }

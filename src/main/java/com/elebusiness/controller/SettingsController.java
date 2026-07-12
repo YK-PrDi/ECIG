@@ -3,6 +3,9 @@ package com.elebusiness.controller;
 import com.elebusiness.service.ConfigService;
 import com.elebusiness.service.DingTalkService;
 import com.elebusiness.service.UserPrefsService;
+import com.elebusiness.service.auth.AuthService;
+import com.elebusiness.service.auth.CurrentUserService;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -33,21 +36,27 @@ public class SettingsController {
     private final ConfigService configService;
     private final DingTalkService dingTalkService;
     private final UserPrefsService userPrefsService;
+    private final CurrentUserService currentUserService;
 
     public SettingsController(ConfigService configService,
                               DingTalkService dingTalkService,
-                              UserPrefsService userPrefsService) {
+                              UserPrefsService userPrefsService,
+                              CurrentUserService currentUserService) {
         this.configService = configService;
         this.dingTalkService = dingTalkService;
         this.userPrefsService = userPrefsService;
+        this.currentUserService = currentUserService;
     }
 
     @GetMapping("/api/settings")
-    public Map<String, Object> getSettings() {
+    public Map<String, Object> getSettings(HttpSession httpSession) {
+        AuthService.AuthUser user = currentUserService.require(httpSession);
         Map<String, Object> result = new HashMap<>();
-        result.put("dingtalk", configService.getDingTalkConfig());
-        result.put("proxy", configService.getProxyConfig());
-        result.put("customOutputDir", userPrefsService.getCustomOutputDir());
+        if (isAdmin(user)) {
+            result.put("dingtalk", configService.getDingTalkConfig());
+            result.put("proxy", configService.getProxyConfig());
+        }
+        result.put("customOutputDir", userPrefsService.getCustomOutputDir(user.id()));
         return result;
     }
 
@@ -57,7 +66,13 @@ public class SettingsController {
      * 任一字段缺失视为不更新该类配置。
      */
     @PostMapping("/api/settings")
-    public ResponseEntity<Map<String, Object>> saveSettings(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> saveSettings(@RequestBody Map<String, Object> body,
+                                                            HttpSession httpSession) {
+        AuthService.AuthUser user = currentUserService.require(httpSession);
+        long userId = user.id();
+        if (!isAdmin(user) && body != null && (body.containsKey("dingtalk") || body.containsKey("proxy"))) {
+            return ResponseEntity.status(403).body(Map.of("success", false, "error", "需要管理员权限"));
+        }
         if (body == null || body.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "请求体为空"));
         }
@@ -70,7 +85,7 @@ public class SettingsController {
             if (err != null) {
                 return ResponseEntity.badRequest().body(Map.of("success", false, "error", err));
             }
-            userPrefsService.setCustomOutputDir(dir);
+            userPrefsService.setCustomOutputDir(userId, dir);
         }
 
         // 2) 钉钉
@@ -100,6 +115,10 @@ public class SettingsController {
         }
 
         return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    private boolean isAdmin(AuthService.AuthUser user) {
+        return user != null && "ADMIN".equalsIgnoreCase(user.role());
     }
 
     /**
