@@ -12,6 +12,9 @@ server:
     connection-timeout: 60000
 
 spring:
+  # 本地存在 .env.local 时导入运行凭据；服务器仅使用 systemd 的 EnvironmentFile，不受影响。
+  config:
+    import: "optional:file:.env.local[.properties]"
   profiles:
     default: local
   autoconfigure:
