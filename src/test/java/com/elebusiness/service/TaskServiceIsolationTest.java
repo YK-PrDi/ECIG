@@ -15,13 +15,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.eq;
 
 class TaskServiceIsolationTest {
@@ -52,6 +56,58 @@ class TaskServiceIsolationTest {
 
         assertFalse(taskService.cancel(2002L, task.getId()));
         assertTrue(taskService.cancel(1001L, task.getId()));
+    }
+
+    @Test
+    void sameUserCannotCreateAnotherActiveGenerationTask() {
+        TaskService taskService = new TaskService(new AppProperties());
+
+        taskService.createTask(1001L, 1);
+
+        assertThrows(IllegalStateException.class, () -> taskService.createTask(1001L, 1));
+        assertDoesNotThrow(() -> taskService.createTask(2002L, 1));
+    }
+
+    @Test
+    void cancellingPendingTaskReleasesUserSlotAndCancelsUsageWithoutCharge() {
+        BillingService billingService = mock(BillingService.class);
+        TaskService taskService = new TaskService(new AppProperties(), billingService);
+        GenerationTask task = taskService.createTask(1001L, 1);
+        task.setUsageLogId(88L);
+
+        assertTrue(taskService.cancel(1001L, task.getId()));
+        assertEquals("stopped", task.getStatus());
+        assertTrue(taskService.cancel(1001L, task.getId()), "重复停止应保持幂等");
+        verify(billingService).markGenerationCancelled(88L);
+        assertDoesNotThrow(() -> taskService.createTask(1001L, 1));
+    }
+
+    @Test
+    void cancellingRunningTaskMarksUsageCancelledInsteadOfCharging() throws Exception {
+        BillingService billingService = mock(BillingService.class);
+        TaskService taskService = new TaskService(new AppProperties(), billingService);
+        GenerationTask task = taskService.createTask(1001L, 1);
+        task.setUsageLogId(99L);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        taskService.submit(task, () -> {
+            started.countDown();
+            try {
+                release.await(3, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue(started.await(3, TimeUnit.SECONDS));
+
+        assertTrue(taskService.cancel(1001L, task.getId()));
+        assertEquals("stopping", task.getStatus());
+        release.countDown();
+
+        verify(billingService, timeout(3000)).markGenerationCancelled(99L);
+        verify(billingService, never()).markGenerationSucceeded(
+                eq(99L), org.mockito.ArgumentMatchers.any(BillingService.ProviderCost.class));
     }
 
     @Test

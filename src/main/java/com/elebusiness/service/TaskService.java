@@ -44,6 +44,7 @@ public class TaskService {
     // 增加任务线程池大小以支持更多并发用户
     private final ExecutorService executor = Executors.newFixedThreadPool(20);
     private final Map<String, GenerationTask> tasks = new ConcurrentHashMap<>();
+    private final Map<Long, String> activeTaskIdsByUser = new ConcurrentHashMap<>();
     // 完成时间戳：仅 done/error/stopped 状态的任务才进入这个 map，按 TTL 过期
     private final Map<String, Long> completedAt = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cleaner =
@@ -83,35 +84,33 @@ public class TaskService {
     public GenerationTask createTask(long ownerUserId, int total) {
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         GenerationTask task = new GenerationTask(id, ownerUserId, total);
+        if (ownerUserId > 0) {
+            String activeTaskId = activeTaskIdsByUser.putIfAbsent(ownerUserId, id);
+            if (activeTaskId != null) {
+                throw new ActiveGenerationTaskException();
+            }
+        }
         tasks.put(id, task);
         return task;
     }
 
     public void submit(GenerationTask task, Runnable work) {
         executor.submit(() -> {
-            task.setStatus("running");
+            synchronized (task) {
+                if (task.isCancelled()) {
+                    finishCancelledLocked(task);
+                    return;
+                }
+                task.setStatus("running");
+            }
             GenerationProviderCostContext.clear();
             try {
                 work.run();
             } catch (Exception e) {
-                log.error("任务 {} 执行异常: {}", task.getId(), e.getMessage(), e);
-                task.setStatus("error");
-                markUsageFailed(task, e.getMessage());
-                GenerationProviderCostContext.clear();
-                completedAt.put(task.getId(), System.currentTimeMillis());
+                finishFailed(task, e);
                 return;
             }
-            task.setStatus(task.isCancelled() ? "stopped" : "done");
-            try {
-                if (task.isCancelled()) {
-                    markUsageCancelled(task);
-                } else {
-                    markUsageSucceeded(task);
-                }
-            } finally {
-                GenerationProviderCostContext.clear();
-            }
-            completedAt.put(task.getId(), System.currentTimeMillis());
+            finishSucceeded(task);
         });
     }
 
@@ -127,15 +126,85 @@ public class TaskService {
     public boolean cancel(String taskId) {
         GenerationTask task = tasks.get(taskId);
         if (task == null) return false;
-        task.cancel();
-        return true;
+        return cancelTask(task);
     }
 
     public boolean cancel(long ownerUserId, String taskId) {
         GenerationTask task = tasks.get(taskId);
         if (task == null || task.getOwnerUserId() != ownerUserId) return false;
-        task.cancel();
-        return true;
+        return cancelTask(task);
+    }
+
+    private boolean cancelTask(GenerationTask task) {
+        synchronized (task) {
+            if ("stopped".equals(task.getStatus())) return true;
+            if (isTerminal(task.getStatus())) return false;
+            boolean newlyCancelled = task.requestCancel();
+            if (!newlyCancelled) return true;
+            if ("pending".equals(task.getStatus())) {
+                finishCancelledLocked(task);
+            } else if ("running".equals(task.getStatus())) {
+                task.setStatus("stopping");
+            }
+            return true;
+        }
+    }
+
+    private void finishCancelled(GenerationTask task) {
+        synchronized (task) {
+            finishCancelledLocked(task);
+        }
+    }
+
+    private void finishCancelledLocked(GenerationTask task) {
+        if (isTerminal(task.getStatus())) return;
+        task.setStatus("stopped");
+        markUsageCancelled(task);
+        GenerationProviderCostContext.clear();
+        completedAt.put(task.getId(), System.currentTimeMillis());
+        releaseUserSlot(task);
+    }
+
+    private void finishSucceeded(GenerationTask task) {
+        synchronized (task) {
+            if (task.isCancelled()) {
+                finishCancelledLocked(task);
+                return;
+            }
+            task.setStatus("done");
+            try {
+                markUsageSucceeded(task);
+            } finally {
+                GenerationProviderCostContext.clear();
+            }
+            completedAt.put(task.getId(), System.currentTimeMillis());
+            releaseUserSlot(task);
+        }
+    }
+
+    private void finishFailed(GenerationTask task, Exception exception) {
+        synchronized (task) {
+            if (task.isCancelled()) {
+                finishCancelledLocked(task);
+                return;
+            }
+            log.error("任务 {} 执行异常: {}", task.getId(), exception.getMessage(), exception);
+            task.setStatus("error");
+            markUsageFailed(task, exception.getMessage());
+            GenerationProviderCostContext.clear();
+            completedAt.put(task.getId(), System.currentTimeMillis());
+            releaseUserSlot(task);
+        }
+    }
+
+    private boolean isTerminal(String status) {
+        return "done".equals(status) || "stopped".equals(status) || "error".equals(status);
+    }
+
+    private void releaseUserSlot(GenerationTask task) {
+        if (task.getOwnerUserId() > 0) {
+            activeTaskIdsByUser.remove(task.getOwnerUserId(), task.getId());
+        }
     }
 
     /** 扫表：把超过 TTL 的"已完成任务"从主表里挪走，让 GC 回收 task results / thoughts 占的内存。 */

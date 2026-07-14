@@ -201,6 +201,14 @@
                     <div style="font-size:11px; color:var(--text-dim); margin-top:8px; line-height:1.6;">双击 → 编辑蒙版<br>Delete / D → 删除<br>拖出 → 引用到对话</div>
                 </div>
 
+                <div class="inpaint-side-section" id="sideMultiSelectSection" style="display:none;">
+                    <div class="section-title">批量操作</div>
+                    <div id="sideMultiSelectInfo" class="canvas-batch-info"></div>
+                    <button class="send-to-chat-btn" type="button" onclick="_boardProxy.downloadSelected()">下载选中项</button>
+                    <button class="clear-mask-btn" type="button" onclick="_boardProxy.saveSelectedToGallery()">保存选中项到画廊</button>
+                    <button class="clear-mask-btn" type="button" onclick="_boardProxy.clearSelection()">取消选择</button>
+                </div>
+
                 <!-- 编辑模式时：绘制工具 -->
                 <div class="inpaint-side-section" id="sideEditSection" style="display:none;">
                     <div class="section-title">绘制蒙版</div>
@@ -717,8 +725,37 @@
     <script src="js/api-client.js"></script>
     <script src="js/auth-session.js"></script>
     <script src="js/task-polling.js"></script>
+    <script src="js/generation-controls.js"></script>
+    <script src="js/canvas-selection.js"></script>
 
     <script>
+        const GENERATE_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>`;
+        const STOP_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>`;
+        const generationControls = AiStudioGenerationControls.create({
+            onStateChange(state) {
+                const button = document.getElementById('generateBtn');
+                if (!button) return;
+                if (state.active) {
+                    button.classList.add('is-stop');
+                    button.disabled = state.stopping;
+                    button.title = state.stopping ? '正在停止生成' : '停止生成';
+                    button.setAttribute('aria-label', button.title);
+                    button.innerHTML = STOP_ICON;
+                } else {
+                    button.classList.remove('is-stop');
+                    button.disabled = !!window.__taskSubmitting;
+                    button.title = '开始生成';
+                    button.setAttribute('aria-label', '开始生成');
+                    button.innerHTML = GENERATE_ICON;
+                }
+            }
+        });
+
+        function beginGenerationTask(taskId) {
+            generationControls.activate(taskId);
+            insertProgressCard(taskId);
+            startPolling(taskId);
+        }
         function escHtml(str) {
             const d = document.createElement('div');
             d.textContent = str;
@@ -1668,8 +1705,7 @@
             const btn = card.querySelector('.doubao-reanalyze-btn');
             if (btn) { btn.disabled = true; btn.textContent = '分析中...'; }
             try {
-                const singleFile = files[segmentIndex] ? [files[segmentIndex]] : files;
-                const result = await analyzeWithGemini(singleFile, doubaoUserPrompt, 1, withText);
+                const result = await analyzeWithGemini(files, doubaoUserPrompt, 1, withText);
                 const bundle = parseCustomAnalysisBundle(result, 1);
                 const newSeg = (bundle.segments || [])[0] || '';
                 if (newSeg) {
@@ -1899,8 +1935,7 @@
                     statusEl.dataset.state = 'success';
                     clearFiles();
                     document.getElementById('promptInput').value = '';
-                    insertProgressCard(data.taskId);
-                    startPolling(data.taskId);
+                    beginGenerationTask(data.taskId);
                 } catch (e) {
                     _doubaoConfirmed = false;
                     container._submitting = false;
@@ -2975,6 +3010,10 @@
                 loadAgents();
             }
 
+            if (generationControls.isActive()) {
+                generationControls.refresh();
+            }
+
             if (mode !== 'custom' && mode !== 'ecommerce') isTextOnly = false;
 
             updateControlStates();
@@ -3105,13 +3144,12 @@
                 }
                 const data = await resp.json();
                 if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
-                insertProgressCard(data.taskId);
-                startPolling(data.taskId);
+                beginGenerationTask(data.taskId);
             } catch (e) {
                 appendMessage('ai', '重新生成失败：' + (e.message || e));
             } finally {
                 window.__taskSubmitting = false;
-                if (sendBtn) sendBtn.disabled = false;
+                if (!generationControls.isActive() && sendBtn) sendBtn.disabled = false;
             }
         }
 
@@ -3162,6 +3200,14 @@
         }
 
         async function executeTask() {
+            if (generationControls.isActive()) {
+                try {
+                    await generationControls.stopActiveTask();
+                } catch (e) {
+                    appendMessage('ai', '停止任务失败：' + (e.message || e));
+                }
+                return;
+            }
             // 阻止双击 / 连发：上一次提交还没拿到 taskId（或还在 inpaint 同步出图）就直接忽略
             // 修这次"按了 20 次按钮 → 后台堆 20 条任务"的 bug
             if (window.__taskSubmitting) return;
@@ -3172,7 +3218,7 @@
                 await __executeTaskInner();
             } finally {
                 window.__taskSubmitting = false;
-                if (sendBtn) sendBtn.disabled = false;
+                if (!generationControls.isActive() && sendBtn) sendBtn.disabled = false;
             }
         }
 
@@ -3299,8 +3345,7 @@
                         const data = await resp.json();
                         if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
                         clearFiles();
-                        insertProgressCard(data.taskId);
-                        startPolling(data.taskId);
+                        beginGenerationTask(data.taskId);
                     } catch (e) {
                         appendMessage('ai', '启动失败：' + e.message);
                     }
@@ -3324,8 +3369,7 @@
                     });
                     const data = await resp.json();
                     if (data.error) throw new Error(data.error);
-                    insertProgressCard(data.taskId);
-                    startPolling(data.taskId);
+                    beginGenerationTask(data.taskId);
                 } catch (e) {
                     
                     appendMessage('ai', '启动失败：' + e.message);
@@ -3404,8 +3448,7 @@
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
                     clearFiles();
-                    insertProgressCard(data.taskId);
-                    startPolling(data.taskId);
+                    beginGenerationTask(data.taskId);
                 } catch (e) {
 
                     appendMessage('ai', '生成失败：' + e.message);
@@ -3503,8 +3546,7 @@
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
                     clearFiles();
-                    insertProgressCard(data.taskId);
-                    startPolling(data.taskId);
+                    beginGenerationTask(data.taskId);
                 } catch (e) {
 
                     appendMessage('ai', '生成失败：' + e.message);
@@ -3587,8 +3629,7 @@
                     const data = await resp.json();
                     if (data.error || !data.taskId) throw new Error(data.message || data.error || '提交失败');
                     clearFiles();
-                    insertProgressCard(data.taskId);
-                    startPolling(data.taskId);
+                    beginGenerationTask(data.taskId);
                 } catch (e) {
                     appendMessage('ai', '启动失败：' + e.message);
                 }
@@ -3698,6 +3739,7 @@
         }
 
         function finalizeProgressCard(taskId, data) {
+            generationControls.complete(taskId);
             const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
             if (card) card.remove();
             const results = data.results || [];
@@ -3707,7 +3749,7 @@
             const errorList   = results.filter(r => r.status === 'error');
             const videoResult = successList.find(r => r.type === 'video' && r.filename);
             if (data.status === 'stopped') {
-                appendMessage('ai', `⏹ 任务已停止（已完成 ${data.progress}/${data.total}）`);
+                appendMessage('ai', `⏹ 任务已停止，本次不扣积分（已完成 ${data.progress}/${data.total}）`);
                 appendThoughts(thoughts);
             } else if (data.status === 'error') {
                 const errMsg = errorList[0]?.message || '';
@@ -3954,8 +3996,7 @@
                 const data = await resp.json();
                 if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
 
-                insertProgressCard(data.taskId);
-                startPolling(data.taskId);
+                beginGenerationTask(data.taskId);
             } catch (e) {
                 appendMessage('ai', '开品生成失败：' + (e.message || e));
                 btn.disabled = false;
@@ -4056,8 +4097,7 @@
                 const resp = await fetch('/api/custom_generate', { method: 'POST', body: formData });
                 const data = await resp.json();
                 if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
-                insertProgressCard(data.taskId);
-                startPolling(data.taskId);
+                beginGenerationTask(data.taskId);
             } catch (e) {
                 appendMessage('ai', '开品二次生图失败：' + (e.message || e));
                 btn.disabled = false;
@@ -4098,12 +4138,15 @@
             successList.forEach(r => {
                 const path = r.output;
                 if (!path) return;
+                if (r.type === 'video') return;
                 // 仅图片：检查http(s)协议（签名URL）或常见扩展名
                 const lower = String(path).toLowerCase();
                 const isRemoteUrl = lower.startsWith('http://') || lower.startsWith('https://');
                 const isImageExt = /\.(jpe?g|png|webp|gif|bmp)(\?|$)/.test(lower);
+                const isVideoExt = /\.(mp4|webm|mov|m4v)(\?|$)/.test(lower);
+                if (isVideoExt) return;
                 if (!isRemoteUrl && !isImageExt) return;
-                board.addImage(toImgUrl(path), null);
+                board.addImage(toImgUrl(path), null, path);
             });
         }
 
@@ -6990,8 +7033,7 @@
                 if (data.error || !data.taskId) throw new Error(data.error || '提交失败');
                 window.ecBatchQueue = [];
                 ecRenderBatchList();
-                insertProgressCard(data.taskId);
-                startPolling(data.taskId);
+                beginGenerationTask(data.taskId);
             } catch (e) {
                 appendMessage('ai', '批量生成失败：' + e.message);
             }
@@ -7031,6 +7073,11 @@
                 this.dragNode = null;
                 this.dragOffset = { x: 0, y: 0 };
                 this.panStart = null;
+                this.selectionBox = null;
+                this.selectionStart = null;
+                this.selectionInitialIds = new Set();
+                this.selectionAdditive = false;
+                this.spacePanning = false;
                 this.lastClick = { id: null, t: 0 };
 
                 this.canvas = document.getElementById('boardCanvas');
@@ -7051,7 +7098,7 @@
                 return { x: wx * this.scale + this.cam.x, y: wy * this.scale + this.cam.y };
             }
 
-            addImage(src, file) {
+            addImage(src, file, sourcePath = null) {
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
                 img.onload = () => {
@@ -7080,7 +7127,18 @@
                     }
                     const mc = document.createElement('canvas');
                     mc.width = w; mc.height = h;
-                    const newNode = { id: 'n' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), img, src, file: file || null, x, y, w, h, maskCanvas: mc };
+                    const newNode = {
+                        id: 'n' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                        img,
+                        src,
+                        file: file || null,
+                        sourcePath: sourcePath || ((!file && /^https?:\/\//i.test(src || '')) ? src : null),
+                        x,
+                        y,
+                        w,
+                        h,
+                        maskCanvas: mc
+                    };
                     this.nodes.push(newNode);
                     // 自动选中新添加的图片，方便 Ctrl+C/V 操作
                     this.selectedId = newNode.id;
@@ -7100,9 +7158,11 @@
             }
 
             removeSelected() {
-                if (!this.selectedId) return;
-                this.nodes = this.nodes.filter(n => n.id !== this.selectedId);
+                if (this.selectedIds.size === 0 && !this.selectedId) return;
+                const ids = this.selectedIds.size > 0 ? this.selectedIds : new Set([this.selectedId]);
+                this.nodes = this.nodes.filter(n => !ids.has(n.id));
                 this.selectedId = null;
+                this.selectedIds.clear();
                 if (this.nodes.length === 0)
                     document.getElementById('boardEmptyState').style.display = 'flex';
                 this._updateSidePanel();
@@ -7210,15 +7270,21 @@
                 const up   = document.getElementById('sideUploadSection');
                 const info = document.getElementById('sideInfoSection');
                 const edit = document.getElementById('sideEditSection');
+                const multi = document.getElementById('sideMultiSelectSection');
                 if (this.editId) {
-                    up.style.display = 'none'; info.style.display = 'none'; edit.style.display = '';
+                    up.style.display = 'none'; info.style.display = 'none'; multi.style.display = 'none'; edit.style.display = '';
+                } else if (this.selectedIds.size > 1) {
+                    const selected = this._selectedNodes();
+                    const savable = this._batchTargets().length;
+                    up.style.display = 'none'; info.style.display = 'none'; edit.style.display = 'none'; multi.style.display = '';
+                    document.getElementById('sideMultiSelectInfo').textContent = `已选中 ${selected.length} 项，可保存 ${savable} 项`;
                 } else if (this.selectedId) {
                     const n = this._node(this.selectedId);
-                    up.style.display = 'none'; edit.style.display = 'none'; info.style.display = '';
+                    up.style.display = 'none'; edit.style.display = 'none'; multi.style.display = 'none'; info.style.display = '';
                     document.getElementById('sideImgInfo').innerHTML =
                         `尺寸：${n.img.naturalWidth} × ${n.img.naturalHeight}<br>显示：${n.w} × ${n.h}`;
                 } else {
-                    info.style.display = 'none'; edit.style.display = 'none'; up.style.display = '';
+                    info.style.display = 'none'; edit.style.display = 'none'; multi.style.display = 'none'; up.style.display = '';
                 }
             }
 
@@ -7277,6 +7343,17 @@
                         ctx.restore();
                     }
                 }
+                if (this.selectionBox) {
+                    const box = AiStudioCanvasSelection.normalizeRect(this.selectionBox);
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(99,102,241,0.14)';
+                    ctx.strokeStyle = '#6366f1';
+                    ctx.lineWidth = 1.5 / this.scale;
+                    ctx.setLineDash([6 / this.scale, 4 / this.scale]);
+                    ctx.fillRect(box.x, box.y, box.w, box.h);
+                    ctx.strokeRect(box.x, box.y, box.w, box.h);
+                    ctx.restore();
+                }
                 ctx.restore();
 
                 // 同步编辑蒙版覆盖层位置
@@ -7301,8 +7378,15 @@
                     c.focus(); // 让画布获得焦点，使 Ctrl+C/V 生效
                     e.preventDefault(); // 始终阻止 HTML5 drag，内部拖动完全由 mousemove 控制
                     if (this.editId) return;
-                    const wp = this.screenToWorld(e.clientX - c.getBoundingClientRect().left,
-                                                   e.clientY - c.getBoundingClientRect().top);
+                    if (e.button !== 0 && e.button !== 1) return;
+                    const rect = c.getBoundingClientRect();
+                    const wp = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                    if (e.button === 1 || this.spacePanning) {
+                        this.dragNode = null;
+                        this.selectionBox = null;
+                        this.panStart = { mx: e.clientX, my: e.clientY, cx: this.cam.x, cy: this.cam.y };
+                        return;
+                    }
                     const hit = this._hitTest(wp.x, wp.y);
 
                     if (hit) {
@@ -7350,11 +7434,12 @@
                         this.panStart = null;
                         this._updateSidePanel();
                     } else {
-                        this.selectedId = null;
-                        this.selectedIds.clear();
                         this.dragNode = null;
-                        this.panStart = { mx: e.clientX, my: e.clientY, cx: this.cam.x, cy: this.cam.y };
-                        this._updateSidePanel();
+                        this.panStart = null;
+                        this.selectionStart = wp;
+                        this.selectionBox = { x: wp.x, y: wp.y, w: 0, h: 0 };
+                        this.selectionInitialIds = new Set(this.selectedIds);
+                        this.selectionAdditive = e.ctrlKey || e.metaKey;
                     }
                 });
 
@@ -7380,6 +7465,22 @@
                                 }
                             });
                         }
+                    } else if (this.selectionBox && this.selectionStart) {
+                        const rect = c.getBoundingClientRect();
+                        const wp = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                        this.selectionBox.w = wp.x - this.selectionStart.x;
+                        this.selectionBox.h = wp.y - this.selectionStart.y;
+                        this.selectedIds = AiStudioCanvasSelection.selectionIds(
+                            this.nodes,
+                            this.selectionBox,
+                            this.selectionInitialIds,
+                            this.selectionAdditive
+                        );
+                        const matches = this.nodes.filter(n => AiStudioCanvasSelection.intersectsRect(n, this.selectionBox));
+                        this.selectedId = matches.length > 0
+                            ? matches[matches.length - 1].id
+                            : (this.selectionAdditive ? [...this.selectionInitialIds].at(-1) || null : null);
+                        this._updateSidePanel();
                     } else if (this.panStart) {
                         this.cam.x = this.panStart.cx + (e.clientX - this.panStart.mx);
                         this.cam.y = this.panStart.cy + (e.clientY - this.panStart.my);
@@ -7388,6 +7489,19 @@
 
                 // 鼠标松开（window 级别）
                 window.addEventListener('mouseup', e => {
+                    if (this.selectionBox) {
+                        const rect = c.getBoundingClientRect();
+                        const startX = this.selectionStart.x * this.scale + this.cam.x + rect.left;
+                        const startY = this.selectionStart.y * this.scale + this.cam.y + rect.top;
+                        if (Math.hypot(e.clientX - startX, e.clientY - startY) < 4 && !this.selectionAdditive) {
+                            this.selectedId = null;
+                            this.selectedIds.clear();
+                        }
+                        this.selectionBox = null;
+                        this.selectionStart = null;
+                        this._updateSidePanel();
+                        return;
+                    }
                     const node = this.dragNode;
                     this.dragNode = null;
                     this.panStart = null;
@@ -7473,6 +7587,10 @@
 
                 // ESC 退出编辑；Ctrl+Z 撤销；Delete 删除选中图片；Ctrl+C/V 复制粘贴
                 document.addEventListener('keydown', e => {
+                    if (e.code === 'Space' && document.activeElement === c && !this.editId) {
+                        this.spacePanning = true;
+                        e.preventDefault();
+                    }
                     if (e.key === 'Escape' && this.editId) { this._exitEdit(); return; }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && this.editId) {
                         e.preventDefault();
@@ -7488,6 +7606,9 @@
                         this.removeSelected();
                     }
                     // Ctrl+C/V 由全局事件统一处理
+                });
+                document.addEventListener('keyup', e => {
+                    if (e.code === 'Space') this.spacePanning = false;
                 });
 
                 // editMaskCanvas 拖放穿透：非编辑模式下把图片 drop 转发给 board
@@ -7646,6 +7767,116 @@
             // ── 工具方法 ──
             _node(id) { return this.nodes.find(n => n.id === id); }
 
+            _selectedNodes() {
+                return this.nodes.filter(n => this.selectedIds.has(n.id));
+            }
+
+            _batchTargets() {
+                return AiStudioCanvasSelection.batchTargets(this.nodes, this.selectedIds);
+            }
+
+            _nodeFilename(node, index) {
+                const source = node.sourcePath || node.src || '';
+                const filename = source.split('/').pop().split('?')[0];
+                return filename && filename.includes('.') ? filename : `canvas_${index + 1}.png`;
+            }
+
+            _setBatchStatus(message) {
+                const element = document.getElementById('sideMultiSelectInfo');
+                if (element) element.textContent = message;
+            }
+
+            clearSelection() {
+                this.selectedId = null;
+                this.selectedIds.clear();
+                this._updateSidePanel();
+            }
+
+            async _downloadNode(node, index) {
+                const filename = this._nodeFilename(node, index);
+                const fetchUrl = /^https?:\/\//i.test(node.src || '')
+                    ? `/api/proxy-download?url=${encodeURIComponent(node.src)}&filename=${encodeURIComponent(filename)}`
+                    : node.src;
+                const response = await fetch(fetchUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const blob = await response.blob();
+                if (!blob || blob.size === 0 || (blob.type && blob.type.startsWith('text/'))) {
+                    throw new Error('下载内容无效');
+                }
+                if (window.electronAPI && window.electronAPI.saveFile) {
+                    const result = await window.electronAPI.saveFile(filename, await blob.arrayBuffer());
+                    if (!result || (!result.ok && !result.canceled)) throw new Error((result && result.error) || '保存失败');
+                    return;
+                }
+                const objectUrl = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = objectUrl;
+                anchor.download = filename;
+                anchor.style.display = 'none';
+                document.body.appendChild(anchor);
+                anchor.click();
+                anchor.remove();
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+            }
+
+            async downloadSelected() {
+                if (this.batchAction) return;
+                const nodes = this._selectedNodes();
+                if (nodes.length === 0) return;
+                this.batchAction = 'download';
+                let failed = 0;
+                try {
+                    for (let index = 0; index < nodes.length; index++) {
+                        this._setBatchStatus(`正在下载 ${index + 1}/${nodes.length}...`);
+                        try {
+                            await this._downloadNode(nodes[index], index);
+                            await new Promise(resolve => setTimeout(resolve, 250));
+                        } catch (error) {
+                            failed += 1;
+                            console.warn('画布批量下载失败', error);
+                        }
+                    }
+                    this._setBatchStatus(failed === 0
+                        ? `已发起 ${nodes.length} 项下载`
+                        : `已发起 ${nodes.length - failed} 项下载，${failed} 项失败`);
+                } finally {
+                    this.batchAction = null;
+                }
+            }
+
+            async saveSelectedToGallery() {
+                if (this.batchAction) return;
+                const nodes = this._batchTargets();
+                if (nodes.length === 0) {
+                    alertSafe('选中内容没有可保存到服务器画廊的来源，本地导入图片仍可下载。');
+                    return;
+                }
+                this.batchAction = 'save';
+                let failed = 0;
+                try {
+                    for (let index = 0; index < nodes.length; index++) {
+                        this._setBatchStatus(`正在保存 ${index + 1}/${nodes.length}...`);
+                        try {
+                            const response = await fetch('/api/save-to-gallery', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tempPath: nodes[index].sourcePath || nodes[index].savePath })
+                            });
+                            const data = await response.json();
+                            if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+                        } catch (error) {
+                            failed += 1;
+                            console.warn('画布批量保存失败', error);
+                        }
+                    }
+                    this._setBatchStatus(failed === 0
+                        ? `已保存 ${nodes.length} 项到画廊`
+                        : `已保存 ${nodes.length - failed} 项，${failed} 项失败`);
+                } finally {
+                    this.batchAction = null;
+                }
+            }
+
             _hitTest(wx, wy) {
                 // 从顶层往下找
                 for (let i = this.nodes.length - 1; i >= 0; i--) {
@@ -7714,7 +7945,14 @@
         }
 
         let board = null;
-        window._boardProxy = { clearMask: () => board && board.clearMask(), sendSelectedToChat: () => board && board.sendSelectedToChat(), openCrop: () => board && cropTool.open(board) };
+        window._boardProxy = {
+            clearMask: () => board && board.clearMask(),
+            sendSelectedToChat: () => board && board.sendSelectedToChat(),
+            openCrop: () => board && cropTool.open(board),
+            downloadSelected: () => board && board.downloadSelected(),
+            saveSelectedToGallery: () => board && board.saveSelectedToGallery(),
+            clearSelection: () => board && board.clearSelection()
+        };
 
         function toggleSidebar() {
             const sidebar = document.getElementById('mainSidebar');

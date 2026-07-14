@@ -159,13 +159,14 @@ public class ResourceController {
             HttpSession httpSession) {
         long userId = currentUserService.requireUserId(httpSession);
         try {
-            File rootDir = userPrefsService.resolveOutputDir(userId, appProperties.getPaths().getOutputDir()).getCanonicalFile();
-            Path galleryRoot = rootDir.toPath().toAbsolutePath().normalize();
+            Path galleryRoot = normalizeAbsolutePath(
+                    userPrefsService.resolveOutputDir(userId, appProperties.getPaths().getOutputDir()).getPath());
             Path tempRoot = userStorageService.tempOutputRoot(userId).toAbsolutePath().normalize();
-            File target = (path == null || path.isBlank())
-                    ? rootDir
-                    : new File(path).getCanonicalFile();
-            Path targetPath = target.toPath().toAbsolutePath().normalize();
+            Path targetPath = (path == null || path.isBlank())
+                    ? galleryRoot
+                    : normalizeAbsolutePath(path);
+            File target = targetPath.toFile();
+            File rootDir = galleryRoot.toFile();
 
             // 安全检查：目标必须在 outputDir 内
             if (!targetPath.startsWith(galleryRoot) && !targetPath.startsWith(tempRoot)) {
@@ -210,6 +211,10 @@ public class ResourceController {
             log.error("listGallery error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    static Path normalizeAbsolutePath(String rawPath) {
+        return java.nio.file.Paths.get(rawPath).toAbsolutePath().normalize();
     }
 
     /**

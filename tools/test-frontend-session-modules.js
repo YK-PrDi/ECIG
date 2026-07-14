@@ -10,6 +10,16 @@ function testIndexHtmlWiresExternalModules() {
   assert.match(html, /<script src="js\/api-client\.js"><\/script>/);
   assert.match(html, /<script src="js\/auth-session\.js"><\/script>/);
   assert.match(html, /<script src="js\/task-polling\.js"><\/script>/);
+  assert.match(html, /<script src="js\/generation-controls\.js"><\/script>/);
+  assert.match(html, /<script src="js\/canvas-selection\.js"><\/script>/);
+  const autoBoardSection = html.slice(html.indexOf('function autoAddToBoard'), html.indexOf('function appendThoughts'));
+  assert.match(autoBoardSection, /r\.type === 'video'/, '视频结果不应被图片画布节点接收');
+  assert.match(html, /generationControls\.isActive\(\)/);
+  assert.match(html, /beginGenerationTask\(data\.taskId\)/);
+  const reanalyzeSection = html.slice(html.indexOf('async function reanalyzeCard'), html.indexOf('function isTextOverlayKey'));
+  assert.match(reanalyzeSection, /analyzeWithGemini\(files, doubaoUserPrompt, 1, withText\)/,
+    '重分析应带全部参考图走单元整合链路');
+  assert.ok(!/const singleFile =/.test(reanalyzeSection), '重分析不能退化为只带一张参考图');
   assert.match(html, /AiStudioAuth\.configure\(/);
   assert.match(html, /AiStudioAuth\.checkSession\(\)/);
   assert.ok(!/\(async function checkSession\(\)/.test(html), 'index.html should not keep inline checkSession implementation');
@@ -45,6 +55,46 @@ function loadBrowserScript(file, sandboxOverrides = {}) {
   return sandbox;
 }
 
+function testCanvasSelection() {
+  const sandbox = loadBrowserScript('frontend/js/canvas-selection.js');
+  const selection = sandbox.AiStudioCanvasSelection;
+  assert.ok(selection, '画布选择工具应导出 AiStudioCanvasSelection');
+
+  const nodes = [
+    { id: 'left', x: 10, y: 10, w: 100, h: 100, src: '/api/image?path=left.png', savePath: 'left.png' },
+    { id: 'right', x: 180, y: 40, w: 120, h: 80, src: '/api/image?path=right.png', savePath: 'right.png' },
+    { id: 'outside', x: 380, y: 40, w: 100, h: 100, src: '/api/image?path=outside.png' }
+  ];
+
+  assert.deepStrictEqual(
+    Array.from(selection.selectionIds(nodes, { x: 80, y: 60, w: 140, h: 80 }, new Set(['outside']), false)),
+    ['left', 'right'],
+    '普通框选应命中相交节点并替换旧选择'
+  );
+  assert.deepStrictEqual(
+    Array.from(selection.selectionIds(nodes, { x: 80, y: 60, w: 140, h: 80 }, new Set(['outside']), true)).sort(),
+    ['left', 'outside', 'right'],
+    'Ctrl/Cmd 框选应追加命中节点'
+  );
+
+  const moved = selection.groupMove(nodes, new Set(['left', 'right']), 25, -10);
+  assert.deepStrictEqual(
+    moved.map(node => ({ id: node.id, x: node.x, y: node.y })),
+    [
+      { id: 'left', x: 35, y: 0 },
+      { id: 'right', x: 205, y: 30 },
+      { id: 'outside', x: 380, y: 40 }
+    ],
+    '组移动只能改变选中节点的位置'
+  );
+
+  assert.deepStrictEqual(
+    selection.batchTargets(nodes, new Set(['left', 'right', 'outside'])).map(node => node.id),
+    ['left', 'right'],
+    '批量保存仅返回具有可保存来源的选中节点'
+  );
+}
+
 function response({ status = 200, contentType = 'application/json', body = '{}' } = {}) {
   return {
     ok: status >= 200 && status < 300,
@@ -56,6 +106,9 @@ function response({ status = 200, contentType = 'application/json', body = '{}' 
     },
     async text() {
       return body;
+    },
+    async json() {
+      return JSON.parse(body);
     }
   };
 }
@@ -144,13 +197,61 @@ async function testTaskPolling() {
     () => polling.fetchStatus('expired-task'),
     (error) => error && error.sessionExpired === true
   );
+
+  let finalizeCount = 0;
+  const stoppingSandbox = loadBrowserScript('frontend/js/api-client.js', {
+    fetch: async () => response({ body: '{"status":"stopping","progress":0,"total":1,"results":[]}' })
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(root, 'frontend/js/task-polling.js'), 'utf8'),
+    stoppingSandbox,
+    { filename: 'frontend/js/task-polling.js' }
+  );
+  const stoppingPolling = stoppingSandbox.AiStudioTaskPolling.create({
+    timers: new Map([['t2', { seenCount: 0 }]]),
+    updateProgressCard: () => {},
+    finalizeProgressCard: () => { finalizeCount += 1; },
+    renderGeneratedImages: () => {},
+    autoAddToBoard: () => {}
+  });
+  await stoppingPolling.pollOnce('t2', Date.now());
+  assert.strictEqual(finalizeCount, 0, 'stopping task must keep polling until it reaches a terminal state');
+}
+
+async function testGenerationControls() {
+  const calls = [];
+  const sandbox = loadBrowserScript('frontend/js/api-client.js', {
+    fetch: async (url, options) => {
+      calls.push({ url, options });
+      return response({ body: '{"success":true,"status":"stopping"}' });
+    }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(root, 'frontend/js/generation-controls.js'), 'utf8'),
+    sandbox,
+    { filename: 'frontend/js/generation-controls.js' }
+  );
+
+  const controls = sandbox.AiStudioGenerationControls.create();
+  controls.activate('task-1');
+  assert.strictEqual(controls.isActive(), true);
+
+  await Promise.all([controls.stopActiveTask(), controls.stopActiveTask()]);
+
+  assert.strictEqual(calls.length, 1, 'rapid repeated clicks must issue only one stop request');
+  assert.strictEqual(calls[0].url, '/api/task/task-1/stop');
+  assert.strictEqual(controls.isStopping(), true);
+  controls.complete('task-1');
+  assert.strictEqual(controls.isActive(), false);
 }
 
 (async () => {
   testIndexHtmlWiresExternalModules();
+  testCanvasSelection();
   await testApiClient();
   await testAuthSession();
   await testTaskPolling();
+  await testGenerationControls();
   console.log('frontend session modules tests passed');
 })().catch(error => {
   console.error(error);

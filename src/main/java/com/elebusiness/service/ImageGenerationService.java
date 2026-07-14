@@ -107,7 +107,9 @@ public class ImageGenerationService {
 
         // 第一级：Gemini
         try {
-            return requestGeminiCustomPromptAnalysis(userPrompt, files, safeCount, withText);
+            return files.isEmpty()
+                    ? requestGeminiCustomPromptAnalysis(userPrompt, files, safeCount, withText)
+                    : requestGeminiCustomPromptAnalysisByUnit(userPrompt, files, safeCount, withText);
         } catch (Exception e) {
             log.warn("自定义分析 Gemini 失败，尝试千问: {}", e.getMessage());
         }
@@ -115,7 +117,9 @@ public class ImageGenerationService {
         // 第二级：千问
         if (appProperties.getQwen().isEnabled()) {
             try {
-                return requestQwenCustomPromptAnalysis(userPrompt, files, safeCount, withText);
+                return files.isEmpty()
+                        ? requestQwenCustomPromptAnalysis(userPrompt, files, safeCount, withText)
+                        : requestQwenCustomPromptAnalysisByUnit(userPrompt, files, safeCount, withText);
             } catch (Exception e) {
                 log.warn("自定义分析千问失败，使用本地兜底: {}", e.getMessage());
             }
@@ -214,6 +218,210 @@ public class ImageGenerationService {
             if (text.isBlank()) throw new RuntimeException("千问返回空内容");
             return text;
         }
+    }
+
+    private String requestGeminiCustomPromptAnalysisByUnit(
+            String prompt, List<File> imageFiles, int count, boolean withText) throws Exception {
+        return requestCustomPromptAnalysisByUnit(
+                prompt,
+                imageFiles,
+                count,
+                withText,
+                (imageFile, requestText) -> requestGeminiCustomUnitAnalysis(requestText, imageFile),
+                "Gemini"
+        );
+    }
+
+    private String requestQwenCustomPromptAnalysisByUnit(
+            String prompt, List<File> imageFiles, int count, boolean withText) throws Exception {
+        return requestCustomPromptAnalysisByUnit(
+                prompt,
+                imageFiles,
+                count,
+                withText,
+                (imageFile, requestText) -> requestQwenCustomUnitAnalysis(requestText, imageFile),
+                "千问"
+        );
+    }
+
+    /**
+     * 每个并行任务只接收一张参考图和一个模板单元；收齐后再按目标图整合。
+     * 等待发生在请求线程，避免在线程池任务内部相互等待造成死锁。
+     */
+    private String requestCustomPromptAnalysisByUnit(
+            String prompt,
+            List<File> imageFiles,
+            int count,
+            boolean withText,
+            CustomUnitAnalysisClient client,
+            String providerName) throws Exception {
+
+        List<File> validFiles = imageFiles.stream()
+                .filter(Objects::nonNull)
+                .filter(File::exists)
+                .filter(File::isFile)
+                .toList();
+        if (validFiles.isEmpty()) {
+            throw new IllegalArgumentException("没有可供单元分析的参考图");
+        }
+
+        List<CustomPromptAnalysisPlan.Assignment> assignments =
+                CustomPromptAnalysisPlan.assignments(validFiles.size(), count);
+        log.info("自定义分析 {} 单元拆分: 参考图={}, 待生成图={}, 单元任务={}",
+                providerName, validFiles.size(), count, assignments.size());
+
+        List<CompletableFuture<TargetUnitResult>> unitFutures = new ArrayList<>();
+        for (CustomPromptAnalysisPlan.Assignment assignment : assignments) {
+            File reference = validFiles.get(assignment.referenceIndex());
+            String unitPrompt = CustomPromptAnalysisPlan.buildExtractionPrompt(prompt, assignment, withText);
+            unitFutures.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                    String content = client.request(reference, unitPrompt);
+                    if (content == null || content.isBlank()) {
+                        throw new IllegalStateException("单元分析返回空内容");
+                    }
+                    return new TargetUnitResult(
+                            assignment.targetIndex(),
+                            new CustomPromptAnalysisPlan.UnitResult(
+                                    assignment.referenceIndex(),
+                                    assignment.unit().label(),
+                                    content.trim())
+                    );
+                } catch (Exception e) {
+                    log.warn("自定义分析 {} 单元失败: target={}, reference={}, unit={}, error={}",
+                            providerName,
+                            assignment.targetIndex() + 1,
+                            assignment.referenceIndex() + 1,
+                            assignment.unit().label(),
+                            e.getMessage());
+                    return null;
+                }
+            }, executor));
+        }
+
+        Map<Integer, List<CustomPromptAnalysisPlan.UnitResult>> resultsByTarget = new LinkedHashMap<>();
+        List<CustomPromptAnalysisPlan.UnitResult> allResults = new ArrayList<>();
+        for (CompletableFuture<TargetUnitResult> future : unitFutures) {
+            TargetUnitResult result = future.get(2, TimeUnit.MINUTES);
+            if (result == null) continue;
+            resultsByTarget.computeIfAbsent(result.targetIndex(), ignored -> new ArrayList<>())
+                    .add(result.unitResult());
+            allResults.add(result.unitResult());
+        }
+        if (allResults.isEmpty()) {
+            throw new IllegalStateException(providerName + " 所有单元分析均失败");
+        }
+
+        String[] fallbackSegments = buildLocalFallbackCustomPrompts(prompt, count).split("\\R---\\R");
+        List<CompletableFuture<String>> integrationFutures = new ArrayList<>();
+        for (int targetIndex = 0; targetIndex < count; targetIndex++) {
+            final int currentTarget = targetIndex;
+            List<CustomPromptAnalysisPlan.UnitResult> targetResults =
+                    resultsByTarget.getOrDefault(currentTarget, List.of());
+            String integrationPrompt = CustomPromptAnalysisPlan.buildIntegrationPrompt(
+                    prompt, currentTarget + 1, count, targetResults, withText);
+            integrationFutures.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                    return normalizeIntegratedCustomSegment(
+                            client.request(null, integrationPrompt), currentTarget + 1);
+                } catch (Exception e) {
+                    log.warn("自定义分析 {} 整合失败，使用本地图卡: target={}, error={}",
+                            providerName, currentTarget + 1, e.getMessage());
+                    return fallbackSegments[Math.min(currentTarget, fallbackSegments.length - 1)].trim();
+                }
+            }, executor));
+        }
+
+        List<String> segments = new ArrayList<>();
+        for (CompletableFuture<String> future : integrationFutures) {
+            segments.add(future.get(2, TimeUnit.MINUTES));
+        }
+        List<CustomPromptAnalysisPlan.UnitResult> summaryResults = allResults.size() > 12
+                ? allResults.subList(0, 12)
+                : allResults;
+        return "【总分析】\n"
+                + CustomPromptAnalysisPlan.buildSummary(prompt, count, summaryResults)
+                + "\n---\n"
+                + String.join("\n---\n", segments);
+    }
+
+    private String normalizeIntegratedCustomSegment(String text, int targetNumber) {
+        String normalized = text == null ? "" : text.trim();
+        if (normalized.isBlank()) {
+            throw new IllegalStateException("整合分析返回空内容");
+        }
+        String heading = "【第 " + targetNumber + " 张方案】";
+        return normalized.contains(heading) ? normalized : heading + "\n" + normalized;
+    }
+
+    private String requestGeminiCustomUnitAnalysis(String requestText, File imageFile) throws IOException {
+        String apiKey = appProperties.getGemini().getApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("Gemini API Key 未配置");
+        }
+        String systemText = promptTemplateLoader.load("prompt/custom-analysis-system.txt", "custom-analysis system fallback");
+        ArrayNode userContent = objectMapper.createArrayNode();
+        userContent.addObject().put("type", "text").put("text", requestText);
+        appendAnalysisImage(userContent, imageFile);
+
+        String requestJson = buildOpenAIChatRequest(
+                GEMINI_ANALYSIS_MODEL, systemText, userContent,
+                imageFile == null ? 2600 : 900, imageFile == null ? 0.45 : 0.25);
+        Request request = new Request.Builder()
+                .url(appProperties.getGemini().getBaseUrl() + "/v1/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .post(RequestBody.create(requestJson, JSON_TYPE))
+                .build();
+        return executeAnalysisWithRetry(request, imageFile == null ? "Gemini 自定义整合" : "Gemini 自定义单元分析");
+    }
+
+    private String requestQwenCustomUnitAnalysis(String requestText, File imageFile) throws IOException {
+        String apiKey = appProperties.getQwen().getApiKey();
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", appProperties.getQwen().getModel());
+        ArrayNode messages = root.putArray("messages");
+        ObjectNode userMsg = messages.addObject();
+        userMsg.put("role", "user");
+        ArrayNode content = userMsg.putArray("content");
+        content.addObject().put("type", "text").put("text", requestText);
+        if (imageFile != null && imageFile.exists() && imageFile.isFile()) {
+            byte[] bytes = Files.readAllBytes(imageFile.toPath());
+            String dataUrl = "data:" + getMimeType(imageFile.getName()) + ";base64,"
+                    + Base64.getEncoder().encodeToString(bytes);
+            content.addObject().put("type", "image_url").putObject("image_url").put("url", dataUrl);
+        }
+        Request request = new Request.Builder()
+                .url(appProperties.getQwen().getBaseUrl() + "/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .post(RequestBody.create(root.toString(), JSON_TYPE))
+                .build();
+        try (Response response = analysisClient.newCall(request).execute()) {
+            String body = response.body() != null ? response.body().string() : "";
+            if (!response.isSuccessful()) {
+                throw new RuntimeException("千问自定义单元分析失败(" + response.code() + "): " + body);
+            }
+            String text = objectMapper.readTree(body).path("choices").path(0)
+                    .path("message").path("content").asText("");
+            if (text.isBlank()) throw new RuntimeException("千问自定义单元分析返回空内容");
+            return text;
+        }
+    }
+
+    private void appendAnalysisImage(ArrayNode userContent, File imageFile) throws IOException {
+        if (imageFile == null || !imageFile.exists() || !imageFile.isFile()) return;
+        byte[] bytes = Files.readAllBytes(imageFile.toPath());
+        String dataUrl = "data:" + getMimeType(imageFile.getName()) + ";base64,"
+                + Base64.getEncoder().encodeToString(bytes);
+        userContent.addObject().put("type", "image_url")
+                .putObject("image_url").put("url", dataUrl);
+    }
+
+    @FunctionalInterface
+    private interface CustomUnitAnalysisClient {
+        String request(File imageFile, String requestText) throws Exception;
+    }
+
+    private record TargetUnitResult(int targetIndex, CustomPromptAnalysisPlan.UnitResult unitResult) {
     }
 
     /** 本地兜底：生成基础提示词卡片，强制不含文案字段 */

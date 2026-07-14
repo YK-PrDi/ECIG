@@ -47,6 +47,12 @@ public class TaskController {
     public ResponseEntity<Map<String, Object>> stopTask(@PathVariable String taskId, HttpSession httpSession) {
         long userId = currentUserService.requireUserId(httpSession);
         boolean ok = taskService.cancel(userId, taskId);
-        return ResponseEntity.ok(Map.of("success", ok));
+        if (!ok) {
+            return ResponseEntity.notFound().build();
+        }
+        String status = taskService.getTask(userId, taskId)
+                .map(task -> task.getStatus())
+                .orElse("stopped");
+        return ResponseEntity.ok(Map.of("success", true, "status", status));
     }
 }
