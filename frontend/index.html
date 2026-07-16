@@ -600,6 +600,9 @@
                                     </div>
                                 </div>
                                 <div id="kpSummaryPreview" class="kp-summary-preview"></div>
+                                <div id="kpMaterialSelectionSummary" class="kp-material-selection-summary" aria-live="polite">
+                                    <div class="kp-combination-empty">上传产品图并从素材库选择创意参考</div>
+                                </div>
                                 <textarea id="kpGuidePrompt" class="kp-guide-textarea" style="display:none;" aria-hidden="true">提示词：请对这个产品从几何结构、体量感（轻盈/厚重/悬浮感）、仿生学元素、模块化程度（一体成型 / 可拆卸 / 堆叠式设计）、主色调、辅色、风格标签（科技极简/复古怀旧/赛博朋克/可爱治愈）的角度进行产品外观设计分析</textarea>
                             </div>
                         </div>
@@ -736,6 +739,7 @@
     <script src="js/generation-controls.js"></script>
     <script src="js/workbench-layout.js"></script>
     <script src="js/inpaint-session.js"></script>
+    <script src="js/kaipin-material-selection.js"></script>
     <script src="js/canvas-selection.js"></script>
 
     <script>
@@ -3946,8 +3950,9 @@
             const params = window.__kaipinParams || {};
             const selectedAgentId = params.agentId || document.getElementById('agentSelect')?.value || 'gpt-image';
             const agentId = resolveImageAgentId(selectedAgentId);
-            const materialIds = window.kpSelectedMaterialIds || [];
             const materialPromptOverrides = collectKaiPinMaterialPromptOverrides();
+            const materialPlans = currentKaiPinMaterialPlans(materialPromptOverrides);
+            const materialIds = materialPlans.map(plan => plan.id);
             if (!window.kpRefA) {
                 alertSafe('请先在开品模式上滑菜单上传白底产品图');
                 return;
@@ -4000,7 +4005,7 @@
                 formData.append('agentId', finalAgentId);
                 formData.append('sessionId', SESSION_ID);
                 formData.append('configJson', configJson);
-                appendMessage('user', `[开品素材库融合] 模型: ${agentId}${selectedAgentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}\n白底产品图 + ${materialIds.length} 条数据库素材 → ${materialIds.length} 张图`);
+                appendMessage('user', `[开品素材库融合] 模型: ${agentId}${selectedAgentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}\n我的产品主体 + ${materialIds.length} 条创意素材 → ${materialIds.length} 个独立方案`);
                 captureLastGen(apiPath, formData, `[开品模式] 素材库融合 ${materialIds.length} 条`);
 
                 const resp = await fetch(apiPath, { method: 'POST', body: formData });
@@ -5580,6 +5585,67 @@
         window.kpMaterialFile = null;
         window.kpSelectedMaterialIds = [];
         window.kpMaterialDbItems = [];
+        window.kpMaterialPromptOverrides = {};
+        window.kpMaterialSummaryProductUrl = null;
+        window.kpMaterialSummaryProductFile = null;
+
+        function currentKaiPinMaterialPlans(overrides) {
+            return AiStudioKaiPinSelection.buildPlans(
+                window.kpMaterialDbItems,
+                window.kpSelectedMaterialIds,
+                overrides || window.kpMaterialPromptOverrides
+            );
+        }
+
+        function kaiPinSummaryProductUrl() {
+            if (!window.kpRefA) {
+                if (window.kpMaterialSummaryProductUrl) URL.revokeObjectURL(window.kpMaterialSummaryProductUrl);
+                window.kpMaterialSummaryProductUrl = null;
+                window.kpMaterialSummaryProductFile = null;
+                return '';
+            }
+            if (window.kpMaterialSummaryProductFile !== window.kpRefA) {
+                if (window.kpMaterialSummaryProductUrl) URL.revokeObjectURL(window.kpMaterialSummaryProductUrl);
+                window.kpMaterialSummaryProductUrl = URL.createObjectURL(window.kpRefA);
+                window.kpMaterialSummaryProductFile = window.kpRefA;
+            }
+            return window.kpMaterialSummaryProductUrl;
+        }
+
+        function renderKaiPinMaterialSelectionSummary() {
+            const host = document.getElementById('kpMaterialSelectionSummary');
+            if (!host) return;
+            const plans = currentKaiPinMaterialPlans();
+            const productUrl = kaiPinSummaryProductUrl();
+            if (!productUrl || !plans.length) {
+                host.innerHTML = '<div class="kp-combination-empty">上传产品图并从素材库选择创意参考</div>';
+                return;
+            }
+            host.innerHTML = `
+                <div class="kp-combination-head">
+                    <strong>融合组合</strong>
+                    <span>将生成 ${plans.length} 个独立方案</span>
+                </div>
+                <div class="kp-combination-list">
+                    ${plans.map((plan, index) => `
+                        <article class="kp-combination-card">
+                            <div class="kp-combination-visual">
+                                <div class="kp-combination-role">
+                                    <img src="${productUrl}" alt="我的产品图">
+                                    <span><strong>主体</strong>我的产品图</span>
+                                </div>
+                                <span class="kp-combination-plus">+</span>
+                                <div class="kp-combination-role">
+                                    <img src="${toImgUrl(plan.imagePath)}" alt="${escHtml(plan.title)}">
+                                    <span><strong>创意 ${index + 1}</strong>${escHtml(plan.title)}</span>
+                                </div>
+                            </div>
+                            <p>${escHtml(plan.prompt || '使用素材图片本身作为造型、结构和 CMF 创意参考')}</p>
+                        </article>
+                    `).join('')}
+                </div>
+            `;
+        }
         function kpHandleFile(slot, input) {
             const f = input.files && input.files[0];
             input.value = ''; // 允许重复选同一文件
@@ -5685,6 +5751,7 @@
                 if (!resp.ok || data.error) throw new Error(data.error || '读取失败');
                 window.kpMaterialDbItems = data.items || [];
                 renderKaiPinMaterialDb();
+                renderKaiPinMaterialSelectionSummary();
                 refreshKaiPinMaterialLayout();
             } catch (e) {
                 if (list) list.innerHTML = `<div class="kp-db-empty">读取失败：${escHtml(e.message || e)}</div>`;
@@ -5748,6 +5815,8 @@
             btn.classList.toggle('active', set.has(id));
             const check = btn.querySelector('.kp-db-check');
             if (check) check.textContent = set.has(id) ? '已选' : '选择';
+            updateKaiPinDbBadge();
+            confirmKaiPinSettings();
         }
         function handleKaiPinMaterialCardKey(event, card) {
             if (event.target && event.target.closest('.kp-db-prompt-editor')) return;
@@ -5762,6 +5831,7 @@
             if (!id) return;
             window.kpMaterialPromptOverrides = window.kpMaterialPromptOverrides || {};
             window.kpMaterialPromptOverrides[id] = textarea.value.trim();
+            renderKaiPinMaterialSelectionSummary();
         }
         function collectKaiPinMaterialPromptOverrides() {
             const selected = new Set((window.kpSelectedMaterialIds || []).map(String));
@@ -5784,6 +5854,7 @@
             const count = (window.kpSelectedMaterialIds || []).length;
             const badge = document.getElementById('kpDbSelectCount');
             if (badge) badge.textContent = count ? `已选 ${count} 条` : '未选择';
+            renderKaiPinMaterialSelectionSummary();
         }
         function kpRenderThumb(slot) {
             const file = slot === 'A' ? window.kpRefA : window.kpRefB;
@@ -6940,6 +7011,7 @@
             }
 
             syncChatPadding();
+            renderKaiPinMaterialSelectionSummary();
         }
 
         // ── 电商批量生图队列 ──────────────────────────────────────────────

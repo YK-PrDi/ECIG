@@ -135,6 +135,20 @@ async function testInpaintSession() {
   );
 }
 
+function testKaiPinMaterialSelection() {
+  const sandbox = loadBrowserScript('frontend/js/kaipin-material-selection.js');
+  const selection = sandbox.AiStudioKaiPinSelection;
+  assert.ok(selection, '开品素材选择工具应导出 AiStudioKaiPinSelection');
+  const plans = selection.buildPlans(
+    [{ id: 1, title: '折叠结构', prompt: '原始提示', imagePath: '/m1.png' }],
+    ['1'],
+    { 1: '本次覆盖提示' }
+  );
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(plans)), [{
+    id: '1', title: '折叠结构', prompt: '本次覆盖提示', imagePath: '/m1.png'
+  }]);
+}
+
 function response({ status = 200, contentType = 'application/json', body = '{}' } = {}) {
   return {
     ok: status >= 200 && status < 300,
@@ -288,6 +302,7 @@ async function testGenerationControls() {
 (async () => {
   testWorkbenchLayout();
   await testInpaintSession();
+  testKaiPinMaterialSelection();
   testIndexHtmlWiresExternalModules();
   testCanvasSelection();
   await testApiClient();

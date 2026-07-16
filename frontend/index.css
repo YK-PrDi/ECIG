@@ -3704,6 +3704,89 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
     color: var(--success);
 }
 
+.kp-material-selection-summary {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    min-width: 0;
+}
+.kp-combination-empty {
+    padding: 9px 10px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 12px;
+    text-align: center;
+}
+.kp-combination-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+.kp-combination-head strong { color: var(--text-main); font-size: 13px; }
+.kp-combination-head span { color: var(--primary); white-space: nowrap; }
+.kp-combination-list {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+    scroll-snap-type: x proximity;
+}
+.kp-combination-card {
+    flex: 0 0 min(270px, 86%);
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    scroll-snap-align: start;
+}
+.kp-combination-visual {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+}
+.kp-combination-role {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.kp-combination-role img {
+    width: 42px;
+    height: 42px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: #fff;
+}
+.kp-combination-role span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+.kp-combination-role strong { display: block; margin-bottom: 2px; color: var(--text-main); font-size: 11px; }
+.kp-combination-plus { color: var(--text-dim); font-size: 14px; text-align: center; }
+.kp-combination-card p {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    margin: 8px 0 0;
+    color: var(--text-dim);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
 .app-content { background: var(--bg-workspace); }
 .sidebar {
     background: var(--bg-panel);
