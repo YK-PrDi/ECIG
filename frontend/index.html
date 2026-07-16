@@ -7072,6 +7072,7 @@
                 this.undoStack = [];
                 this.dragNode = null;
                 this.dragOffset = { x: 0, y: 0 };
+                this._dragOverChat = false;
                 this.panStart = null;
                 this.selectionBox = null;
                 this.selectionStart = null;
@@ -7315,6 +7316,15 @@
                 ctx.setTransform(this.scale, 0, 0, this.scale, this.cam.x, this.cam.y);
                 for (const n of this.nodes) {
                     const isDragging = this.dragNode && this.dragNode.id === n.id;
+                    const isDraggedSelection = this.dragNode && this.selectedIds.has(n.id);
+                    if (this._dragOverChat && isDraggedSelection) {
+                        const origin = this._dragOriginsAll?.[n.id] || { x: n.x, y: n.y };
+                        ctx.save();
+                        ctx.globalAlpha = 0.3;
+                        ctx.drawImage(n.img, origin.x, origin.y, n.w, n.h);
+                        ctx.restore();
+                        continue;
+                    }
                     if (isDragging) {
                         // 原位置画半透明占位
                         ctx.save();
@@ -7448,6 +7458,14 @@
                     if (this.editId) return;
                     this._mousePos = { x: e.clientX, y: e.clientY };
                     if (this.dragNode) {
+                        const chatPanel = document.getElementById('chatPanel');
+                        const chatRect = chatPanel?.getBoundingClientRect();
+                        this._dragOverChat = !!chatRect
+                            && e.clientX >= chatRect.left && e.clientX <= chatRect.right
+                            && e.clientY >= chatRect.top && e.clientY <= chatRect.bottom;
+                        chatPanel?.classList.toggle('canvas-drop-target', this._dragOverChat);
+                        if (this._dragOverChat) return;
+
                         const rect = c.getBoundingClientRect();
                         const wp = this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
                         const newX = wp.x - this.dragOffset.x;
@@ -7489,6 +7507,8 @@
 
                 // 鼠标松开（window 级别）
                 window.addEventListener('mouseup', e => {
+                    document.getElementById('chatPanel')?.classList.remove('canvas-drop-target');
+                    this._dragOverChat = false;
                     if (this.selectionBox) {
                         const rect = c.getBoundingClientRect();
                         const startX = this.selectionStart.x * this.scale + this.cam.x + rect.left;
