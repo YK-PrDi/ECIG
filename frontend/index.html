@@ -624,12 +624,12 @@
                     <!-- 输入主体 (拥有最高 z-index) -->
                     <div class="input-container">
                         <div class="generation-toolbar">
-                            <div class="mode-selector" role="tablist" aria-label="生成模式">
-                                <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">企业模式</button>
-                                <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义模式</button>
-                                <button class="mode-btn" id="btn-ecommerce" onclick="setMode('ecommerce')">电商模式</button>
-                                <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频模式</button>
-                                <button class="mode-btn" id="btn-product" onclick="setMode('product')">开品模式</button>
+                            <div class="mode-selector" role="group" aria-label="生成模式">
+                                <button class="mode-btn active" id="btn-standard" aria-pressed="true" onclick="setMode('standard')">企业模式</button>
+                                <button class="mode-btn" id="btn-custom" aria-pressed="false" onclick="setMode('custom')">自定义模式</button>
+                                <button class="mode-btn" id="btn-ecommerce" aria-pressed="false" onclick="setMode('ecommerce')">电商模式</button>
+                                <button class="mode-btn" id="btn-video" aria-pressed="false" onclick="setMode('video')">视频模式</button>
+                                <button class="mode-btn" id="btn-product" aria-pressed="false" onclick="setMode('product')">开品模式</button>
                             </div>
                             <div class="generation-model-control">
                                 <span class="compact-label">AI 模型</span>
@@ -2968,8 +2968,11 @@
 
             const prevMode = currentMode;
             currentMode = mode;
-            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`btn-${mode}`).classList.add('active');
+            document.querySelectorAll('.generation-toolbar .mode-btn').forEach(button => {
+                const active = button.id === `btn-${mode}`;
+                button.classList.toggle('active', active);
+                button.setAttribute('aria-pressed', String(active));
+            });
 
             drawer.classList.add('open');
             // 切换模式时自动展开折叠的抽屉

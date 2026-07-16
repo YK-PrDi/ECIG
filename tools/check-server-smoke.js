@@ -3,6 +3,8 @@ const path = require('path');
 const { chromium } = require('playwright');
 
 const baseUrl = (process.env.AI_STUDIO_BASE_URL || '').replace(/\/$/, '');
+const username = process.env.AI_STUDIO_SMOKE_USERNAME || '';
+const password = process.env.AI_STUDIO_SMOKE_PASSWORD || '';
 if (!baseUrl) {
     console.error('请设置 AI_STUDIO_BASE_URL，例如 http://127.0.0.1:5020');
     process.exit(1);
@@ -120,7 +122,21 @@ async function run() {
         args: ['--no-proxy-server']
     });
     try {
-        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        if (username && password) {
+            const login = await context.request.post(`${baseUrl}/api/auth/login`, {
+                data: { username, password }
+            });
+            if (!login.ok()) fail(`浏览器 smoke 登录失败: HTTP ${login.status()}`);
+        }
+        const page = await context.newPage();
+        if (!username || !password) {
+            await page.route('**/api/kaipin_materials?*', route => route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ items: [] })
+            }));
+        }
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
         page.on('console', message => {
@@ -135,12 +151,32 @@ async function run() {
             await new Promise(resolve => setTimeout(resolve, 30));
             try { window.ecToggleCascader({ stopPropagation() {} }); } catch (error) { result.errors.push(String(error)); }
             result.ecommerceCategoryItems = document.querySelectorAll('#ec-cat-panels .ec-cascader-item').length;
+            for (const mode of ['custom', 'ecommerce', 'product']) {
+                try { window.setMode(mode); } catch (error) { result.errors.push(String(error)); }
+                const activeModes = document.querySelectorAll('.generation-toolbar .mode-btn.active');
+                if (activeModes.length !== 1 || activeModes[0].id !== `btn-${mode}`) {
+                    result.errors.push(`${mode} 模式激活状态异常`);
+                }
+                const modeButtons = document.querySelectorAll('.generation-toolbar .mode-btn');
+                if ([...modeButtons].some(button => button.getAttribute('aria-pressed') !== String(button.id === `btn-${mode}`))) {
+                    result.errors.push(`${mode} 模式无障碍选中状态异常`);
+                }
+            }
+            try {
+                await window.openKaiPinMaterialDb();
+                result.materialViewOpened = document.getElementById('kpMaterialView')?.classList.contains('active') === true;
+                window.closeKaiPinMaterialDb();
+                result.materialViewClosed = document.getElementById('kpMaterialView')?.classList.contains('active') === false;
+            } catch (error) {
+                result.errors.push(String(error));
+            }
             return result;
         });
         if (ui.errors.length) fail(`类目 UI 调用失败: ${ui.errors.join('; ')}`);
         if (ui.customCategoryItems < 1) fail('自定义模式产品类目为空');
         if (ui.ecommerceCategoryItems < 1) fail('电商模式产品类目为空');
         if (errors.length) fail(`页面控制台错误: ${errors.join('; ')}`);
+        if (!ui.materialViewOpened || !ui.materialViewClosed) fail('开品素材库打开或关闭状态异常');
         console.log(`server smoke checks passed: ${localStaticAssets().length} static assets, ${allProtectedRoutes.length} protected routes, ${ui.customCategoryItems} custom categories, ${ui.ecommerceCategoryItems} ecommerce categories`);
     } finally {
         await browser.close();
