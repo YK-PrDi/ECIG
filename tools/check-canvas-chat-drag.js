@@ -77,11 +77,15 @@ async function run() {
             }
             return {
                 bluePixels,
-                dropTargetActive: document.getElementById('chatPanel').classList.contains('canvas-drop-target')
+                overlayActive: document.getElementById('dropOverlay').classList.contains('active'),
+                wholePanelActive: document.getElementById('chatPanel').classList.contains('canvas-drop-target'),
+                hint: document.getElementById('uploadHintText').textContent.trim()
             };
         });
 
-        if (!duringDrag.dropTargetActive) throw new Error('拖入右栏时未显示引用投放状态');
+        if (!duringDrag.overlayActive) throw new Error('拖入右栏时未复用紫色拖拽遮罩');
+        if (duringDrag.wholePanelActive) throw new Error('拖入右栏时不应高亮整个对话界面');
+        if (!duringDrag.hint.includes('引用')) throw new Error('紫色遮罩未显示图片引用提示');
         if (duringDrag.bluePixels > 20) {
             throw new Error(`拖入右栏时画布边缘仍残留图片图层：${duringDrag.bluePixels} 像素`);
         }
@@ -89,10 +93,10 @@ async function run() {
         await page.mouse.up();
         await page.waitForFunction(() => droppedFiles.length === 1);
         const afterDrop = await page.evaluate(() => ({
-            dropTargetActive: document.getElementById('chatPanel').classList.contains('canvas-drop-target'),
+            overlayActive: document.getElementById('dropOverlay').classList.contains('active'),
             previewVisible: getComputedStyle(document.getElementById('imagePreviewContainer')).display
         }));
-        if (afterDrop.dropTargetActive) throw new Error('松开后右栏投放状态未清理');
+        if (afterDrop.overlayActive) throw new Error('松开后紫色拖拽遮罩未清理');
         if (afterDrop.previewVisible === 'none') throw new Error('松开后图片未加入右侧引用区');
 
         console.log('canvas to chat drag check passed');

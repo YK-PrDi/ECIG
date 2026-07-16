@@ -7099,6 +7099,29 @@
                 return { x: wx * this.scale + this.cam.x, y: wy * this.scale + this.cam.y };
             }
 
+            _setChatDropPreview(active) {
+                const overlay = document.getElementById('dropOverlay');
+                const hint = document.getElementById('uploadHintText');
+                if (!overlay) return;
+                if (active) {
+                    if (hint && !hint.dataset.canvasDefaultText) {
+                        hint.dataset.canvasDefaultText = hint.textContent;
+                    }
+                    if (hint) hint.textContent = '松开鼠标引用图片到对话';
+                    overlay.dataset.canvasDrag = '1';
+                    overlay.classList.add('active');
+                    return;
+                }
+                if (overlay.dataset.canvasDrag === '1') {
+                    overlay.classList.remove('active');
+                    delete overlay.dataset.canvasDrag;
+                    if (hint?.dataset.canvasDefaultText) {
+                        hint.textContent = hint.dataset.canvasDefaultText;
+                        delete hint.dataset.canvasDefaultText;
+                    }
+                }
+            }
+
             addImage(src, file, sourcePath = null) {
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
@@ -7463,7 +7486,7 @@
                         this._dragOverChat = !!chatRect
                             && e.clientX >= chatRect.left && e.clientX <= chatRect.right
                             && e.clientY >= chatRect.top && e.clientY <= chatRect.bottom;
-                        chatPanel?.classList.toggle('canvas-drop-target', this._dragOverChat);
+                        this._setChatDropPreview(this._dragOverChat);
                         if (this._dragOverChat) return;
 
                         const rect = c.getBoundingClientRect();
@@ -7507,7 +7530,7 @@
 
                 // 鼠标松开（window 级别）
                 window.addEventListener('mouseup', e => {
-                    document.getElementById('chatPanel')?.classList.remove('canvas-drop-target');
+                    this._setChatDropPreview(false);
                     this._dragOverChat = false;
                     if (this.selectionBox) {
                         const rect = c.getBoundingClientRect();
