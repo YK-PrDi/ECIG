@@ -717,6 +717,7 @@
     <script src="js/auth-session.js"></script>
     <script src="js/task-polling.js"></script>
     <script src="js/generation-controls.js"></script>
+    <script src="js/workbench-layout.js"></script>
     <script src="js/canvas-selection.js"></script>
 
     <script>
@@ -7879,8 +7880,14 @@
 
             _resize() {
                 const panel = document.getElementById('canvasPanel');
-                this.canvas.width  = panel.clientWidth;
-                this.canvas.height = panel.clientHeight;
+                const oldSize = { width: this.canvas.width, height: this.canvas.height };
+                const newSize = { width: panel.clientWidth, height: panel.clientHeight };
+                if (!newSize.width || !newSize.height) return;
+                this.cam = AiStudioWorkbenchLayout.preserveCameraCenter(
+                    this.cam, this.scale, oldSize, newSize
+                );
+                this.canvas.width = newSize.width;
+                this.canvas.height = newSize.height;
             }
 
             exportMaskBlob(nodeId, callback) {
@@ -8045,12 +8052,16 @@
         });
 
         function initResizers() {
-            const savedSidebar = parseInt(localStorage.getItem('layout.sidebarW') || '200');
-            const savedChat    = parseInt(localStorage.getItem('layout.chatW')    || '380');
             const sidebar   = document.getElementById('mainSidebar');
             const chatPanel = document.getElementById('chatPanel');
-            if (sidebar)   sidebar.style.width   = savedSidebar + 'px';
-            if (chatPanel) chatPanel.style.width  = savedChat    + 'px';
+            const savedSidebar = AiStudioWorkbenchLayout.clampPanelWidth(
+                parseInt(localStorage.getItem('layout.sidebarW') || '200', 10), 148, 320
+            );
+            const savedChat = AiStudioWorkbenchLayout.clampPanelWidth(
+                parseInt(localStorage.getItem('layout.chatW') || '380', 10), 320, 520
+            );
+            if (sidebar) sidebar.style.width = savedSidebar + 'px';
+            if (chatPanel) chatPanel.style.width = savedChat + 'px';
             setupResizer('resizerLeft',  'mainSidebar', 'left');
             setupResizer('resizerRight', 'chatPanel',   'right');
         }
@@ -8065,17 +8076,20 @@
                 const startW = target.getBoundingClientRect().width;
                 document.body.style.cursor = 'col-resize';
                 document.body.style.userSelect = 'none';
+                resizer.classList.add('dragging');
 
                 const onMove = ev => {
                     if (target.dataset.collapsed === '1') return;
                     const dx = ev.clientX - startX;
                     const delta = side === 'left' ? dx : -dx;
-                    const minW = side === 'left' ? 200 : 400;
                     const canvas = document.getElementById('canvasPanel');
                     const canvasW = canvas.getBoundingClientRect().width;
-                    const maxExpand = Math.max(0, canvasW - 300);
-                    const clampedDelta = Math.min(delta, maxExpand);
-                    const newW = Math.max(minW, startW + clampedDelta);
+                    const minW = side === 'left' ? 148 : 320;
+                    const configuredMax = side === 'left' ? 320 : 520;
+                    const maxW = Math.min(configuredMax, startW + Math.max(0, canvasW - 360));
+                    const newW = AiStudioWorkbenchLayout.clampPanelWidth(
+                        startW + delta, minW, Math.max(minW, maxW)
+                    );
                     target.style.width = newW + 'px';
                 };
 
@@ -8084,8 +8098,9 @@
                     document.removeEventListener('mouseup', onUp);
                     document.body.style.cursor = '';
                     document.body.style.userSelect = '';
+                    resizer.classList.remove('dragging');
                     const key = side === 'left' ? 'layout.sidebarW' : 'layout.chatW';
-                    localStorage.setItem(key, parseInt(document.getElementById(targetId).style.width));
+                    localStorage.setItem(key, String(parseInt(document.getElementById(targetId).style.width, 10)));
                 };
                 document.addEventListener('mousemove', onMove);
                 document.addEventListener('mouseup', onUp);

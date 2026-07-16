@@ -103,6 +103,20 @@ function testCanvasSelection() {
   );
 }
 
+function testWorkbenchLayout() {
+  const sandbox = loadBrowserScript('frontend/js/workbench-layout.js');
+  const layout = sandbox.AiStudioWorkbenchLayout;
+  assert.ok(layout, '工作台布局工具应导出 AiStudioWorkbenchLayout');
+  assert.strictEqual(layout.clampPanelWidth(80, 160, 420), 160);
+  assert.strictEqual(layout.clampPanelWidth(520, 160, 420), 420);
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(layout.preserveCameraCenter(
+      { x: 10, y: 20 }, 2, { width: 800, height: 600 }, { width: 1000, height: 700 }
+    ))),
+    { x: 110, y: 70 }
+  );
+}
+
 function response({ status = 200, contentType = 'application/json', body = '{}' } = {}) {
   return {
     ok: status >= 200 && status < 300,
@@ -254,6 +268,7 @@ async function testGenerationControls() {
 }
 
 (async () => {
+  testWorkbenchLayout();
   testIndexHtmlWiresExternalModules();
   testCanvasSelection();
   await testApiClient();
