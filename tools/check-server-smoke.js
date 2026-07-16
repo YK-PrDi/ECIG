@@ -128,6 +128,8 @@ async function run() {
                 data: { username, password }
             });
             if (!login.ok()) fail(`浏览器 smoke 登录失败: HTTP ${login.status()}`);
+            const loginBody = await login.json();
+            if (!loginBody.success) fail('浏览器 smoke 登录未通过业务校验');
         }
         const page = await context.newPage();
         if (!username || !password) {
