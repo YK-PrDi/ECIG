@@ -105,21 +105,15 @@
     <!-- ── 导航 ── -->
     <nav class="topnav">
         <a href="#" class="brand">
-            <img src="icon.png" alt="羽刃" style="width: 32px; height: 32px; border-radius: 8px; object-fit: cover; margin-right: 8px;">
+            <img src="icon.png" alt="羽刃" class="brand-logo">
             羽刃
         </a>
-        <button onclick="openDocsView()" title="使用文档"
-            style="margin-left:12px;padding:0 12px;height:32px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:0.78rem;cursor:pointer;display:flex;align-items:center;gap:5px;flex-shrink:0;transition:all 0.15s;"
-            onmouseenter="this.style.background='var(--primary-light)';this.style.color='var(--primary)';this.style.borderColor='var(--primary)'"
-            onmouseleave="this.style.background='transparent';this.style.color='var(--text-muted)';this.style.borderColor='var(--border)'">
+        <button class="topnav-action" onclick="openDocsView()" title="使用文档">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
             使用文档
         </button>
-        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-            <button id="themeToggleBtn" onclick="switchTheme()" title="切换明暗模式"
-                style="width:36px;height:36px;border-radius:50%;border:none;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;flex-shrink:0;"
-                onmouseenter="this.style.background='var(--primary)';this.style.color='white'"
-                onmouseleave="this.style.background='var(--primary-light)';this.style.color='var(--primary)'">
+        <div class="topnav-actions">
+            <button class="topnav-icon-btn" id="themeToggleBtn" onclick="switchTheme()" title="切换明暗模式">
                 <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
                 </svg>
@@ -609,19 +603,16 @@
 
                     <!-- 输入主体 (拥有最高 z-index) -->
                     <div class="input-container">
-                        <div
-                            style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-                            <div class="mode-selector">
+                        <div class="generation-toolbar">
+                            <div class="mode-selector" role="tablist" aria-label="生成模式">
                                 <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">企业模式</button>
                                 <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义模式</button>
                                 <button class="mode-btn" id="btn-ecommerce" onclick="setMode('ecommerce')">电商模式</button>
                                 <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频模式</button>
                                 <button class="mode-btn" id="btn-product" onclick="setMode('product')">开品模式</button>
                             </div>
-                            <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-                                <span
-                                    style="font-size:0.7rem; color:var(--text-dim); font-weight:600; text-transform:uppercase; white-space:nowrap; flex-shrink:0;">AI
-                                    模型</span>
+                            <div class="generation-model-control">
+                                <span class="compact-label">AI 模型</span>
                                 <div class="gf-select sm drop-up" id="agentSelectWrapper">
                                     <input type="hidden" id="agentSelect" value="">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
