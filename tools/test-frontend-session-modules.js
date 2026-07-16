@@ -12,6 +12,14 @@ function testIndexHtmlWiresExternalModules() {
   assert.match(html, /<script src="js\/task-polling\.js"><\/script>/);
   assert.match(html, /<script src="js\/generation-controls\.js"><\/script>/);
   assert.match(html, /<script src="js\/canvas-selection\.js"><\/script>/);
+  assert.match(html, /<script src="js\/workbench-layout\.js"><\/script>/);
+  assert.match(html, /<script src="js\/inpaint-session\.js"><\/script>/);
+  assert.match(html, /<script src="js\/kaipin-material-selection\.js"><\/script>/);
+  assert.match(html, /class="generation-toolbar"/);
+  assert.match(html, /id="rectMaskBtn"/);
+  assert.match(html, /id="undoMaskBtn"/);
+  assert.match(html, /id="redoMaskBtn"/);
+  assert.match(html, /id="kpMaterialSelectionSummary"/);
   const autoBoardSection = html.slice(html.indexOf('function autoAddToBoard'), html.indexOf('function appendThoughts'));
   assert.match(autoBoardSection, /r\.type === 'video'/, '视频结果不应被图片画布节点接收');
   assert.match(html, /generationControls\.isActive\(\)/);
