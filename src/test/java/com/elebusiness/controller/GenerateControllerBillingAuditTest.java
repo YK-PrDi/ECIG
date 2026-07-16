@@ -32,7 +32,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -153,16 +152,10 @@ class GenerateControllerBillingAuditTest {
         MockHttpSession session = new MockHttpSession();
         currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER"));
         AtomicReference<Long> capturedUserId = new AtomicReference<>(0L);
-        AtomicReference<String> capturedPrompt = new AtomicReference<>();
-        AtomicReference<Long> capturedImageSize = new AtomicReference<>(0L);
-        AtomicReference<Long> capturedMaskSize = new AtomicReference<>(0L);
         GptImageAgent gptImageAgent = new GptImageAgent(props, mock(UserProviderCredentialService.class)) {
             @Override
             public boolean generateWithMask(String prompt, File imageFile, File maskFile, String outputPath, String aspect) {
                 capturedUserId.set(GenerationInvocationContext.currentUserId().orElse(0L));
-                capturedPrompt.set(prompt);
-                capturedImageSize.set(imageFile.length());
-                capturedMaskSize.set(maskFile.length());
                 return true;
             }
         };
@@ -178,9 +171,6 @@ class GenerateControllerBillingAuditTest {
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(1001L, capturedUserId.get());
-        assertEquals("remove background", capturedPrompt.get());
-        assertTrue(capturedImageSize.get() > 0L);
-        assertTrue(capturedMaskSize.get() > 0L);
     }
 
     private byte[] pngBytes(int width, int height) throws Exception {

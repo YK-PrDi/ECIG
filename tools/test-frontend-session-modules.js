@@ -12,14 +12,6 @@ function testIndexHtmlWiresExternalModules() {
   assert.match(html, /<script src="js\/task-polling\.js"><\/script>/);
   assert.match(html, /<script src="js\/generation-controls\.js"><\/script>/);
   assert.match(html, /<script src="js\/canvas-selection\.js"><\/script>/);
-  assert.match(html, /<script src="js\/workbench-layout\.js"><\/script>/);
-  assert.match(html, /<script src="js\/inpaint-session\.js"><\/script>/);
-  assert.match(html, /<script src="js\/kaipin-material-selection\.js"><\/script>/);
-  assert.match(html, /class="generation-toolbar"/);
-  assert.match(html, /id="rectMaskBtn"/);
-  assert.match(html, /id="undoMaskBtn"/);
-  assert.match(html, /id="redoMaskBtn"/);
-  assert.match(html, /id="kpMaterialSelectionSummary"/);
   const autoBoardSection = html.slice(html.indexOf('function autoAddToBoard'), html.indexOf('function appendThoughts'));
   assert.match(autoBoardSection, /r\.type === 'video'/, '视频结果不应被图片画布节点接收');
   assert.match(html, /generationControls\.isActive\(\)/);
@@ -101,52 +93,6 @@ function testCanvasSelection() {
     ['left', 'right'],
     '批量保存仅返回具有可保存来源的选中节点'
   );
-}
-
-function testWorkbenchLayout() {
-  const sandbox = loadBrowserScript('frontend/js/workbench-layout.js');
-  const layout = sandbox.AiStudioWorkbenchLayout;
-  assert.ok(layout, '工作台布局工具应导出 AiStudioWorkbenchLayout');
-  assert.strictEqual(layout.clampPanelWidth(80, 160, 420), 160);
-  assert.strictEqual(layout.clampPanelWidth(520, 160, 420), 420);
-  assert.deepStrictEqual(
-    JSON.parse(JSON.stringify(layout.preserveCameraCenter(
-      { x: 10, y: 20 }, 2, { width: 800, height: 600 }, { width: 1000, height: 700 }
-    ))),
-    { x: 110, y: 70 }
-  );
-}
-
-async function testInpaintSession() {
-  const sandbox = loadBrowserScript('frontend/js/inpaint-session.js');
-  const inpaint = sandbox.AiStudioInpaintSession;
-  assert.ok(inpaint, '局部编辑状态工具应导出 AiStudioInpaintSession');
-  assert.strictEqual(inpaint.hasEditablePixels(new Uint8ClampedArray([0, 0, 0, 255])), false);
-  assert.strictEqual(inpaint.hasEditablePixels(new Uint8ClampedArray([0, 0, 0, 0])), true);
-
-  const image = { name: 'product.png' };
-  const mask = { size: 128, type: 'image/png' };
-  const ready = await inpaint.prepare(Promise.resolve(image), Promise.resolve(mask));
-  assert.strictEqual(ready.imageFile, image);
-  assert.strictEqual(ready.maskBlob, mask);
-  await assert.rejects(
-    () => inpaint.prepare(Promise.resolve(image), Promise.resolve({ size: 0 })),
-    /蒙版/
-  );
-}
-
-function testKaiPinMaterialSelection() {
-  const sandbox = loadBrowserScript('frontend/js/kaipin-material-selection.js');
-  const selection = sandbox.AiStudioKaiPinSelection;
-  assert.ok(selection, '开品素材选择工具应导出 AiStudioKaiPinSelection');
-  const plans = selection.buildPlans(
-    [{ id: 1, title: '折叠结构', prompt: '原始提示', imagePath: '/m1.png' }],
-    ['1'],
-    { 1: '本次覆盖提示' }
-  );
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(plans)), [{
-    id: '1', title: '折叠结构', prompt: '本次覆盖提示', imagePath: '/m1.png'
-  }]);
 }
 
 function response({ status = 200, contentType = 'application/json', body = '{}' } = {}) {
@@ -300,9 +246,6 @@ async function testGenerationControls() {
 }
 
 (async () => {
-  testWorkbenchLayout();
-  await testInpaintSession();
-  testKaiPinMaterialSelection();
   testIndexHtmlWiresExternalModules();
   testCanvasSelection();
   await testApiClient();

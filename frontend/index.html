@@ -105,15 +105,21 @@
     <!-- ── 导航 ── -->
     <nav class="topnav">
         <a href="#" class="brand">
-            <img src="icon.png" alt="羽刃" class="brand-logo">
+            <img src="icon.png" alt="羽刃" style="width: 32px; height: 32px; border-radius: 8px; object-fit: cover; margin-right: 8px;">
             羽刃
         </a>
-        <button class="topnav-action" onclick="openDocsView()" title="使用文档">
+        <button onclick="openDocsView()" title="使用文档"
+            style="margin-left:12px;padding:0 12px;height:32px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:0.78rem;cursor:pointer;display:flex;align-items:center;gap:5px;flex-shrink:0;transition:all 0.15s;"
+            onmouseenter="this.style.background='var(--primary-light)';this.style.color='var(--primary)';this.style.borderColor='var(--primary)'"
+            onmouseleave="this.style.background='transparent';this.style.color='var(--text-muted)';this.style.borderColor='var(--border)'">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
             使用文档
         </button>
-        <div class="topnav-actions">
-            <button class="topnav-icon-btn" id="themeToggleBtn" onclick="switchTheme()" title="切换明暗模式">
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+            <button id="themeToggleBtn" onclick="switchTheme()" title="切换明暗模式"
+                style="width:36px;height:36px;border-radius:50%;border:none;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;flex-shrink:0;"
+                onmouseenter="this.style.background='var(--primary)';this.style.color='white'"
+                onmouseleave="this.style.background='var(--primary-light)';this.style.color='var(--primary)'">
                 <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
                 </svg>
@@ -219,22 +225,6 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3C7 3 3 6.5 3 11c0 2.5 1.5 4.5 3.5 5.5L8 21h8l1.5-4.5C19.5 15.5 21 13.5 21 11c0-4.5-4-8-9-8z"/><path d="M9 11c0-1.7 1.3-3 3-3s3 1.3 3 3-1.3 3-3 3-3-1.3-3-3z"/></svg>
                             <span>套索</span>
                         </button>
-                        <button class="tool-btn" id="rectMaskBtn" onclick="setInpaintTool('rect')" title="矩形选区">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>
-                            <span>矩形</span>
-                        </button>
-                        <button class="tool-btn" id="undoMaskBtn" onclick="_boardProxy.undoMask()" title="撤销 Ctrl+Z">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 7 7v1"/></svg>
-                            <span>撤销</span>
-                        </button>
-                        <button class="tool-btn" id="redoMaskBtn" onclick="_boardProxy.redoMask()" title="重做 Ctrl+Shift+Z">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9h-9a7 7 0 0 0-7 7v1"/></svg>
-                            <span>重做</span>
-                        </button>
-                        <button class="tool-btn" id="toggleMaskBtn" onclick="_boardProxy.toggleMaskVisibility()" title="显示或隐藏蒙版">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
-                            <span>预览</span>
-                        </button>
                     </div>
                     <div class="slider-group">
                         <label>笔画大小 <span id="brushSizeDisplay">30</span>px</label>
@@ -242,8 +232,7 @@
                             oninput="document.getElementById('brushSizeDisplay').textContent=this.value">
                     </div>
                     <button class="clear-mask-btn" onclick="_boardProxy.clearMask()">清空蒙版</button>
-                    <div id="inpaintReadyState" class="inpaint-ready-state" aria-live="polite">请圈选需要修改的区域</div>
-                    <button class="send-to-chat-btn" style="margin-top:8px;" onclick="_boardProxy.sendSelectedToChat()">引用到对话</button>
+                    <button class="send-to-chat-btn" style="margin-top:8px;" onclick="_boardProxy.sendSelectedToChat()">→ 引用到对话</button>
                 </div>
             </div>
         </aside>
@@ -600,9 +589,6 @@
                                     </div>
                                 </div>
                                 <div id="kpSummaryPreview" class="kp-summary-preview"></div>
-                                <div id="kpMaterialSelectionSummary" class="kp-material-selection-summary" aria-live="polite">
-                                    <div class="kp-combination-empty">上传产品图并从素材库选择创意参考</div>
-                                </div>
                                 <textarea id="kpGuidePrompt" class="kp-guide-textarea" style="display:none;" aria-hidden="true">提示词：请对这个产品从几何结构、体量感（轻盈/厚重/悬浮感）、仿生学元素、模块化程度（一体成型 / 可拆卸 / 堆叠式设计）、主色调、辅色、风格标签（科技极简/复古怀旧/赛博朋克/可爱治愈）的角度进行产品外观设计分析</textarea>
                             </div>
                         </div>
@@ -623,16 +609,19 @@
 
                     <!-- 输入主体 (拥有最高 z-index) -->
                     <div class="input-container">
-                        <div class="generation-toolbar">
-                            <div class="mode-selector" role="group" aria-label="生成模式">
-                                <button class="mode-btn active" id="btn-standard" aria-pressed="true" onclick="setMode('standard')">企业模式</button>
-                                <button class="mode-btn" id="btn-custom" aria-pressed="false" onclick="setMode('custom')">自定义模式</button>
-                                <button class="mode-btn" id="btn-ecommerce" aria-pressed="false" onclick="setMode('ecommerce')">电商模式</button>
-                                <button class="mode-btn" id="btn-video" aria-pressed="false" onclick="setMode('video')">视频模式</button>
-                                <button class="mode-btn" id="btn-product" aria-pressed="false" onclick="setMode('product')">开品模式</button>
+                        <div
+                            style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                            <div class="mode-selector">
+                                <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">企业模式</button>
+                                <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义模式</button>
+                                <button class="mode-btn" id="btn-ecommerce" onclick="setMode('ecommerce')">电商模式</button>
+                                <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频模式</button>
+                                <button class="mode-btn" id="btn-product" onclick="setMode('product')">开品模式</button>
                             </div>
-                            <div class="generation-model-control">
-                                <span class="compact-label">AI 模型</span>
+                            <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                                <span
+                                    style="font-size:0.7rem; color:var(--text-dim); font-weight:600; text-transform:uppercase; white-space:nowrap; flex-shrink:0;">AI
+                                    模型</span>
                                 <div class="gf-select sm drop-up" id="agentSelectWrapper">
                                     <input type="hidden" id="agentSelect" value="">
                                     <div class="gf-select-header" onclick="toggleSelect(this, event)">
@@ -737,9 +726,6 @@
     <script src="js/auth-session.js"></script>
     <script src="js/task-polling.js"></script>
     <script src="js/generation-controls.js"></script>
-    <script src="js/workbench-layout.js"></script>
-    <script src="js/inpaint-session.js"></script>
-    <script src="js/kaipin-material-selection.js"></script>
     <script src="js/canvas-selection.js"></script>
 
     <script>
@@ -1138,7 +1124,6 @@
         let droppedFiles = [];
         let isTextOnly = false;
         window.pendingMask = null;
-        window.pendingInpaint = null;
         let promptTree = [];
         fetch('/api/prompts').then(r => r.json()).then(data => { promptTree = data; });
         let catNodes = [[], [], []];
@@ -2968,11 +2953,8 @@
 
             const prevMode = currentMode;
             currentMode = mode;
-            document.querySelectorAll('.generation-toolbar .mode-btn').forEach(button => {
-                const active = button.id === `btn-${mode}`;
-                button.classList.toggle('active', active);
-                button.setAttribute('aria-pressed', String(active));
-            });
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
 
             drawer.classList.add('open');
             // 切换模式时自动展开折叠的抽屉
@@ -3253,39 +3235,39 @@
             const agentId = document.getElementById('agentSelect').value;
             const ids = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
 
-            // 局部重绘模式：原图和蒙版都准备完成后走 inpaint（强制用 gpt-image）
-            const inpaintMode = !!window.pendingInpaint || !!window.pendingMask;
+            // 局部重绘模式：有 pendingMask 就走 inpaint（强制用 gpt-image）
+            const inpaintMode = !!window.pendingMask;
             if (inpaintMode) {
-                const prepared = window.pendingInpaint || {
-                    imageFile: droppedFiles[0],
-                    maskBlob: window.pendingMask
-                };
-                if (!prepared.imageFile || !prepared.maskBlob) return alert('请先在左侧画布圈画区域后点“引用到对话”');
+                if (droppedFiles.length === 0) return alert('请先在左侧画布圈画区域后点"→ 引用到对话"');
                 if (!prompt) return alert('请输入编辑指令，例如：把背景换成雪山');
-                const imgFile = prepared.imageFile;
-                const maskBlob = prepared.maskBlob;
+                const imgFile = droppedFiles[0];
+                const maskBlob = window.pendingMask;
                 try {
+                    
                     const imgDataUrl = await new Promise(res => {
                         const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(imgFile);
                     });
                     appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>${prompt}</span>`, true);
+                    promptInput.value = '';
                     const fd = new FormData();
                     fd.append('image',  imgFile,  'image.png');
                     fd.append('mask',   maskBlob, 'mask.png');
                     fd.append('prompt', prompt);
                     fd.append('sessionId', SESSION_ID);
                     const res = await fetch('/api/inpaint', { method: 'POST', body: fd });
-                    const result = await AiStudioApi.readJson(res, '局部编辑');
+                    const result = await res.json();
                     if (!res.ok) throw new Error(result.error || '请求失败');
                     if (result.results?.[0]) {
                         const imgUrl = toImgUrl(result.results[0]);
                         appendMessage('ai', `<div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:8px;">✅ 局部重绘完成</div><img src="${imgUrl}" class="result-image" style="max-width:400px;border-radius:10px;display:block;" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image','${imgUrl}','inpaint.png',event)">`, true);
                         if (result.thought) appendThoughts([result.thought]);
-                        promptInput.value = '';
-                        clearPendingInpaint();
                     } else throw new Error('未返回图片结果');
                 } catch (err) {
                     appendMessage('ai', '局部重绘失败：' + err.message);
+                } finally {
+                    
+                    clearFiles();
+                    window.pendingMask = null;
                 }
                 return;
             }
@@ -3953,9 +3935,8 @@
             const params = window.__kaipinParams || {};
             const selectedAgentId = params.agentId || document.getElementById('agentSelect')?.value || 'gpt-image';
             const agentId = resolveImageAgentId(selectedAgentId);
+            const materialIds = window.kpSelectedMaterialIds || [];
             const materialPromptOverrides = collectKaiPinMaterialPromptOverrides();
-            const materialPlans = currentKaiPinMaterialPlans(materialPromptOverrides);
-            const materialIds = materialPlans.map(plan => plan.id);
             if (!window.kpRefA) {
                 alertSafe('请先在开品模式上滑菜单上传白底产品图');
                 return;
@@ -4008,7 +3989,7 @@
                 formData.append('agentId', finalAgentId);
                 formData.append('sessionId', SESSION_ID);
                 formData.append('configJson', configJson);
-                appendMessage('user', `[开品素材库融合] 模型: ${agentId}${selectedAgentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}\n我的产品主体 + ${materialIds.length} 条创意素材 → ${materialIds.length} 个独立方案`);
+                appendMessage('user', `[开品素材库融合] 模型: ${agentId}${selectedAgentId === 'gemini' ? '（Gemini 仅用于分析，生图已切换）' : ''}\n白底产品图 + ${materialIds.length} 条数据库素材 → ${materialIds.length} 张图`);
                 captureLastGen(apiPath, formData, `[开品模式] 素材库融合 ${materialIds.length} 条`);
 
                 const resp = await fetch(apiPath, { method: 'POST', body: formData });
@@ -5588,67 +5569,6 @@
         window.kpMaterialFile = null;
         window.kpSelectedMaterialIds = [];
         window.kpMaterialDbItems = [];
-        window.kpMaterialPromptOverrides = {};
-        window.kpMaterialSummaryProductUrl = null;
-        window.kpMaterialSummaryProductFile = null;
-
-        function currentKaiPinMaterialPlans(overrides) {
-            return AiStudioKaiPinSelection.buildPlans(
-                window.kpMaterialDbItems,
-                window.kpSelectedMaterialIds,
-                overrides || window.kpMaterialPromptOverrides
-            );
-        }
-
-        function kaiPinSummaryProductUrl() {
-            if (!window.kpRefA) {
-                if (window.kpMaterialSummaryProductUrl) URL.revokeObjectURL(window.kpMaterialSummaryProductUrl);
-                window.kpMaterialSummaryProductUrl = null;
-                window.kpMaterialSummaryProductFile = null;
-                return '';
-            }
-            if (window.kpMaterialSummaryProductFile !== window.kpRefA) {
-                if (window.kpMaterialSummaryProductUrl) URL.revokeObjectURL(window.kpMaterialSummaryProductUrl);
-                window.kpMaterialSummaryProductUrl = URL.createObjectURL(window.kpRefA);
-                window.kpMaterialSummaryProductFile = window.kpRefA;
-            }
-            return window.kpMaterialSummaryProductUrl;
-        }
-
-        function renderKaiPinMaterialSelectionSummary() {
-            const host = document.getElementById('kpMaterialSelectionSummary');
-            if (!host) return;
-            const plans = currentKaiPinMaterialPlans();
-            const productUrl = kaiPinSummaryProductUrl();
-            if (!productUrl || !plans.length) {
-                host.innerHTML = '<div class="kp-combination-empty">上传产品图并从素材库选择创意参考</div>';
-                return;
-            }
-            host.innerHTML = `
-                <div class="kp-combination-head">
-                    <strong>融合组合</strong>
-                    <span>将生成 ${plans.length} 个独立方案</span>
-                </div>
-                <div class="kp-combination-list">
-                    ${plans.map((plan, index) => `
-                        <article class="kp-combination-card">
-                            <div class="kp-combination-visual">
-                                <div class="kp-combination-role">
-                                    <img src="${productUrl}" alt="我的产品图">
-                                    <span><strong>主体</strong>我的产品图</span>
-                                </div>
-                                <span class="kp-combination-plus">+</span>
-                                <div class="kp-combination-role">
-                                    <img src="${toImgUrl(plan.imagePath)}" alt="${escHtml(plan.title)}">
-                                    <span><strong>创意 ${index + 1}</strong>${escHtml(plan.title)}</span>
-                                </div>
-                            </div>
-                            <p>${escHtml(plan.prompt || '使用素材图片本身作为造型、结构和 CMF 创意参考')}</p>
-                        </article>
-                    `).join('')}
-                </div>
-            `;
-        }
         function kpHandleFile(slot, input) {
             const f = input.files && input.files[0];
             input.value = ''; // 允许重复选同一文件
@@ -5754,7 +5674,6 @@
                 if (!resp.ok || data.error) throw new Error(data.error || '读取失败');
                 window.kpMaterialDbItems = data.items || [];
                 renderKaiPinMaterialDb();
-                renderKaiPinMaterialSelectionSummary();
                 refreshKaiPinMaterialLayout();
             } catch (e) {
                 if (list) list.innerHTML = `<div class="kp-db-empty">读取失败：${escHtml(e.message || e)}</div>`;
@@ -5818,8 +5737,6 @@
             btn.classList.toggle('active', set.has(id));
             const check = btn.querySelector('.kp-db-check');
             if (check) check.textContent = set.has(id) ? '已选' : '选择';
-            updateKaiPinDbBadge();
-            confirmKaiPinSettings();
         }
         function handleKaiPinMaterialCardKey(event, card) {
             if (event.target && event.target.closest('.kp-db-prompt-editor')) return;
@@ -5834,7 +5751,6 @@
             if (!id) return;
             window.kpMaterialPromptOverrides = window.kpMaterialPromptOverrides || {};
             window.kpMaterialPromptOverrides[id] = textarea.value.trim();
-            renderKaiPinMaterialSelectionSummary();
         }
         function collectKaiPinMaterialPromptOverrides() {
             const selected = new Set((window.kpSelectedMaterialIds || []).map(String));
@@ -5857,7 +5773,6 @@
             const count = (window.kpSelectedMaterialIds || []).length;
             const badge = document.getElementById('kpDbSelectCount');
             if (badge) badge.textContent = count ? `已选 ${count} 条` : '未选择';
-            renderKaiPinMaterialSelectionSummary();
         }
         function kpRenderThumb(slot) {
             const file = slot === 'A' ? window.kpRefA : window.kpRefB;
@@ -6141,18 +6056,8 @@
         function clearFiles() {
             droppedFiles = [];
             window.pendingMask = null;
-            window.pendingInpaint = null;
             document.getElementById('imagePreviewContainer').innerHTML = '';
             document.getElementById('imagePreviewContainer').style.display = 'none';
-        }
-
-        function clearPendingInpaint() {
-            window.pendingInpaint = null;
-            window.pendingMask = null;
-            droppedFiles = [];
-            renderPreviews();
-            document.getElementById('imagePreviewContainer').style.display = 'none';
-            if (board) board._updateInpaintReadyState();
         }
 
         // 当用户选 auto 且有上传图时，根据图片实际尺寸推算最接近的比例
@@ -7014,7 +6919,6 @@
             }
 
             syncChatPadding();
-            renderKaiPinMaterialSelectionSummary();
         }
 
         // ── 电商批量生图队列 ──────────────────────────────────────────────
@@ -7161,15 +7065,11 @@
                 this.selectedId = null;
                 this.selectedIds = new Set(); // 多选集合
                 this.editId = null;
-                this.tool = 'brush'; // 'brush' | 'eraser' | 'lasso' | 'rect'
+                this.tool = 'brush'; // 'brush' | 'eraser' | 'lasso'
                 this.drawing = false;
                 this.lassoPoints = [];
                 this._lassoBaseSnapshot = null;
                 this.undoStack = [];
-                this.redoStack = [];
-                this.rectStart = null;
-                this.rectBaseSnapshot = null;
-                this.maskVisible = true;
                 this.dragNode = null;
                 this.dragOffset = { x: 0, y: 0 };
                 this.panStart = null;
@@ -7279,12 +7179,7 @@
                 oc.height = n.maskCanvas.height;
                 this.maskCtx.clearRect(0, 0, oc.width, oc.height);
                 this.maskCtx.drawImage(n.maskCanvas, 0, 0);
-                this.undoStack = [];
-                this.redoStack = [];
-                this.maskVisible = true;
-                this.maskCanvas.style.opacity = '1';
                 document.getElementById('editOverlay').style.display = 'block';
-                this._updateInpaintReadyState();
                 this._updateSidePanel();
             }
 
@@ -7309,104 +7204,19 @@
                 }
                 this.editId = null;
                 this.drawing = false;
-                this.rectStart = null;
-                this.rectBaseSnapshot = null;
                 document.getElementById('editOverlay').style.display = 'none';
                 this._updateSidePanel();
             }
 
             clearMask() {
-                if (!this.editId) return;
-                this._pushMaskHistory();
                 this.maskCtx.clearRect(0, 0, this.maskCanvas.width, this.maskCanvas.height);
                 if (this.editId) {
                     const n = this._node(this.editId);
                     if (n) n.maskCanvas.getContext('2d').clearRect(0, 0, n.maskCanvas.width, n.maskCanvas.height);
                 }
-                this._updateInpaintReadyState();
             }
 
-            _pushMaskHistory() {
-                if (!this.maskCanvas.width || !this.maskCanvas.height) return;
-                this.undoStack.push(this.maskCtx.getImageData(0, 0, this.maskCanvas.width, this.maskCanvas.height));
-                if (this.undoStack.length > 20) this.undoStack.shift();
-                this.redoStack = [];
-            }
-
-            undoMask() {
-                if (!this.editId || !this.undoStack.length) return;
-                this.redoStack.push(this.maskCtx.getImageData(0, 0, this.maskCanvas.width, this.maskCanvas.height));
-                this.maskCtx.putImageData(this.undoStack.pop(), 0, 0);
-                this._updateInpaintReadyState();
-            }
-
-            redoMask() {
-                if (!this.editId || !this.redoStack.length) return;
-                this.undoStack.push(this.maskCtx.getImageData(0, 0, this.maskCanvas.width, this.maskCanvas.height));
-                this.maskCtx.putImageData(this.redoStack.pop(), 0, 0);
-                this._updateInpaintReadyState();
-            }
-
-            toggleMaskVisibility() {
-                if (!this.editId) return;
-                this.maskVisible = !this.maskVisible;
-                this.maskCanvas.style.opacity = this.maskVisible ? '1' : '0';
-                const button = document.getElementById('toggleMaskBtn');
-                if (button) button.classList.toggle('active', !this.maskVisible);
-            }
-
-            _hasMaskPaint() {
-                if (!this.maskCanvas.width || !this.maskCanvas.height) return false;
-                const pixels = this.maskCtx.getImageData(0, 0, this.maskCanvas.width, this.maskCanvas.height).data;
-                for (let index = 3; index < pixels.length; index += 4) {
-                    if (pixels[index] > 10) return true;
-                }
-                return false;
-            }
-
-            _updateInpaintReadyState(message) {
-                const element = document.getElementById('inpaintReadyState');
-                if (!element) return;
-                const ready = this._hasMaskPaint();
-                element.classList.toggle('ready', ready);
-                element.textContent = message || (ready ? '已圈选修改区域，可引用到对话' : '请圈选需要修改的区域');
-            }
-
-            _exportImageFilePromise(node) {
-                return new Promise((resolve, reject) => {
-                    const naturalWidth = node.img.naturalWidth || node.w;
-                    const naturalHeight = node.img.naturalHeight || node.h;
-                    const target = 1024;
-                    const side = Math.max(naturalWidth, naturalHeight);
-                    const scale = target / side;
-                    const drawWidth = Math.round(naturalWidth * scale);
-                    const drawHeight = Math.round(naturalHeight * scale);
-                    const offsetX = Math.floor((target - drawWidth) / 2);
-                    const offsetY = Math.floor((target - drawHeight) / 2);
-                    const canvas = document.createElement('canvas');
-                    canvas.width = target;
-                    canvas.height = target;
-                    const context = canvas.getContext('2d');
-                    context.fillStyle = '#ffffff';
-                    context.fillRect(0, 0, target, target);
-                    context.drawImage(node.img, offsetX, offsetY, drawWidth, drawHeight);
-                    canvas.toBlob(blob => {
-                        if (!blob) return reject(new Error('原图导出失败'));
-                        resolve(new File([blob], 'canvas-inpaint-source.png', { type: 'image/png' }));
-                    }, 'image/png');
-                });
-            }
-
-            _exportMaskPromise(nodeId) {
-                return new Promise((resolve, reject) => {
-                    this.exportMaskBlob(nodeId, blob => {
-                        if (!blob) return reject(new Error('蒙版为空，请先圈选修改区域'));
-                        resolve(blob);
-                    });
-                });
-            }
-
-            async sendSelectedToChat() {
+            sendSelectedToChat() {
                 const id = this.editId || this.selectedId;
                 const n = this._node(id);
                 if (!n) { appendMessage('ai', '⚠️ 请先选中一张图片'); return; }
@@ -7415,23 +7225,29 @@
                     nc.clearRect(0, 0, n.maskCanvas.width, n.maskCanvas.height);
                     nc.drawImage(this.maskCanvas, 0, 0);
                 }
-                try {
-                    this._updateInpaintReadyState('正在准备原图与蒙版...');
-                    const ready = await AiStudioInpaintSession.prepare(
-                        this._exportImageFilePromise(n),
-                        this._exportMaskPromise(id)
-                    );
-                    window.pendingInpaint = ready;
-                    window.pendingMask = ready.maskBlob;
-                    droppedFiles = [ready.imageFile];
-                    renderPreviews();
-                    document.getElementById('imagePreviewContainer').style.display = 'flex';
-                    this._updateInpaintReadyState('局部编辑已准备，可在右侧输入指令');
-                    document.getElementById('promptInput')?.focus();
-                } catch (error) {
-                    this._updateInpaintReadyState();
-                    appendMessage('ai', '局部编辑准备失败：' + error.message);
-                }
+                const natW = n.img.naturalWidth || n.w;
+                const natH = n.img.naturalHeight || n.h;
+                // 统一输出 1024×1024，与 mask 保持完全一致
+                const TARGET = 1024;
+                const side = Math.max(natW, natH);
+                const scale = TARGET / side;
+                const dw = Math.round(natW * scale);
+                const dh = Math.round(natH * scale);
+                const offX = Math.floor((TARGET - dw) / 2);
+                const offY = Math.floor((TARGET - dh) / 2);
+                const off = document.createElement('canvas');
+                off.width = TARGET; off.height = TARGET;
+                const oc2 = off.getContext('2d');
+                oc2.fillStyle = '#ffffff';
+                oc2.fillRect(0, 0, TARGET, TARGET);
+                oc2.drawImage(n.img, offX, offY, dw, dh);
+                off.toBlob(blob => {
+                    if (!blob) return;
+                    handleImageDropAppend([new File([blob], 'canvas-ref.png', { type: 'image/png' })]);
+                }, 'image/png');
+                this.exportMaskBlob(id, maskBlob => {
+                    window.pendingMask = maskBlob;
+                });
             }
 
             sendEditedToChat() {
@@ -7776,10 +7592,11 @@
                         e.preventDefault();
                     }
                     if (e.key === 'Escape' && this.editId) { this._exitEdit(); return; }
-                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && this.editId) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && this.editId) {
                         e.preventDefault();
-                        if (e.shiftKey) this.redoMask();
-                        else this.undoMask();
+                        if (this.undoStack.length > 0) {
+                            this.maskCtx.putImageData(this.undoStack.pop(), 0, 0);
+                        }
                         return;
                     }
                     if ((e.key === 'Delete' || e.key === 'Backspace' || e.key === 'd' || e.key === 'D') && this.selectedId && !this.editId) {
@@ -7819,25 +7636,21 @@
                 };
 
                 mc.addEventListener('mousedown', e => {
-                    const point = getMP(e);
-
-                    if (this.tool === 'rect') {
-                        this._beginRectMask(point);
-                        return;
-                    }
-
-                    this._pushMaskHistory();
+                    // 保存快照到撤销栈（每笔开始前）
+                    this.undoStack.push(this.maskCtx.getImageData(0, 0, mc.width, mc.height));
+                    if (this.undoStack.length > 20) this.undoStack.shift();
 
                     if (this.tool === 'lasso') {
-                        this.lassoPoints = [point];
+                        this.lassoPoints = [getMP(e)];
                         // 保存当前蒙版快照用于套索预览时恢复
                         this._lassoBaseSnapshot = this.maskCtx.getImageData(0, 0, mc.width, mc.height);
                         this.drawing = true;
                         return;
                     }
                     this.drawing = true;
+                    const p = getMP(e);
                     this.maskCtx.beginPath();
-                    this.maskCtx.moveTo(point.x, point.y);
+                    this.maskCtx.moveTo(p.x, p.y);
                 });
 
                 mc.addEventListener('mousemove', e => {
@@ -7848,11 +7661,6 @@
                         this.lassoPoints.push(p);
                         // 实时预览：重绘已有蒙版 + 虚线路径
                         this._drawLassoPreview();
-                        return;
-                    }
-
-                    if (this.tool === 'rect') {
-                        this._previewRectMask(p);
                         return;
                     }
 
@@ -7871,14 +7679,8 @@
                     this.maskCtx.stroke();
                 });
 
-                const finishStroke = event => {
+                const finishStroke = () => {
                     if (!this.drawing) return;
-
-                    if (this.tool === 'rect') {
-                        this._finishRectMask(getMP(event));
-                        return;
-                    }
-
                     this.drawing = false;
 
                     if (this.tool === 'lasso' && this.lassoPoints.length > 2) {
@@ -7897,13 +7699,11 @@
                         this.maskCtx.restore();
                         this.lassoPoints = [];
                         this._lassoBaseSnapshot = null;
-                        this._updateInpaintReadyState();
                         return;
                     }
                     this.lassoPoints = [];
                     this._lassoBaseSnapshot = null;
                     this.maskCtx.closePath();
-                    this._updateInpaintReadyState();
                 };
                 mc.addEventListener('mouseup',    finishStroke);
                 mc.addEventListener('mouseleave', finishStroke);
@@ -7962,39 +7762,6 @@
                     i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
                 ctx.stroke();
                 ctx.restore();
-            }
-
-            _beginRectMask(point) {
-                this._pushMaskHistory();
-                this.rectStart = point;
-                this.rectBaseSnapshot = this.maskCtx.getImageData(
-                    0, 0, this.maskCanvas.width, this.maskCanvas.height
-                );
-                this.drawing = true;
-            }
-
-            _previewRectMask(point) {
-                if (!this.rectStart || !this.rectBaseSnapshot) return;
-                this.maskCtx.putImageData(this.rectBaseSnapshot, 0, 0);
-                this.maskCtx.save();
-                this.maskCtx.globalCompositeOperation = 'source-over';
-                this.maskCtx.fillStyle = 'rgba(255,80,80,0.55)';
-                this.maskCtx.fillRect(
-                    this.rectStart.x,
-                    this.rectStart.y,
-                    point.x - this.rectStart.x,
-                    point.y - this.rectStart.y
-                );
-                this.maskCtx.restore();
-            }
-
-            _finishRectMask(point) {
-                if (!this.rectStart) return;
-                this._previewRectMask(point);
-                this.rectStart = null;
-                this.rectBaseSnapshot = null;
-                this.drawing = false;
-                this._updateInpaintReadyState();
             }
 
             // ── 工具方法 ──
@@ -8121,14 +7888,8 @@
 
             _resize() {
                 const panel = document.getElementById('canvasPanel');
-                const oldSize = { width: this.canvas.width, height: this.canvas.height };
-                const newSize = { width: panel.clientWidth, height: panel.clientHeight };
-                if (!newSize.width || !newSize.height) return;
-                this.cam = AiStudioWorkbenchLayout.preserveCameraCenter(
-                    this.cam, this.scale, oldSize, newSize
-                );
-                this.canvas.width = newSize.width;
-                this.canvas.height = newSize.height;
+                this.canvas.width  = panel.clientWidth;
+                this.canvas.height = panel.clientHeight;
             }
 
             exportMaskBlob(nodeId, callback) {
@@ -8178,10 +7939,6 @@
                     if (d[i] > 128) { d[i]=0; d[i+1]=0; d[i+2]=0; d[i+3]=0; }   // 白→透明（编辑区域）
                     else             { d[i]=0; d[i+1]=0; d[i+2]=0; d[i+3]=255; } // 黑→不透明（保护区域）
                 }
-                if (!AiStudioInpaintSession.hasEditablePixels(d)) {
-                    callback(null);
-                    return;
-                }
                 oc.putImageData(data, 0, 0);
                 off.toBlob(callback, 'image/png');
             }
@@ -8191,9 +7948,6 @@
         window._boardProxy = {
             clearMask: () => board && board.clearMask(),
             sendSelectedToChat: () => board && board.sendSelectedToChat(),
-            undoMask: () => board && board.undoMask(),
-            redoMask: () => board && board.redoMask(),
-            toggleMaskVisibility: () => board && board.toggleMaskVisibility(),
             openCrop: () => board && cropTool.open(board),
             downloadSelected: () => board && board.downloadSelected(),
             saveSelectedToGallery: () => board && board.saveSelectedToGallery(),
@@ -8221,7 +7975,6 @@
             document.getElementById('brushBtn').classList.toggle('active', tool === 'brush');
             document.getElementById('eraserBtn').classList.toggle('active', tool === 'eraser');
             document.getElementById('lassoBtn').classList.toggle('active', tool === 'lasso');
-            document.getElementById('rectMaskBtn').classList.toggle('active', tool === 'rect');
         }
 
         // 兼容旧调用
@@ -8232,8 +7985,40 @@
 
         async function submitInpaint() {
             if (!board) return;
-            if (!window.pendingInpaint) await board.sendSelectedToChat();
-            if (window.pendingInpaint) await executeTask();
+            const id = board.editId || board.selectedId;
+            const n = board._node(id);
+            if (!n) return alert('请先在画布上选中一张图片！');
+
+            const prompt = (document.getElementById('promptInput').value || '').trim();
+            if (!prompt) return alert('请先在右侧输入框填写编辑指令，例如：把背景换成雪山');
+
+            board.exportMaskBlob(id, async (maskBlob) => {
+                try {
+                    const fd = new FormData();
+                    // 原图：优先用原始 File 对象，否则从 img 元素绘制
+                    if (n.file) {
+                        fd.append('image', n.file);
+                    } else {
+                        const off = document.createElement('canvas');
+                        off.width  = n.img.naturalWidth  || n.w;
+                        off.height = n.img.naturalHeight || n.h;
+                        off.getContext('2d').drawImage(n.img, 0, 0, off.width, off.height);
+                        const imgBlob = await new Promise(res => off.toBlob(res, 'image/png'));
+                        fd.append('image', imgBlob, 'image.png');
+                    }
+                    fd.append('mask',   maskBlob, 'mask.png');
+                    fd.append('prompt', prompt);
+                    fd.append('sessionId', SESSION_ID);
+                    const res = await fetch('/api/inpaint', { method: 'POST', body: fd });
+                    const result = await res.json();
+                    if (!res.ok) throw new Error(result.error || '请求失败');
+                    if (result.results && result.results[0]) {
+                        const imgUrl = toImgUrl(result.results[0]);
+                        appendMessage('ai', `<div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:8px;">✅ 局部编辑完成</div><img src="${imgUrl}" class="result-image" style="max-width:400px;border-radius:10px;display:block;" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${imgUrl}')" onclick="handleMediaClick('image','${imgUrl}','inpaint.png',event)">`, true);
+                        if (result.thought) appendThoughts([result.thought]);
+                    } else throw new Error('未返回图片结果');
+                } catch (err) { alert('生成失败：' + err.message); }
+            });
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -8269,16 +8054,12 @@
         });
 
         function initResizers() {
+            const savedSidebar = parseInt(localStorage.getItem('layout.sidebarW') || '200');
+            const savedChat    = parseInt(localStorage.getItem('layout.chatW')    || '380');
             const sidebar   = document.getElementById('mainSidebar');
             const chatPanel = document.getElementById('chatPanel');
-            const savedSidebar = AiStudioWorkbenchLayout.clampPanelWidth(
-                parseInt(localStorage.getItem('layout.sidebarW') || '200', 10), 148, 320
-            );
-            const savedChat = AiStudioWorkbenchLayout.clampPanelWidth(
-                parseInt(localStorage.getItem('layout.chatW') || '380', 10), 320, 520
-            );
-            if (sidebar) sidebar.style.width = savedSidebar + 'px';
-            if (chatPanel) chatPanel.style.width = savedChat + 'px';
+            if (sidebar)   sidebar.style.width   = savedSidebar + 'px';
+            if (chatPanel) chatPanel.style.width  = savedChat    + 'px';
             setupResizer('resizerLeft',  'mainSidebar', 'left');
             setupResizer('resizerRight', 'chatPanel',   'right');
         }
@@ -8293,20 +8074,17 @@
                 const startW = target.getBoundingClientRect().width;
                 document.body.style.cursor = 'col-resize';
                 document.body.style.userSelect = 'none';
-                resizer.classList.add('dragging');
 
                 const onMove = ev => {
                     if (target.dataset.collapsed === '1') return;
                     const dx = ev.clientX - startX;
                     const delta = side === 'left' ? dx : -dx;
+                    const minW = side === 'left' ? 200 : 400;
                     const canvas = document.getElementById('canvasPanel');
                     const canvasW = canvas.getBoundingClientRect().width;
-                    const minW = side === 'left' ? 148 : 320;
-                    const configuredMax = side === 'left' ? 320 : 520;
-                    const maxW = Math.min(configuredMax, startW + Math.max(0, canvasW - 360));
-                    const newW = AiStudioWorkbenchLayout.clampPanelWidth(
-                        startW + delta, minW, Math.max(minW, maxW)
-                    );
+                    const maxExpand = Math.max(0, canvasW - 300);
+                    const clampedDelta = Math.min(delta, maxExpand);
+                    const newW = Math.max(minW, startW + clampedDelta);
                     target.style.width = newW + 'px';
                 };
 
@@ -8315,9 +8093,8 @@
                     document.removeEventListener('mouseup', onUp);
                     document.body.style.cursor = '';
                     document.body.style.userSelect = '';
-                    resizer.classList.remove('dragging');
                     const key = side === 'left' ? 'layout.sidebarW' : 'layout.chatW';
-                    localStorage.setItem(key, String(parseInt(document.getElementById(targetId).style.width, 10)));
+                    localStorage.setItem(key, parseInt(document.getElementById(targetId).style.width));
                 };
                 document.addEventListener('mousemove', onMove);
                 document.addEventListener('mouseup', onUp);
