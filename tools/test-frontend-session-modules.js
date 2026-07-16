@@ -117,6 +117,24 @@ function testWorkbenchLayout() {
   );
 }
 
+async function testInpaintSession() {
+  const sandbox = loadBrowserScript('frontend/js/inpaint-session.js');
+  const inpaint = sandbox.AiStudioInpaintSession;
+  assert.ok(inpaint, '局部编辑状态工具应导出 AiStudioInpaintSession');
+  assert.strictEqual(inpaint.hasEditablePixels(new Uint8ClampedArray([0, 0, 0, 255])), false);
+  assert.strictEqual(inpaint.hasEditablePixels(new Uint8ClampedArray([0, 0, 0, 0])), true);
+
+  const image = { name: 'product.png' };
+  const mask = { size: 128, type: 'image/png' };
+  const ready = await inpaint.prepare(Promise.resolve(image), Promise.resolve(mask));
+  assert.strictEqual(ready.imageFile, image);
+  assert.strictEqual(ready.maskBlob, mask);
+  await assert.rejects(
+    () => inpaint.prepare(Promise.resolve(image), Promise.resolve({ size: 0 })),
+    /蒙版/
+  );
+}
+
 function response({ status = 200, contentType = 'application/json', body = '{}' } = {}) {
   return {
     ok: status >= 200 && status < 300,
@@ -269,6 +287,7 @@ async function testGenerationControls() {
 
 (async () => {
   testWorkbenchLayout();
+  await testInpaintSession();
   testIndexHtmlWiresExternalModules();
   testCanvasSelection();
   await testApiClient();
