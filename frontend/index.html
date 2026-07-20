@@ -7,7 +7,7 @@
     <title>羽刃 — 创意中心</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="index.css?v=20260720-video-toolbar-2">
     <style>
         .empty-state { z-index: 2000; position: relative; }
         .sp-chip { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:0.72rem;cursor:pointer;color:var(--text-dim);transition:all 0.15s;user-select:none; }
@@ -495,6 +495,10 @@
                                         <div class="gf-option selected" data-value="16:9" onclick="selectOption(this, event)">16:9 横屏</div>
                                         <div class="gf-option" data-value="9:16" onclick="selectOption(this, event)">9:16 竖屏</div>
                                         <div class="gf-option" data-value="1:1" onclick="selectOption(this, event)">1:1 方形</div>
+                                        <div class="gf-option" data-value="4:3" onclick="selectOption(this, event)">4:3 横向</div>
+                                        <div class="gf-option" data-value="3:4" onclick="selectOption(this, event)">3:4 竖向</div>
+                                        <div class="gf-option" data-value="3:2" onclick="selectOption(this, event)">3:2 横向</div>
+                                        <div class="gf-option" data-value="2:3" onclick="selectOption(this, event)">2:3 竖向</div>
                                     </div>
                                 </div>
                             </div>
@@ -609,8 +613,7 @@
 
                     <!-- 输入主体 (拥有最高 z-index) -->
                     <div class="input-container">
-                        <div
-                            style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                        <div class="input-toolbar">
                             <div class="mode-selector">
                                 <button class="mode-btn active" id="btn-standard" onclick="setMode('standard')">企业模式</button>
                                 <button class="mode-btn" id="btn-custom" onclick="setMode('custom')">自定义模式</button>
@@ -618,19 +621,26 @@
                                 <button class="mode-btn" id="btn-video" onclick="setMode('video')">视频模式</button>
                                 <button class="mode-btn" id="btn-product" onclick="setMode('product')">开品模式</button>
                             </div>
-                            <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                            <div class="agent-select-control" style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                                 <span
                                     style="font-size:0.7rem; color:var(--text-dim); font-weight:600; text-transform:uppercase; white-space:nowrap; flex-shrink:0;">AI
                                     模型</span>
-                                <div class="gf-select sm drop-up" id="agentSelectWrapper">
-                                    <input type="hidden" id="agentSelect" value="">
-                                    <div class="gf-select-header" onclick="toggleSelect(this, event)">
-                                        <span class="gf-select-text">加载中...</span>
-                                        <svg class="gf-select-arrow" viewBox="0 0 24 24">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
+                                <div class="agent-model-stack">
+                                    <div class="gf-select sm drop-up" id="agentSelectWrapper">
+                                        <input type="hidden" id="agentSelect" value="">
+                                        <div class="gf-select-header" onclick="toggleSelect(this, event)">
+                                            <span class="gf-select-text">加载中...</span>
+                                            <svg class="gf-select-arrow" viewBox="0 0 24 24">
+                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                            </svg>
+                                        </div>
+                                        <div class="gf-select-options" id="agentSelectOptions"></div>
                                     </div>
-                                    <div class="gf-select-options" id="agentSelectOptions"></div>
+                                    <div class="video-model-level-control" id="videoModelLevelControl" hidden>
+                                        <output id="videoModelHint" class="video-model-hint"></output>
+                                        <input id="videoModelLevel" type="range" min="0" max="0" step="1" value="0"
+                                            aria-label="视频模型等级">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -724,32 +734,14 @@
 
     <script src="js/api-client.js"></script>
     <script src="js/auth-session.js"></script>
-    <script src="js/task-polling.js"></script>
-    <script src="js/generation-controls.js"></script>
+    <script src="js/task-polling.js?v=20260718-video-concurrency"></script>
+    <script src="js/generation-controls.js?v=20260718-video-concurrency"></script>
     <script src="js/canvas-selection.js"></script>
+    <script src="js/custom-direct-prompt.js"></script>
 
     <script>
         const GENERATE_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>`;
-        const STOP_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>`;
-        const generationControls = AiStudioGenerationControls.create({
-            onStateChange(state) {
-                const button = document.getElementById('generateBtn');
-                if (!button) return;
-                if (state.active) {
-                    button.classList.add('is-stop');
-                    button.disabled = state.stopping;
-                    button.title = state.stopping ? '正在停止生成' : '停止生成';
-                    button.setAttribute('aria-label', button.title);
-                    button.innerHTML = STOP_ICON;
-                } else {
-                    button.classList.remove('is-stop');
-                    button.disabled = !!window.__taskSubmitting;
-                    button.title = '开始生成';
-                    button.setAttribute('aria-label', '开始生成');
-                    button.innerHTML = GENERATE_ICON;
-                }
-            }
-        });
+        const generationControls = AiStudioGenerationControls.create();
 
         function beginGenerationTask(taskId) {
             generationControls.activate(taskId);
@@ -3005,14 +2997,14 @@
             }
 
             if (mode === 'video') {
-                loadVideoAgents();
+                loadVideoModels();
             } else if (prevMode === 'video') {
                 loadAgents();
             }
 
-            if (generationControls.isActive()) {
-                generationControls.refresh();
-            }
+            syncVideoModelLevelVisibility();
+            const activeModeButton = document.getElementById(`btn-${mode}`);
+            requestAnimationFrame(() => activeModeButton?.scrollIntoView({ block: 'nearest', inline: 'center' }));
 
             if (mode !== 'custom' && mode !== 'ecommerce') isTextOnly = false;
 
@@ -3020,17 +3012,155 @@
             input.focus();
         }
 
-        function loadVideoAgents() {
-            const agents = [
-                { id: 'veo-3.1-generate-preview', name: 'Veo 3.1' },
-                { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0（火山方舟）' }
-            ];
-            const wrapper = document.getElementById('agentSelectWrapper');
-            wrapper.querySelector('input').value = agents[0].id;
-            wrapper.querySelector('.gf-select-text').textContent = agents[0].name;
-            document.getElementById('agentSelectOptions').innerHTML = agents.map((a, i) =>
-                `<div class="gf-option ${i === 0 ? 'selected' : ''}" data-value="${a.id}" onclick="selectOption(this, event)">${a.name}</div>`
-            ).join('');
+        const VIDEO_MODEL_FALLBACKS = [
+            { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', providerId: 'google', provider: 'Google', level: 0, configured: true },
+            { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', providerId: 'seedance', provider: '火山方舟', level: 0, configured: true },
+            { id: 'grok-imagine-video', name: 'Grok 文生视频', providerId: 'suixiang-grok-text', provider: 'Grok 文生视频', level: 0, inputMode: 'text_only', configured: false },
+            { id: 'grok-imagine-video-1.5', name: 'Grok 图生视频', providerId: 'suixiang-grok-image', provider: 'Grok 图生视频', level: 0, inputMode: 'image_only', configured: false },
+            { id: 'as-sd2.0-fast', name: '即梦 SD 2.0 Fast', providerId: 'suixiang-jimeng', provider: '即梦', level: 0, configured: false },
+            { id: 'video-ds-2.0', name: '即梦 Video DS 2.0', providerId: 'suixiang-jimeng', provider: '即梦', level: 1, configured: false }
+        ];
+        let videoModels = VIDEO_MODEL_FALLBACKS.slice();
+        let videoModelGroups = groupVideoModels(videoModels);
+        let selectedVideoProviderId = '';
+
+        function inferVideoProviderId(model) {
+            if (model.providerId) return model.providerId;
+            if (model.id === 'grok-imagine-video-1.5') return 'suixiang-grok-image';
+            if (model.id === 'grok-imagine-video') return 'suixiang-grok-text';
+            if (model.id === 'as-sd2.0-fast' || model.id === 'video-ds-2.0') return 'suixiang-jimeng';
+            if (model.id === 'doubao-seedance-2-0-260128') return 'seedance';
+            return 'google';
+        }
+
+        function groupVideoModels(models) {
+            return models.reduce((groups, model) => {
+                const providerId = inferVideoProviderId(model);
+                const normalized = {
+                    ...model,
+                    providerId,
+                    inputMode: model.inputMode || 'flexible',
+                    level: Number.isFinite(Number(model.level)) ? Number(model.level) : 0
+                };
+                (groups[providerId] ||= []).push(normalized);
+                groups[providerId].sort((a, b) => a.level - b.level);
+                return groups;
+            }, {});
+        }
+
+        async function loadVideoModels() {
+            try {
+                const response = await fetch('/api/video/models');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const models = await response.json();
+                if (!Array.isArray(models) || models.length !== 6) throw new Error('模型目录不完整');
+                videoModels = models;
+            } catch (error) {
+                console.warn('视频模型目录加载失败，使用本地回退目录:', error.message || error);
+                videoModels = VIDEO_MODEL_FALLBACKS.slice();
+            }
+
+            videoModelGroups = groupVideoModels(videoModels);
+            videoModels = Object.values(videoModelGroups).flat();
+            const currentId = document.getElementById('agentSelect')?.value;
+            const selected = videoModels.find(model => model.id === currentId)
+                || videoModels.find(model => model.configured)
+                || videoModels[0];
+            renderVideoProviderOptions();
+            bindVideoModelLevelControl();
+            if (selected) selectVideoProvider(selected.providerId);
+        }
+
+        function renderVideoProviderOptions() {
+            const options = document.getElementById('agentSelectOptions');
+            if (!options) return;
+            options.innerHTML = Object.entries(videoModelGroups).map(([providerId, models]) => `
+                <div class="gf-option" data-video-provider-id="${escHtml(providerId)}">
+                    ${escHtml(models[0]?.provider || providerId)}
+                </div>`).join('');
+            options.querySelectorAll('[data-video-provider-id]').forEach(option => {
+                option.addEventListener('click', event => {
+                    event.stopPropagation();
+                    selectVideoProvider(option.dataset.videoProviderId);
+                    closeAllSelects();
+                });
+            });
+        }
+
+        function selectVideoProvider(providerId) {
+            const models = videoModelGroups[providerId];
+            if (!models?.length) return;
+            selectedVideoProviderId = providerId;
+            const currentModelId = document.getElementById('agentSelect')?.value;
+            const current = models.find(model => model.id === currentModelId);
+            const level = current ? current.level : 0;
+            const levelInput = document.getElementById('videoModelLevel');
+            if (levelInput) {
+                levelInput.min = '0';
+                levelInput.max = String(Math.max(0, models.length - 1));
+                levelInput.disabled = models.length <= 1;
+            }
+            syncVideoModelLevelVisibility();
+
+            const label = document.querySelector('#agentSelectWrapper .gf-select-text');
+            if (label) label.textContent = models[0].provider || providerId;
+            document.querySelectorAll('#agentSelectOptions [data-video-provider-id]').forEach(option => {
+                option.classList.toggle('selected', option.dataset.videoProviderId === providerId);
+            });
+            setVideoModelLevel(level, false);
+        }
+
+        function syncVideoModelLevelVisibility() {
+            const control = document.getElementById('videoModelLevelControl');
+            if (!control) return;
+            const models = videoModelGroups[selectedVideoProviderId] || [];
+            control.hidden = currentMode !== 'video' || models.length <= 1;
+        }
+
+        function setVideoModelLevel(level, showHint = false) {
+            const models = videoModelGroups[selectedVideoProviderId] || [];
+            if (!models.length) return;
+            const index = Math.max(0, Math.min(models.length - 1, Math.round(Number(level) || 0)));
+            const selected = models[index];
+            const agentSelect = document.getElementById('agentSelect');
+            if (!agentSelect) return;
+            agentSelect.value = selected.id;
+
+            const levelInput = document.getElementById('videoModelLevel');
+            if (levelInput) {
+                levelInput.value = String(index);
+                levelInput.setAttribute('aria-valuetext', selected.name);
+            }
+            const hint = document.getElementById('videoModelHint');
+            if (hint) {
+                hint.textContent = selected.name;
+                hint.classList.toggle('is-visible', showHint);
+            }
+            updateControlStates();
+        }
+
+        function showVideoModelHint() {
+            const levelInput = document.getElementById('videoModelLevel');
+            if (!levelInput || levelInput.disabled) return;
+            setVideoModelLevel(Number(levelInput.value), true);
+        }
+
+        function hideVideoModelHint() {
+            document.getElementById('videoModelHint')?.classList.remove('is-visible');
+        }
+
+        function bindVideoModelLevelControl() {
+            const levelInput = document.getElementById('videoModelLevel');
+            if (!levelInput || levelInput.dataset.bound === 'true') return;
+            levelInput.dataset.bound = 'true';
+            levelInput.addEventListener('pointerdown', showVideoModelHint);
+            levelInput.addEventListener('input', event => setVideoModelLevel(Number(event.target.value), true));
+            levelInput.addEventListener('pointerup', hideVideoModelHint);
+            levelInput.addEventListener('pointercancel', hideVideoModelHint);
+            levelInput.addEventListener('keydown', showVideoModelHint);
+            levelInput.addEventListener('keyup', hideVideoModelHint);
+            levelInput.addEventListener('change', hideVideoModelHint);
+            levelInput.addEventListener('blur', hideVideoModelHint);
         }
 
         async function loadAgents() {
@@ -3149,7 +3279,7 @@
                 appendMessage('ai', '重新生成失败：' + (e.message || e));
             } finally {
                 window.__taskSubmitting = false;
-                if (!generationControls.isActive() && sendBtn) sendBtn.disabled = false;
+                if (sendBtn) sendBtn.disabled = false;
             }
         }
 
@@ -3200,14 +3330,6 @@
         }
 
         async function executeTask() {
-            if (generationControls.isActive()) {
-                try {
-                    await generationControls.stopActiveTask();
-                } catch (e) {
-                    appendMessage('ai', '停止任务失败：' + (e.message || e));
-                }
-                return;
-            }
             // 阻止双击 / 连发：上一次提交还没拿到 taskId（或还在 inpaint 同步出图）就直接忽略
             // 修这次"按了 20 次按钮 → 后台堆 20 条任务"的 bug
             if (window.__taskSubmitting) return;
@@ -3218,19 +3340,13 @@
                 await __executeTaskInner();
             } finally {
                 window.__taskSubmitting = false;
-                if (!generationControls.isActive() && sendBtn) sendBtn.disabled = false;
+                if (sendBtn) sendBtn.disabled = false;
             }
         }
 
         async function __executeTaskInner() {
             const promptInput = document.getElementById('promptInput');
             const prompt = promptInput.value.trim();
-
-            // 停止后回填用：快照本次提交的提示词原文 + 参考图（File 列表，浅拷贝）
-            window.__lastSubmitSnapshot = {
-                prompt: promptInput.value,
-                files: Array.isArray(droppedFiles) ? droppedFiles.slice() : []
-            };
 
             const agentId = document.getElementById('agentSelect').value;
             const ids = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
@@ -3381,28 +3497,34 @@
                     return;
                 }
 
-                // 未经分析确认时，先走 Gemini 图片分析流程
-                if (!_doubaoConfirmed) {
-                    if (document.getElementById('skipGeminiToggle')?.checked) {
-                        _doubaoConfirmed = true;
-                        // fall through — use raw promptInput value directly
-                    } else {
-                        triggerDoubaoInline();
-                        promptInput.value = '';
-                        return;
-                    }
+                const skipAnalysis = document.getElementById('skipGeminiToggle')?.checked === true;
+
+                // 未经分析确认且未选择跳过时，先走 Gemini 图片分析流程
+                if (!_doubaoConfirmed && !skipAnalysis) {
+                    triggerDoubaoInline();
+                    promptInput.value = '';
+                    return;
                 }
 
                 apiPath = '/api/custom_generate';
 
-                // 合并类目提示词与用户输入
+                // 根据直接生成配置构造最终提示词
                 const customStyleInfo = getCustomStyleInfo();
-                const customStylePrompt = buildCustomStylePrompt();
-                const finalPrompt = [prompt, customStylePrompt, selectedPrompt.prompt].filter(Boolean).join('\n') || '自动生成';
+                const customStylePrompt = customStyleInfo.prompt;
+                const directPrompt = AiStudioCustomDirectPrompt.build({
+                    userPrompt: prompt,
+                    styleKey: document.getElementById('customStyle')?.value || 'original',
+                    stylePrompt: customStylePrompt,
+                    categoryPrompt: selectedPrompt.prompt,
+                    skipAnalysis,
+                    withText: document.getElementById('customTextOverlay')?.checked !== false
+                });
 
                 // 直接使用 agentId，不再转换（liblib-lora 等新 Agent 需要原样传递）
-                payload.prompt = finalPrompt;
-                if (selectedPrompt.negativePrompt) payload.negativePrompt = selectedPrompt.negativePrompt;
+                payload.prompt = directPrompt.prompt;
+                if (!directPrompt.isWhiteBackgroundDirect && selectedPrompt.negativePrompt) {
+                    payload.negativePrompt = selectedPrompt.negativePrompt;
+                }
 
                 const formData = new FormData();
                 droppedFiles.forEach(f => formData.append('images', f));
@@ -3437,7 +3559,7 @@
                 const imgDataUrl = await new Promise(res => {
                     const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(droppedFiles[0]);
                 });
-                appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>[${taskLabel}] 模型: ${finalAgentId}<br>风格：${escHtml(customStyleInfo.label)}<br>${escHtml(finalPrompt).replace(/\n/g, '<br>')}</span>`, true);
+                appendMessage('user', `<img src="${imgDataUrl}" style="max-width:200px;border-radius:8px;display:block;margin-bottom:6px;"><span>[${taskLabel}] 模型: ${finalAgentId}<br>风格：${escHtml(customStyleInfo.label)}<br>${escHtml(directPrompt.prompt).replace(/\n/g, '<br>')}</span>`, true);
 
                 try {
 
@@ -3604,6 +3726,15 @@
                 const durationSeconds = parseInt(document.getElementById('videoDurationSec')?.value || '8');
 
                 const refImgCount = (typeof droppedFiles !== 'undefined' && droppedFiles) ? droppedFiles.length : 0;
+                const selectedVideoModel = videoModels.find(model => model.id === agentId);
+                if (selectedVideoModel?.inputMode === 'text_only' && refImgCount > 0) {
+                    appendMessage('ai', 'Grok 文生视频不支持参考图，请移除图片后重试。');
+                    return;
+                }
+                if (selectedVideoModel?.inputMode === 'image_only' && refImgCount !== 1) {
+                    appendMessage('ai', 'Grok 图生视频必须上传且只能上传一张参考图。');
+                    return;
+                }
                 const summary = `[视频模式] 模型: ${agentId}\n比例: ${aspectRatio}  时长: ${durationSeconds}s` +
                     (refImgCount ? `  参考图: ${refImgCount} 张` : '') +
                     (payload.prompt ? '\n提示词: ' + payload.prompt : '');
@@ -3643,18 +3774,18 @@
                 <div class="progress-card" data-task-id="${taskId}">
                     <div class="progress-card-header">
                         <span class="progress-card-title">⏳ 生成任务进行中</span>
-                        <div style="display:flex;align-items:center;gap:10px;">
-                            <span class="progress-card-count" data-role="count">0/0</span>
-                            <button class="progress-stop-btn" title="终止生成" onclick="stopGeneration('${taskId}')" aria-label="终止生成">
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"></rect>
-                                </svg>
-                            </button>
-                        </div>
+                        <span class="progress-card-count" data-role="count">0/0</span>
                     </div>
-                    <div class="progress-card-bar-wrap">
-                        <div class="progress-card-bar-fill" data-role="bar" style="width:0%"></div>
+                    <div class="progress-card-progress-row">
+                        <div class="progress-card-bar-wrap">
+                            <div class="progress-card-bar-fill" data-role="bar" style="width:0%"></div>
+                        </div>
+                        <button class="progress-stop-btn" title="取消此任务" onclick="stopGeneration('${taskId}')" aria-label="取消此任务">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"></rect>
+                            </svg>
+                        </button>
                     </div>
                     <div class="progress-card-meta">
                         已用时 <span data-role="elapsed">0:00</span>
@@ -3698,32 +3829,22 @@
             }
         }
 
-        // 终止生成：调后端停止 → 停轮询 → 回填提示词和参考图，方便用户改完重发
+        // 单任务取消：提交停止请求后继续轮询，直到后端确认任务进入终态
         async function stopGeneration(taskId) {
             const card = document.querySelector(`.progress-card[data-task-id="${taskId}"]`);
             const btn = card && card.querySelector('.progress-stop-btn');
+            if (!card || generationControls.isStopping(taskId)) return;
             if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
             try {
-                await fetch('/api/task/' + encodeURIComponent(taskId) + '/stop', { method: 'POST' });
+                await generationControls.stopTask(taskId);
+                const title = card.querySelector('.progress-card-title');
+                if (title) title.textContent = '正在取消此任务';
+                const current = card.querySelector('[data-role="current"]');
+                if (current) current.textContent = '正在中断当前调用...';
             } catch (e) {
-                // 网络失败也继续停轮询，避免卡住
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+                appendMessage('ai', '取消任务失败：' + (e.message || e));
             }
-            if (typeof stopPollingTask === 'function') stopPollingTask(taskId);
-            if (card) card.remove();
-
-            // 回填上次提交的提示词 + 参考图
-            const snap = window.__lastSubmitSnapshot;
-            if (snap) {
-                const promptInput = document.getElementById('promptInput');
-                if (promptInput && snap.prompt) promptInput.value = snap.prompt;
-                if (Array.isArray(snap.files) && snap.files.length) {
-                    droppedFiles = snap.files.slice();
-                    const container = document.getElementById('imagePreviewContainer');
-                    if (container) container.style.display = '';
-                    renderPreviews();
-                }
-            }
-            appendMessage('ai', '⏹ 已终止生成，之前的提示词和参考图已回填，可修改后重新发送。');
         }
 
         function updateProgressCard(taskId, pct, countText, etaText, curText) {

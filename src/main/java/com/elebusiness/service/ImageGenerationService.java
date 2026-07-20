@@ -1,6 +1,7 @@
 package com.elebusiness.service;
 
 import com.elebusiness.config.AppProperties;
+import com.elebusiness.service.agent.GenerationCancellationContext;
 import com.elebusiness.service.agent.GenerationInvocationContext;
 import com.elebusiness.service.agent.ImageGeneratorAgent;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -866,6 +867,13 @@ public class ImageGenerationService {
                 () -> generateImageMulti(prompt, refImagePaths, whiteBgPath, outputPath, agentId, aspect));
     }
 
+    public boolean generateImageMulti(long userId, String taskId, String prompt, List<String> refImagePaths,
+                                      String whiteBgPath, String outputPath,
+                                      String agentId, String aspect) {
+        return GenerationCancellationContext.withTask(taskId,
+                () -> generateImageMulti(userId, prompt, refImagePaths, whiteBgPath, outputPath, agentId, aspect));
+    }
+
     private String enforceNoIntersectionPrompt(String prompt) {
         String base = prompt == null ? "" : prompt.trim();
         if (base.contains("最高优先级·禁止穿模") || base.contains("禁止穿模")) {
@@ -888,6 +896,7 @@ public class ImageGenerationService {
         skuOutputDir.mkdirs();
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        String taskId = GenerationCancellationContext.currentTaskId().orElse(null);
         for (int i = 0; i < skuList.size(); i++) {
             final int idx = i;
             final File ref = skuRefs.get(random.nextInt(skuRefs.size()));
@@ -896,8 +905,10 @@ public class ImageGenerationService {
                     : "保留参考图的背景，移除参考图中的物品主体，将白底图中的产品替换到背景中。" + skuList.get(i);
             final String outputPath = new File(skuOutputDir, (idx + 1) + ".jpg").getAbsolutePath();
             futures.add(CompletableFuture.runAsync(() -> {
-                boolean ok = generateImage(prompt, ref.getAbsolutePath(), whiteBgUrl, outputPath, agentId);
-                log.info("SKU 图 {}: {}", idx + 1, ok ? "成功" : "失败");
+                GenerationCancellationContext.withTask(taskId, () -> {
+                    boolean ok = generateImage(prompt, ref.getAbsolutePath(), whiteBgUrl, outputPath, agentId);
+                    log.info("SKU 图 {}: {}", idx + 1, ok ? "成功" : "失败");
+                });
             }, executor));
         }
         futures.forEach(f -> { try { f.join(); } catch (Exception e) { log.warn("SKU 图生成异常: {}", e.getMessage()); } });
@@ -916,6 +927,7 @@ public class ImageGenerationService {
         mainOutputDir.mkdirs();
 
         List<CompletableFuture<String>> futures = new ArrayList<>();
+        String taskId = GenerationCancellationContext.currentTaskId().orElse(null);
         for (int i = 0; i < mainList.size(); i++) {
             final int idx = i;
             final File ref = mainRefs.get(random.nextInt(mainRefs.size()));
@@ -923,11 +935,11 @@ public class ImageGenerationService {
                     ? userPrompt
                     : "保留参考图的背景，移除参考图中的物品主体，将白底图中的产品替换到背景中。" + mainList.get(i);
             final String outputPath = new File(mainOutputDir, (idx + 1) + ".jpg").getAbsolutePath();
-            futures.add(CompletableFuture.supplyAsync(() -> {
+            futures.add(CompletableFuture.supplyAsync(() -> GenerationCancellationContext.withTask(taskId, () -> {
                 boolean ok = generateImage(prompt, ref.getAbsolutePath(), whiteBgUrl, outputPath, agentId);
                 log.info("主图 {}: {}", idx + 1, ok ? "成功" : "失败");
                 return ok ? outputPath : null;
-            }, executor));
+            }), executor));
         }
 
         List<String> outputPaths = new ArrayList<>();

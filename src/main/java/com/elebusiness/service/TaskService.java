@@ -2,6 +2,7 @@ package com.elebusiness.service;
 
 import com.elebusiness.config.AppProperties;
 import com.elebusiness.model.GenerationTask;
+import com.elebusiness.service.agent.GenerationCancellationContext;
 import com.elebusiness.service.agent.GenerationProviderCostContext;
 import com.elebusiness.service.billing.BillingService;
 import com.elebusiness.service.workspace.UserStorageService;
@@ -17,6 +18,7 @@ import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -44,7 +46,8 @@ public class TaskService {
     // 增加任务线程池大小以支持更多并发用户
     private final ExecutorService executor = Executors.newFixedThreadPool(20);
     private final Map<String, GenerationTask> tasks = new ConcurrentHashMap<>();
-    private final Map<Long, String> activeTaskIdsByUser = new ConcurrentHashMap<>();
+    private final Map<Long, Set<String>> activeTaskIdsByUser = new ConcurrentHashMap<>();
+    private final Map<String, Thread> runningThreads = new ConcurrentHashMap<>();
     // 完成时间戳：仅 done/error/stopped 状态的任务才进入这个 map，按 TTL 过期
     private final Map<String, Long> completedAt = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cleaner =
@@ -82,13 +85,28 @@ public class TaskService {
     }
 
     public GenerationTask createTask(long ownerUserId, int total) {
+        return createTaskWithLimit(ownerUserId, total, 1);
+    }
+
+    public GenerationTask createTask(long ownerUserId, int total, String role) {
+        int limit = "ADMIN".equalsIgnoreCase(role)
+                ? Math.max(1, appProperties.getApi().getAdminMaxConcurrentTasks())
+                : Math.max(1, appProperties.getApi().getUserMaxConcurrentTasks());
+        return createTaskWithLimit(ownerUserId, total, limit);
+    }
+
+    private GenerationTask createTaskWithLimit(long ownerUserId, int total, int limit) {
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         GenerationTask task = new GenerationTask(id, ownerUserId, total);
         if (ownerUserId > 0) {
-            String activeTaskId = activeTaskIdsByUser.putIfAbsent(ownerUserId, id);
-            if (activeTaskId != null) {
-                throw new ActiveGenerationTaskException();
-            }
+            activeTaskIdsByUser.compute(ownerUserId, (userId, activeTaskIds) -> {
+                Set<String> ids = activeTaskIds == null ? ConcurrentHashMap.newKeySet() : activeTaskIds;
+                if (ids.size() >= limit) {
+                    throw new ActiveGenerationTaskException(limit);
+                }
+                ids.add(id);
+                return ids;
+            });
         }
         tasks.put(id, task);
         return task;
@@ -96,6 +114,7 @@ public class TaskService {
 
     public void submit(GenerationTask task, Runnable work) {
         executor.submit(() -> {
+            runningThreads.put(task.getId(), Thread.currentThread());
             synchronized (task) {
                 if (task.isCancelled()) {
                     finishCancelledLocked(task);
@@ -105,10 +124,12 @@ public class TaskService {
             }
             GenerationProviderCostContext.clear();
             try {
-                work.run();
+                GenerationCancellationContext.withTask(task.getId(), work);
             } catch (Exception e) {
                 finishFailed(task, e);
                 return;
+            } finally {
+                runningThreads.remove(task.getId(), Thread.currentThread());
             }
             finishSucceeded(task);
         });
@@ -136,6 +157,7 @@ public class TaskService {
     }
 
     private boolean cancelTask(GenerationTask task) {
+        boolean interruptRunningTask = false;
         synchronized (task) {
             if ("stopped".equals(task.getStatus())) return true;
             if (isTerminal(task.getStatus())) return false;
@@ -145,9 +167,15 @@ public class TaskService {
                 finishCancelledLocked(task);
             } else if ("running".equals(task.getStatus())) {
                 task.setStatus("stopping");
+                interruptRunningTask = true;
             }
-            return true;
         }
+        if (interruptRunningTask) {
+            GenerationCancellationContext.cancelTask(task.getId());
+            Thread runningThread = runningThreads.get(task.getId());
+            if (runningThread != null) runningThread.interrupt();
+        }
+        return true;
     }
 
     private void finishCancelled(GenerationTask task) {
@@ -162,6 +190,7 @@ public class TaskService {
         markUsageCancelled(task);
         GenerationProviderCostContext.clear();
         completedAt.put(task.getId(), System.currentTimeMillis());
+        cleanupTaskExecution(task);
         releaseUserSlot(task);
     }
 
@@ -178,6 +207,7 @@ public class TaskService {
                 GenerationProviderCostContext.clear();
             }
             completedAt.put(task.getId(), System.currentTimeMillis());
+            cleanupTaskExecution(task);
             releaseUserSlot(task);
         }
     }
@@ -193,7 +223,15 @@ public class TaskService {
             markUsageFailed(task, exception.getMessage());
             GenerationProviderCostContext.clear();
             completedAt.put(task.getId(), System.currentTimeMillis());
+            cleanupTaskExecution(task);
             releaseUserSlot(task);
+        }
+    }
+
+    private void cleanupTaskExecution(GenerationTask task) {
+        runningThreads.remove(task.getId());
+        if (!task.isCancelled()) {
+            GenerationCancellationContext.clearTask(task.getId());
         }
     }
 
@@ -203,7 +241,10 @@ public class TaskService {
 
     private void releaseUserSlot(GenerationTask task) {
         if (task.getOwnerUserId() > 0) {
-            activeTaskIdsByUser.remove(task.getOwnerUserId(), task.getId());
+            activeTaskIdsByUser.computeIfPresent(task.getOwnerUserId(), (userId, activeTaskIds) -> {
+                activeTaskIds.remove(task.getId());
+                return activeTaskIds.isEmpty() ? null : activeTaskIds;
+            });
         }
     }
 
@@ -216,6 +257,7 @@ public class TaskService {
             Map.Entry<String, Long> e = it.next();
             if (now - e.getValue() > DONE_TASK_TTL_MS) {
                 tasks.remove(e.getKey());
+                GenerationCancellationContext.clearTask(e.getKey());
                 it.remove();
                 removed++;
             }

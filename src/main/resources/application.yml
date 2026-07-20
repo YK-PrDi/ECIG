@@ -82,6 +82,21 @@ app:
     base-url: "https://ark.cn-beijing.volces.com/api/v3"
     model: "doubao-seedance-2-0-260128"
 
+  # 随想 OpenAI 兼容视频配置，两个供应商使用独立 Key。
+  suixiang-video:
+    base-url: "https://sui-xiang.com/v1"
+    grok:
+      api-key: "${SUIXIANG_GROK_VIDEO_API_KEY:}"
+    jimeng:
+      api-key: "${SUIXIANG_JIMENG_VIDEO_API_KEY:}"
+    media-proxy:
+      enabled: false
+      type: "socks5"
+      host: "127.0.0.1"
+      port: 40000
+      hosts:
+        - "vidgen.x.ai"
+
   # 千问 VL 分析备用（Gemini 失败时降级使用）
   qwen:
     api-key: ""
@@ -166,6 +181,8 @@ app:
     timeout-seconds: 60     # 降低超时 90→60 秒
     max-retries: 2          # 减少重试 3→2 次
     max-concurrent: 20      # 提升并发 12→20
+    user-max-concurrent-tasks: 3   # 普通账号最多同时运行 3 个生成任务
+    admin-max-concurrent-tasks: 10 # 管理员账号最多同时运行 10 个生成任务
 
   # 积分计费与支付框架。默认不启用真实扣费，回调 token 留空时支付回调入口不可用。
   billing:

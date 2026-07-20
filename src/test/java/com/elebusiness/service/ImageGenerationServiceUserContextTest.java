@@ -1,6 +1,7 @@
 package com.elebusiness.service;
 
 import com.elebusiness.config.AppProperties;
+import com.elebusiness.service.agent.GenerationCancellationContext;
 import com.elebusiness.service.agent.GenerationInvocationContext;
 import com.elebusiness.service.agent.ImageGeneratorAgent;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -52,6 +54,37 @@ class ImageGenerationServiceUserContextTest {
         assertTrue(ok);
         assertEquals(1001L, agent.capturedUserId);
         assertTrue(GenerationInvocationContext.currentUserId().isEmpty());
+    }
+
+    @Test
+    void taskScopedGenerateMultiExposesCancellationContextOnlyDuringAgentCall() {
+        CapturingAgent agent = new CapturingAgent();
+        ImageGenerationService service = new ImageGenerationService(
+                new AppProperties(),
+                List.of(agent),
+                mock(PromptTemplateLoader.class)
+        );
+        String taskId = "task-context";
+        GenerationCancellationContext.cancelTask(taskId);
+
+        try {
+            boolean ok = service.generateImageMulti(
+                    1001L,
+                    taskId,
+                    "prompt",
+                    List.of("ref.png"),
+                    null,
+                    "out.png",
+                    "capture",
+                    "3:4"
+            );
+
+            assertTrue(ok);
+            assertTrue(agent.capturedCancellationRequested);
+            assertFalse(GenerationCancellationContext.isCancellationRequested());
+        } finally {
+            GenerationCancellationContext.clearTask(taskId);
+        }
     }
 
     @Test
@@ -126,6 +159,7 @@ class ImageGenerationServiceUserContextTest {
 
     private static class CapturingAgent implements ImageGeneratorAgent {
         private long capturedUserId = 0L;
+        private boolean capturedCancellationRequested;
 
         @Override
         public String getId() {
@@ -146,6 +180,7 @@ class ImageGenerationServiceUserContextTest {
         public boolean generateMulti(String prompt, List<String> refImagePaths,
                                      String whiteBgPath, String outputPath, String aspect) {
             capturedUserId = GenerationInvocationContext.currentUserId().orElse(0L);
+            capturedCancellationRequested = GenerationCancellationContext.isCancellationRequested();
             return true;
         }
     }

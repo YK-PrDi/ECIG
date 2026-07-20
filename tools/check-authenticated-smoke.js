@@ -58,7 +58,8 @@ async function run() {
         '/api/billing/admin/provider-task-ref'
     ];
     const expectedDegradedStatuses = new Map([
-        ['/api/products', new Set([503])]
+        // 未配置钉钉返回 503；已配置但钉钉上游不可用返回 502。
+        ['/api/products', new Set([502, 503])]
     ]);
 
     for (const endpoint of safeReadEndpoints) {

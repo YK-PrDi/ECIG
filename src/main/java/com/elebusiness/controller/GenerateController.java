@@ -102,7 +102,8 @@ public class GenerateController {
     /** 寮傛鎻愪氦鐢熸垚浠诲姟锛岀珛鍗宠繑鍥?taskId锛屽墠绔疆璇?/api/task/{taskId} 鑾峰彇杩涘害 */
     @PostMapping("/api/generate")
     public ResponseEntity<Map<String, Object>> generate(@RequestBody GenerateRequest request, HttpSession httpSession) {
-        long userId = currentUserService.requireUserId(httpSession);
+        var currentUser = currentUserService.require(httpSession);
+        long userId = currentUser.id();
         List<String> selectedIds = request.getProductIds();
         if (selectedIds == null || selectedIds.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "鏈€夋嫨浜у搧"));
@@ -111,7 +112,7 @@ public class GenerateController {
         String agentId = request.getAgentId();
         String userPrompt = request.getPrompt();
         String sessionId = request.getSessionId() == null ? "default" : request.getSessionId();
-        GenerationTask task = taskService.createTask(userId, selectedIds.size());
+        GenerationTask task = taskService.createTask(userId, selectedIds.size(), currentUser.role());
         int estimatedPoints = pricingService.estimateImageGeneration("standard", agentId, selectedIds.size());
         task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), "standard", agentId, estimatedPoints).getId());
 
@@ -201,6 +202,8 @@ public class GenerateController {
                             mainImgPath, outputFolder, whiteBgUrl, refPath.getAbsolutePath(), agentId, userPrompt);
                 }
 
+                if (task.isCancelled()) break;
+
                 if (generatedCount == 0) {
                     task.addResult(ControllerHelpers.result(productName, "error", "???????????? API Key ???", outputFolder));
                 } else {
@@ -221,12 +224,14 @@ public class GenerateController {
                 task.incrementProgress();
             }
 
-            // 鏍囧噯妯″紡鐨勬€濊€冧俊鎭細灞曠ず鐢ㄦ埛 prompt + 妯″瀷
-            task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
-                "????????? LLM ????\n??: " + agentId
-                + "\n\n?????????\n" + (userPrompt == null || userPrompt.isBlank() ? "???" : userPrompt)
-                + "\n\n????????????? prompt ????????????/SKU/????????????????",
-                null));
+            if (!task.isCancelled()) {
+                // 鏍囧噯妯″紡鐨勬€濊€冧俊鎭細灞曠ず鐢ㄦ埛 prompt + 妯″瀷
+                task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
+                    "????????? LLM ????\n??: " + agentId
+                    + "\n\n?????????\n" + (userPrompt == null || userPrompt.isBlank() ? "???" : userPrompt)
+                    + "\n\n????????????? prompt ????????????/SKU/????????????????",
+                    null));
+            }
         });
 
         return ResponseEntity.ok(Map.of("taskId", task.getId()));
@@ -439,7 +444,8 @@ public class GenerateController {
             @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
             @RequestParam(value = "configJson", required = false) String configJson,
             HttpSession httpSession) {
-        long userId = currentUserService.requireUserId(httpSession);
+        var currentUser = currentUserService.require(httpSession);
+        long userId = currentUser.id();
 
         if (whiteImage == null || whiteImage.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Excel 鎵归噺寮€鍝侀渶瑕佷笂浼犵櫧搴曚骇鍝佸浘"));
@@ -466,7 +472,7 @@ public class GenerateController {
 
             int safeCount = Math.max(1, Math.min(50, countPerRef));
             int total = excelRefs.size() * safeCount;
-            GenerationTask task = taskService.createTask(userId, total);
+            GenerationTask task = taskService.createTask(userId, total, currentUser.role());
             int estimatedPoints = pricingService.estimateImageGeneration("kaipin", agentId, total);
             task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), "kaipin", agentId, estimatedPoints).getId());
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
@@ -497,6 +503,7 @@ public class GenerateController {
                             if (task.isCancelled()) return "??: ???";
                             boolean ok = imageGenerationService.generateImageMulti(
                                     userId,
+                                    task.getId(),
                                     prompt,
                                     List.of(whiteFinal.getAbsolutePath(), refFinal.getAbsolutePath()),
                                     null,
@@ -523,51 +530,56 @@ public class GenerateController {
                 }
 
                 // 鏀堕泦鎵€鏈変换鍔＄粨鏋?
-                int n = 1;
-                for (CompletableFuture<String> f : futures) {
-                    String r;
-                    if (f.isCancelled()) {
-                        r = "??: ???";
-                    } else if (!f.isDone()) {
-                        r = "??: ???";
-                    } else {
-                        try {
-                            r = f.get(100, TimeUnit.MILLISECONDS); // 宸插畬鎴愶紝蹇€熻幏鍙?
-                        } catch (Exception e) {
-                            r = "澶辫触: " + e.getMessage();
-                        }
-                    }
-                    String name = n++ + ".jpg";
-                    if (r.startsWith("澶辫触")) {
-                        task.addResult(ControllerHelpers.result(name, "error", r, null));
-                    } else {
-                        String outputRef = r;
-                        if (cosService.isEnabled()) {
+                if (!task.isCancelled()) {
+                    int n = 1;
+                    for (CompletableFuture<String> f : futures) {
+                        if (task.isCancelled()) break;
+                        String r;
+                        if (f.isCancelled()) {
+                            r = "??: ???";
+                        } else if (!f.isDone()) {
+                            r = "??: ???";
+                        } else {
                             try {
-                                outputRef = cosService.upload(new File(r), name);
-                            } catch (Exception ce) {
-                                log.warn("COS 涓婁紶澶辫触锛岄檷绾ф湰鍦拌矾寰? {}", ce.getMessage());
+                                r = f.get(100, TimeUnit.MILLISECONDS); // 宸插畬鎴愶紝蹇€熻幏鍙?
+                            } catch (Exception e) {
+                                r = "澶辫触: " + e.getMessage();
                             }
                         }
-                        task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
+                        String name = n++ + ".jpg";
+                        if (r.startsWith("澶辫触")) {
+                            task.addResult(ControllerHelpers.result(name, "error", r, null));
+                        } else {
+                            String outputRef = r;
+                            if (cosService.isEnabled()) {
+                                try {
+                                    outputRef = cosService.upload(new File(r), name);
+                                } catch (Exception ce) {
+                                    log.warn("COS 涓婁紶澶辫触锛岄檷绾ф湰鍦拌矾寰? {}", ce.getMessage());
+                                }
+                            }
+                            task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
+                        }
+                        task.incrementProgress();
                     }
-                    task.incrementProgress();
-                }
 
-                task.addResult(ControllerHelpers.result("__OUTPUT_DIR__", "info", null, outputDir));
-                task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
-                        "??? Excel ?????????? 1 ??Excel ???????????????????? "
-                                + refsFinal.size() + " ??????", null));
+                    if (!task.isCancelled()) {
+                        task.addResult(ControllerHelpers.result("__OUTPUT_DIR__", "info", null, outputDir));
+                        task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
+                                "??? Excel ?????????? 1 ??Excel ???????????????????? "
+                                        + refsFinal.size() + " ??????", null));
 
-                try {
-                    List<File> refsForArchive = new ArrayList<>();
-                    refsForArchive.add(whiteFinal);
-                    refsForArchive.addAll(refsFinal);
-                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refsForArchive);
-                    historyService.recordGeneration(userId, sessionId, "kaipin",
-                            promptFinalBase, agentId, archive.refPaths, outputDir, configJson);
-                } catch (Exception e) {
-                    log.warn("寮€鍝?Excel 鎵归噺鍐欏巻鍙插け璐ワ紙涓嶅奖鍝嶇敓鍥撅級: {}", e.getMessage());
+                        try {
+                            List<File> refsForArchive = new ArrayList<>();
+                            refsForArchive.add(whiteFinal);
+                            refsForArchive.addAll(refsFinal);
+                            HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refsForArchive);
+                            historyService.recordGeneration(userId, sessionId, "kaipin",
+                                    promptFinalBase, agentId, archive.refPaths, outputDir, configJson);
+                        } catch (Exception e) {
+                            log.warn("寮€鍝?Excel 鎵归噺鍐欏巻鍙插け璐ワ紙涓嶅奖鍝嶇敓鍥撅級: {}", e.getMessage());
+                        }
+                    }
                 }
 
                 if (whiteFinal.exists()) whiteFinal.delete();
@@ -604,7 +616,8 @@ public class GenerateController {
             @RequestParam(value = "useLora", defaultValue = "false") boolean useLora,
             @RequestParam(value = "loraPreset", required = false) String loraPreset,
             MultipartHttpServletRequest request) {
-        long userId = currentUserService.requireUserId(request.getSession());
+        var currentUser = currentUserService.require(request.getSession());
+        long userId = currentUser.id();
 
         // 涓嶈兘鐢?@RequestParam List<String> prompts 鈥斺€?Spring 浼氭寜鑻辨枃閫楀彿鑷姩鎷嗗垎
         // 锛圕onversionService 榛樿琛屼负锛岃瑙?spring-framework reference 6.2 / RequestHeader 绔犺妭锛?
@@ -732,7 +745,7 @@ public class GenerateController {
                   : pairImages ? (pairN * requestedCount)
                   : (promptList.size() * requestedCount);
 
-        GenerationTask task = taskService.createTask(userId, total);
+        GenerationTask task = taskService.createTask(userId, total, currentUser.role());
         int estimatedPoints = pricingService.estimateImageGeneration(mode, generationAgentId, total);
         task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), mode, generationAgentId, estimatedPoints).getId());
         final File refFinal = refTempFile;
@@ -774,7 +787,7 @@ public class GenerateController {
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "??: ???";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    userId, promptFinal, refsFinal, null, outputPath, generationAgentId, aspectForGroup);
+                                    userId, task.getId(), promptFinal, refsFinal, null, outputPath, generationAgentId, aspectForGroup);
                             return ok ? outputPath : "??: ???????";
                         }, executor));
                     }
@@ -790,7 +803,7 @@ public class GenerateController {
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "??: ???";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    userId, promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, generationAgentId, aspectForRef);
+                                    userId, task.getId(), promptFinal, List.of(refI.getAbsolutePath()), null, outputPath, generationAgentId, aspectForRef);
                             return ok ? outputPath : "??: ???????";
                         }, executor));
                     }
@@ -804,7 +817,7 @@ public class GenerateController {
                         futures.add(CompletableFuture.supplyAsync(() -> {
                             if (task.isCancelled()) return "??: ???";
                             boolean ok = imageGenerationService.generateImageMulti(
-                                    userId, promptFinal, List.of(), null, outputPath, generationAgentId, requestedAspect);
+                                    userId, task.getId(), promptFinal, List.of(), null, outputPath, generationAgentId, requestedAspect);
                             return ok ? outputPath : "??: ???????";
                         }, executor));
                     }
@@ -832,7 +845,7 @@ public class GenerateController {
                         if (task.isCancelled()) return "??: ???";
                         log.info("[鑷畾涔夋ā寮廬 鐢熸垚绗?寮狅紙鍩鸿皟鍥撅級锛屽弬鑰冨浘鏁伴噺: {}", refs1.size());
                         boolean ok = imageGenerationService.generateImageMulti(
-                                userId, prompt1, refs1, null, outputPath1, generationAgentId, aspectForRefs);
+                                userId, task.getId(), prompt1, refs1, null, outputPath1, generationAgentId, aspectForRefs);
                         return ok ? outputPath1 : "??: ???????";
                     }, executor);
 
@@ -879,7 +892,7 @@ public class GenerateController {
                                 if (task.isCancelled()) return "??: ???";
                                 log.info("[鑷畾涔夋ā寮忓苟琛宂 寮€濮嬬敓鎴愮 {} 寮狅紝鍙傝€冨浘鏁伴噺: {}", imageIndex, currentRefs.size());
                                 boolean ok = imageGenerationService.generateImageMulti(
-                                        userId, enhancedPrompt, currentRefs, null, outputPath, generationAgentId, aspectForRefs);
+                                        userId, task.getId(), enhancedPrompt, currentRefs, null, outputPath, generationAgentId, aspectForRefs);
                                 return ok ? outputPath : "??: ???????";
                             }, executor);
 
@@ -893,79 +906,79 @@ public class GenerateController {
                 }
             }
 
-            int n = 1;
-            for (CompletableFuture<String> f : futures) {
-                String r;
-                if (f.isCancelled()) {
-                    r = "??: ???";
-                } else if (!f.isDone()) {
-                    // 浠诲姟杩樻湭瀹屾垚锛岀瓑寰呭畠锛堝崟寮犳渶澶?0鍒嗛挓锛?
-                    try {
-                        r = f.get(10, TimeUnit.MINUTES);
-                    } catch (TimeoutException te) {
-                        f.cancel(true);
-                        r = "澶辫触: 鍗曞紶鍥捐秴鏃?(>10 鍒嗛挓)";
-                    } catch (CancellationException ce) {
+            if (!task.isCancelled()) {
+                int n = 1;
+                for (CompletableFuture<String> f : futures) {
+                    if (task.isCancelled()) break;
+                    String r;
+                    if (f.isCancelled()) {
                         r = "??: ???";
-                    } catch (Exception e) {
-                        r = "澶辫触: " + e.getMessage();
-                    }
-                } else {
-                    // 浠诲姟宸插畬鎴愶紝鐩存帴鑾峰彇缁撴灉锛堜笉浼氶樆濉烇級
-                    try {
-                        r = f.get(100, TimeUnit.MILLISECONDS);
-                    } catch (CancellationException ce) {
-                        r = "??: ???";
-                    } catch (Exception e) {
-                        r = "澶辫触: " + e.getMessage();
-                    }
-                }
-                String name = n++ + ".jpg";
-                if (r.startsWith("澶辫触")) {
-                    task.addResult(ControllerHelpers.result(name, "error", r, null));
-                } else {
-                    // COS 宸查厤缃椂涓婁紶锛岃繑鍥?URL锛涘惁鍒欒繑鍥炴湰鍦拌矾寰勶紙寮€鍙戞€佸厹搴曪級
-                    String outputRef = r;
-                    if (cosService.isEnabled()) {
+                    } else if (!f.isDone()) {
+                        // 浠诲姟杩樻湭瀹屾垚锛岀瓑寰呭畠锛堝崟寮犳渶澶?0鍒嗛挓锛?
                         try {
-                            outputRef = cosService.upload(new File(r), name);
-                        } catch (Exception ce) {
-                            log.warn("COS 涓婁紶澶辫触锛岄檷绾ф湰鍦拌矾寰? {}", ce.getMessage());
+                            r = f.get(10, TimeUnit.MINUTES);
+                        } catch (TimeoutException te) {
+                            f.cancel(true);
+                            r = "澶辫触: 鍗曞紶鍥捐秴鏃?(>10 鍒嗛挓)";
+                        } catch (CancellationException ce) {
+                            r = "??: ???";
+                        } catch (Exception e) {
+                            r = "澶辫触: " + e.getMessage();
+                        }
+                    } else {
+                        // 浠诲姟宸插畬鎴愶紝鐩存帴鑾峰彇缁撴灉锛堜笉浼氶樆濉烇級
+                        try {
+                            r = f.get(100, TimeUnit.MILLISECONDS);
+                        } catch (CancellationException ce) {
+                            r = "??: ???";
+                        } catch (Exception e) {
+                            r = "澶辫触: " + e.getMessage();
                         }
                     }
-                    task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
+                    String name = n++ + ".jpg";
+                    if (r.startsWith("澶辫触")) {
+                        task.addResult(ControllerHelpers.result(name, "error", r, null));
+                    } else {
+                        // COS 宸查厤缃椂涓婁紶锛岃繑鍥?URL锛涘惁鍒欒繑鍥炴湰鍦拌矾寰勶紙寮€鍙戞€佸厹搴曪級
+                        String outputRef = r;
+                        if (cosService.isEnabled()) {
+                            try {
+                                outputRef = cosService.upload(new File(r), name);
+                            } catch (Exception ce) {
+                                log.warn("COS 涓婁紶澶辫触锛岄檷绾ф湰鍦拌矾寰? {}", ce.getMessage());
+                            }
+                        }
+                        task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
+                    }
+                    task.incrementProgress();
                 }
-                task.incrementProgress();
-            }
 
-            task.addResult(ControllerHelpers.result("__OUTPUT_DIR__", "info", null, outputDir));
+                if (!task.isCancelled()) {
+                    task.addResult(ControllerHelpers.result("__OUTPUT_DIR__", "info", null, outputDir));
 
-            for (int i = 0; i < thoughtsFinal.size(); i++) {
-                task.addResult(ControllerHelpers.result("__AI_THOUGHT__" + i, "info", thoughtsFinal.get(i), null));
+                    for (int i = 0; i < thoughtsFinal.size(); i++) {
+                        task.addResult(ControllerHelpers.result("__AI_THOUGHT__" + i, "info", thoughtsFinal.get(i), null));
+                    }
+
+                    try {
+                        List<File> refsForArchive = new ArrayList<>();
+                        if (refFinal != null) refsForArchive.add(refFinal);
+                        refsForArchive.addAll(whiteFinal);
+                        refsForArchive.addAll(pairRefsFinal);
+                        HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refsForArchive);
+                        String promptJoined = String.join(" || ", promptsFinal);
+                        historyService.recordGeneration(userId, sessionId, mode, promptJoined, generationAgentId,
+                                archive.refPaths, outputDir, configJson);
+                    } catch (Exception e) {
+                        log.warn("鍐欏巻鍙茶褰曞け璐ワ紙涓嶅奖鍝嶇敓鍥撅級: {}", e.getMessage());
+                    }
+                }
             }
 
             if (refFinal != null) refFinal.delete();
             for (File wf : whiteFinal) wf.delete();
             for (File pr : pairRefsFinal) pr.delete();
         });
-
-        // Phase 2锛氬啓涓€鏉?GenerationHistory锛坧er-batch锛沷utputPath = 鎵规鐩綍锛夈€?
-        // 寮傛浠诲姟杩樻病璺戝畬娌″叧绯伙紝璁板綍鐨勬槸"鎻愪氦浜嗚繖娆＄敓鍥捐姹?鐨勫厓淇℃伅锛?
-        // 鐢ㄦ埛鍚庣画鐐?馃捑 淇濆瓨鍏朵腑涓€寮犳椂锛孯esourceController.saveToGallery 浼氭寜 parent dir 鍖归厤鍥炲～ savedPath銆?
-        try {
-            // 褰掓。鍙傝€冨浘锛坧air / ref+white / no images 涓夌鍏ュ弬褰㈡€侀兘瑕嗙洊锛?
-            List<File> refsForArchive = new ArrayList<>();
-            if (refTempFile != null) refsForArchive.add(refTempFile);
-            for (File wf : whiteTempFiles) refsForArchive.add(wf);
-            for (File pr : pairRefs)       refsForArchive.add(pr);
-            // 娉ㄦ剰锛氳繖閲?archiveRefFiles 鏄悓姝?copy 涓€娆★紝璺?lambda 閲屼箣鍚庣殑 .delete() 鏃犵珵浜?
-            HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refsForArchive);
-            String promptJoined = String.join(" || ", promptList);
-            historyService.recordGeneration(userId, sessionId, mode, promptJoined, generationAgentId,
-                    archive.refPaths, outputDir, configJson);
-        } catch (Exception e) {
-            log.warn("鍐欏巻鍙茶褰曞け璐ワ紙涓嶅奖鍝嶇敓鍥撅級: {}", e.getMessage());
-        }
 
         return ResponseEntity.ok(Map.of("taskId", task.getId(), "output_dir", outputDir));
     }

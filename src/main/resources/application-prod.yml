@@ -40,6 +40,19 @@ app:
     base-url: "${VOLCENGINE_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}"
     model: "${VOLCENGINE_MODEL:doubao-seedance-2-0-260128}"
 
+  suixiang-video:
+    base-url: "${SUIXIANG_VIDEO_BASE_URL:https://sui-xiang.com/v1}"
+    grok:
+      api-key: "${SUIXIANG_GROK_VIDEO_API_KEY:}"
+    jimeng:
+      api-key: "${SUIXIANG_JIMENG_VIDEO_API_KEY:}"
+    media-proxy:
+      enabled: "${SUIXIANG_MEDIA_PROXY_ENABLED:false}"
+      type: "${SUIXIANG_MEDIA_PROXY_TYPE:socks5}"
+      host: "${SUIXIANG_MEDIA_PROXY_HOST:127.0.0.1}"
+      port: "${SUIXIANG_MEDIA_PROXY_PORT:40000}"
+      hosts: "${SUIXIANG_MEDIA_PROXY_HOSTS:vidgen.x.ai}"
+
   cos:
     secret-id: "${COS_SECRET_ID:}"
     secret-key: "${COS_SECRET_KEY:}"

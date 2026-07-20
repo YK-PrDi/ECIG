@@ -3,47 +3,46 @@
 
     function createGenerationControls(options) {
         var deps = Object.assign({}, options || {});
-        var activeTaskId = null;
-        var stopping = false;
-        var stopRequest = null;
+        var tasks = new Map();
 
         function fetchImpl() {
             return deps.fetch || global.fetch.bind(global);
         }
 
-        function notify() {
+        function notify(taskId) {
+            var task = taskId ? tasks.get(taskId) : null;
             if (typeof deps.onStateChange === 'function') {
-                deps.onStateChange({ taskId: activeTaskId, active: !!activeTaskId, stopping: stopping });
+                deps.onStateChange({
+                    taskId: taskId || null,
+                    active: !!task,
+                    stopping: !!(task && task.stopping),
+                    activeTaskIds: Array.from(tasks.keys())
+                });
             }
         }
 
         function activate(taskId) {
-            activeTaskId = taskId || null;
-            stopping = false;
-            stopRequest = null;
-            notify();
+            if (!taskId) return;
+            if (!tasks.has(taskId)) {
+                tasks.set(taskId, { stopping: false, stopRequest: null });
+            }
+            notify(taskId);
         }
 
         function complete(taskId) {
-            if (taskId && taskId !== activeTaskId) return;
-            activeTaskId = null;
-            stopping = false;
-            stopRequest = null;
-            notify();
+            if (!taskId) return;
+            tasks.delete(taskId);
+            notify(taskId);
         }
 
-        function refresh() {
-            notify();
-        }
+        function stopTask(taskId) {
+            var task = tasks.get(taskId);
+            if (!task) return Promise.resolve(null);
+            if (task.stopRequest) return task.stopRequest;
 
-        function stopActiveTask() {
-            if (!activeTaskId) return Promise.resolve(null);
-            if (stopRequest) return stopRequest;
-
-            stopping = true;
-            notify();
-            var taskId = activeTaskId;
-            stopRequest = fetchImpl()('/api/task/' + encodeURIComponent(taskId) + '/stop', { method: 'POST' })
+            task.stopping = true;
+            notify(taskId);
+            task.stopRequest = fetchImpl()('/api/task/' + encodeURIComponent(taskId) + '/stop', { method: 'POST' })
                 .then(function (response) {
                     return response.json().then(function (data) {
                         if (!response.ok || !data.success) {
@@ -53,22 +52,24 @@
                     });
                 })
                 .catch(function (error) {
-                    stopping = false;
-                    stopRequest = null;
-                    notify();
+                    task.stopping = false;
+                    task.stopRequest = null;
+                    notify(taskId);
                     throw error;
                 });
-            return stopRequest;
+            return task.stopRequest;
         }
 
         return {
             activate: activate,
             complete: complete,
-            refresh: refresh,
-            stopActiveTask: stopActiveTask,
-            isActive: function () { return !!activeTaskId; },
-            isStopping: function () { return stopping; },
-            activeTaskId: function () { return activeTaskId; }
+            stopTask: stopTask,
+            isActive: function (taskId) { return taskId ? tasks.has(taskId) : tasks.size > 0; },
+            isStopping: function (taskId) {
+                if (taskId) return !!(tasks.get(taskId) && tasks.get(taskId).stopping);
+                return Array.from(tasks.values()).some(function (task) { return task.stopping; });
+            },
+            activeTaskIds: function () { return Array.from(tasks.keys()); }
         };
     }
 
@@ -77,10 +78,9 @@
         create: createGenerationControls,
         activate: defaultControls.activate,
         complete: defaultControls.complete,
-        refresh: defaultControls.refresh,
-        stopActiveTask: defaultControls.stopActiveTask,
+        stopTask: defaultControls.stopTask,
         isActive: defaultControls.isActive,
         isStopping: defaultControls.isStopping,
-        activeTaskId: defaultControls.activeTaskId
+        activeTaskIds: defaultControls.activeTaskIds
     };
 })(window);

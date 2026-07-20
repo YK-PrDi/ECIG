@@ -7,6 +7,10 @@ const kpMaterialController = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'main', 'java', 'com', 'elebusiness', 'controller', 'KaiPinMaterialController.java'),
   'utf8'
 );
+const generateController = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'main', 'java', 'com', 'elebusiness', 'controller', 'GenerateController.java'),
+  'utf8'
+);
 const imageGenerationService = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'main', 'java', 'com', 'elebusiness', 'service', 'ImageGenerationService.java'),
   'utf8'
@@ -38,9 +42,9 @@ if (html.includes('未提交生图') || html.includes('return;\n            }\n\
 }
 
 if (!html.includes('function resolveImageAgentId(agentId)') ||
-    !html.includes('const effectiveAgentId = resolveImageAgentId(agentId);') ||
-    !html.includes("formData.set('agentId', effectiveAgentId)") ||
-    !html.includes('const agentId = resolveImageAgentId(selectedAgentId);')) {
+    !html.includes('const agentId = resolveImageAgentId(selectedAgentId);') ||
+    !html.includes("formData.set('agentId', finalAgentId)") ||
+    !generateController.includes('String requestedAgentId = "gemini".equalsIgnoreCase(agentId) ? "gpt-image" : agentId')) {
   fail('custom mode should resolve Gemini analysis model to a real image generation agent before submitting');
 }
 
@@ -51,10 +55,10 @@ if (!html.includes('function parseCustomPromptPoints') ||
     !html.includes('function addCustomPromptPoint') ||
     !html.includes('function collectCustomPromptCards') ||
     !html.includes('doubao-summary-card') ||
-    !html.includes('doubao-point-list') ||
+    !html.includes('doubao-extra-points') ||
     !html.includes('doubao-add-point') ||
     !css.includes('.doubao-summary-card') ||
-    !css.includes('.doubao-point-list') ||
+    !css.includes('.doubao-extra-points') ||
     !css.includes('.doubao-point-card') ||
     !css.includes('.doubao-add-point')) {
   fail('custom Gemini analysis should split every prompt point into editable cards and allow user-defined points');
@@ -69,8 +73,9 @@ if (!imageGenerationService.includes('【总分析】') ||
   fail('custom Gemini analysis should produce one shared summary and continuous per-image plans');
 }
 
-if (!html.includes('const selectedAgentId = params.agentId || document.getElementById') ||
-    !html.includes("formData.append('agentId', agentId)") ||
+if (!html.includes("const selectedAgentId = params.agentId || document.getElementById('agentSelect')?.value") ||
+    !html.includes('const agentId = resolveImageAgentId(selectedAgentId);') ||
+    !html.includes("formData.append('agentId', finalAgentId)") ||
     !kpMaterialController.includes('String generationAgentId = "gemini".equalsIgnoreCase(agentId) ? "gpt-image" : agentId') ||
     !kpMaterialController.includes('generationAgentId,')) {
   fail('kaipin material generation should resolve Gemini analysis model to a real image generation agent');
@@ -162,6 +167,18 @@ const strategyPromptScoped = css.match(/\.kp-strategy-section\s+\.kp-material-pr
 if (!/grid-column:\s*2\s*;/.test(strategyPromptScoped) ||
     !/grid-row:\s*2\s*\/\s*span\s*2\s*;/.test(strategyPromptScoped)) {
   fail('kaipin strategy two-column layout should be scoped to .kp-strategy-section only');
+}
+
+if (html.includes('id="videoModelRail"') ||
+    html.includes('video-model-card') ||
+    css.includes('.video-model-card') ||
+    css.includes('.agent-select-control.video-mode-hidden') ||
+    !html.includes('id="videoModelLevel"') ||
+    !html.includes('id="videoModelHint"') ||
+    !css.includes('.video-model-level-control') ||
+    !/\.video-model-level-control\s*\{[\s\S]*?width:\s*82px/.test(css) ||
+    !css.includes('.video-model-hint.is-visible')) {
+  fail('video mode should reuse the global selector and add only a compact 82px model slider');
 }
 
 if (process.exitCode) {

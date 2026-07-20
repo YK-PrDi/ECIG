@@ -828,10 +828,36 @@ body { background: var(--bg-workspace); color: var(--text-main); font-family: va
     transform: translateY(-2px); background: var(--bg-panel);
 }
 
+.input-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
 .mode-selector { display: flex; gap: 4px; background: var(--border); padding: 4px; border-radius: 12px; }
-.mode-btn { padding: 6px 16px; font-size: 0.8rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; color: var(--text-muted); background: transparent; transition: all 0.2s; font-family: var(--font); }
+.mode-btn { flex: 0 0 auto; padding: 6px 16px; font-size: 0.8rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; color: var(--text-muted); background: transparent; transition: all 0.2s; font-family: var(--font); white-space: nowrap; }
 .mode-btn:hover:not(.active) { color: var(--text-main); }
 .mode-btn.active { background: #FFFFFF; color: #111827; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+
+.input-toolbar > .mode-selector {
+    flex: 0 1 auto;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+
+.input-toolbar > .mode-selector::-webkit-scrollbar {
+    display: none;
+}
+
+.input-toolbar > .agent-select-control {
+    max-width: 100%;
+    margin-left: auto;
+}
 
 textarea { flex: 1; border: none; background: transparent; outline: none; font-family: inherit; font-size: 1rem; color: var(--text-main); resize: none; max-height: 200px; padding: 8px 0; line-height: 1.6; }
 textarea::placeholder { color: var(--text-dim); font-style: normal; }
@@ -860,6 +886,95 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 .panel-view { display: none; width: 100%; gap: 24px; flex-wrap: wrap; align-items: flex-end; }
 .panel-view.active { display: flex; animation: slideUpIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 .panel-view.exit { display: flex; position: absolute; left: 24px; right: 24px; animation: slideDownOut 0.3s forwards; pointer-events: none; }
+
+.agent-model-stack {
+    display: flex;
+    min-width: 160px;
+    flex-direction: column;
+    align-items: center;
+}
+
+.video-model-level-control {
+    position: relative;
+    width: 82px;
+    height: 12px;
+    margin: 4px auto 0;
+}
+
+.video-model-level-control[hidden] {
+    display: none;
+}
+
+.video-model-level-control input[type="range"] {
+    display: block;
+    width: 82px;
+    height: 12px;
+    margin: 0;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.video-model-level-control input[type="range"]:disabled {
+    cursor: default;
+    opacity: 0.42;
+}
+
+.video-model-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    z-index: 30;
+    max-width: 190px;
+    padding: 4px 7px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-panel);
+    box-shadow: var(--shadow-sm);
+    color: var(--text-main);
+    font-size: 0.68rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    visibility: hidden;
+    opacity: 0;
+    transform: translateX(-50%) translateY(2px);
+    transition: opacity 0.12s, transform 0.12s, visibility 0.12s;
+    pointer-events: none;
+}
+
+.video-model-hint.is-visible {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 640px) {
+    .input-toolbar {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .input-toolbar .mode-selector {
+        width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+    }
+
+    .input-toolbar .mode-selector::-webkit-scrollbar {
+        display: none;
+    }
+
+    .input-toolbar .mode-btn {
+        flex: 0 0 auto;
+        padding-inline: 12px;
+    }
+
+    .input-toolbar .agent-select-control {
+        max-width: 100%;
+        margin-left: auto;
+    }
+}
 
 .std-bg-panel {
     min-width: min(620px, 100%);
@@ -1979,6 +2094,11 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 }
 .progress-card-title { font-weight: 500; }
 .progress-card-count { color: var(--text-dim); font-size: 12px; }
+.progress-card-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
 .progress-stop-btn {
     display: inline-flex;
     align-items: center;
@@ -2001,6 +2121,8 @@ input::placeholder, .input-field::placeholder { color: var(--text-dim); font-sty
 .progress-stop-btn:active { transform: scale(0.95); }
 .progress-stop-btn:disabled { cursor: default; }
 .progress-card-bar-wrap {
+    flex: 1;
+    min-width: 0;
     height: 6px;
     background: var(--bg-workspace, #f3f4f6);
     border-radius: 3px;

@@ -139,7 +139,8 @@ public class KaiPinMaterialController {
             @RequestParam(value = "materialPromptOverrides", required = false) String materialPromptOverrides,
             @RequestParam(value = "configJson", required = false) String configJson,
             HttpSession httpSession) {
-        long userId = currentUserService.requireUserId(httpSession);
+        var currentUser = currentUserService.require(httpSession);
+        long userId = currentUser.id();
         if (whiteImage == null || whiteImage.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "请先上传白底产品图"));
         }
@@ -170,7 +171,7 @@ public class KaiPinMaterialController {
                 return ResponseEntity.badRequest().body(Map.of("error", "选中的素材图片不存在，请刷新素材库后重试"));
             }
 
-            GenerationTask task = taskService.createTask(userId, selected.size());
+            GenerationTask task = taskService.createTask(userId, selected.size(), currentUser.role());
             int estimatedPoints = pricingService.estimateImageGeneration("kaipin", generationAgentId, selected.size());
             task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), "kaipin", generationAgentId, estimatedPoints).getId());
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
@@ -199,6 +200,7 @@ public class KaiPinMaterialController {
                         if (task.isCancelled()) return "失败: 已取消";
                         boolean ok = imageGenerationService.generateImageMulti(
                                 userId,
+                                task.getId(),
                                 prompt,
                                 List.of(whiteFinal.getAbsolutePath(), materialImage.getAbsolutePath()),
                                 null,
@@ -209,47 +211,52 @@ public class KaiPinMaterialController {
                     }, executor));
                 }
 
-                int n = 1;
-                for (CompletableFuture<String> f : futures) {
-                    String r;
-                    try {
-                        r = f.get(5, TimeUnit.MINUTES);
-                    } catch (TimeoutException te) {
-                        f.cancel(true);
-                        r = "失败: 单张图超时(>5 分钟)";
-                    } catch (Exception e) {
-                        r = "失败: " + e.getMessage();
-                    }
-                    String name = n++ + ".jpg";
-                    if (r.startsWith("失败")) {
-                        task.addResult(ControllerHelpers.result(name, "error", r, null));
-                    } else {
-                        String outputRef = r;
-                        if (cosService.isEnabled()) {
-                            try {
-                                outputRef = cosService.upload(new File(r), name);
-                            } catch (Exception ce) {
-                                log.warn("COS 上传失败，降级本地路径: {}", ce.getMessage());
-                            }
+                if (!task.isCancelled()) {
+                    int n = 1;
+                    for (CompletableFuture<String> f : futures) {
+                        if (task.isCancelled()) break;
+                        String r;
+                        try {
+                            r = f.get(5, TimeUnit.MINUTES);
+                        } catch (TimeoutException te) {
+                            f.cancel(true);
+                            r = "失败: 单张图超时(>5 分钟)";
+                        } catch (Exception e) {
+                            r = "失败: " + e.getMessage();
                         }
-                        task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
+                        String name = n++ + ".jpg";
+                        if (r.startsWith("失败")) {
+                            task.addResult(ControllerHelpers.result(name, "error", r, null));
+                        } else {
+                            String outputRef = r;
+                            if (cosService.isEnabled()) {
+                                try {
+                                    outputRef = cosService.upload(new File(r), name);
+                                } catch (Exception ce) {
+                                    log.warn("COS 上传失败，降级本地路径: {}", ce.getMessage());
+                                }
+                            }
+                            task.addResult(ControllerHelpers.result(name, "success", null, outputRef, r));
+                        }
+                        task.incrementProgress();
                     }
-                    task.incrementProgress();
-                }
 
-                task.addResult(ControllerHelpers.result("__OUTPUT_DIR__", "info", null, outputDir));
-                task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
-                        "【开品素材库融合】每个选中素材执行 1 次融合：白底产品图保证主体一致，素材图和素材提示词只提供创新参考。", null));
+                    if (!task.isCancelled()) {
+                        task.addResult(ControllerHelpers.result("__OUTPUT_DIR__", "info", null, outputDir));
+                        task.addResult(ControllerHelpers.result("__AI_THOUGHT__0", "info",
+                                "【开品素材库融合】每个选中素材执行 1 次融合：白底产品图保证主体一致，素材图和素材提示词只提供创新参考。", null));
 
-                try {
-                    List<File> refs = new ArrayList<>();
-                    refs.add(whiteFinal);
-                    for (KaiPinMaterial material : selectedFinal) refs.add(new File(material.getImagePath()));
-                    HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refs);
-                    historyService.recordGeneration(userId, sessionId, "kaipin",
-                            basePromptFinal, generationAgentId, archive.refPaths, outputDir, configJson);
-                } catch (Exception e) {
-                    log.warn("开品素材库融合写历史失败（不影响生图）: {}", e.getMessage());
+                        try {
+                            List<File> refs = new ArrayList<>();
+                            refs.add(whiteFinal);
+                            for (KaiPinMaterial material : selectedFinal) refs.add(new File(material.getImagePath()));
+                            HistoryService.ArchiveResult archive = historyService.archiveRefFiles(userId, refs);
+                            historyService.recordGeneration(userId, sessionId, "kaipin",
+                                    basePromptFinal, generationAgentId, archive.refPaths, outputDir, configJson);
+                        } catch (Exception e) {
+                            log.warn("开品素材库融合写历史失败（不影响生图）: {}", e.getMessage());
+                        }
+                    }
                 }
 
                 if (whiteFinal.exists()) whiteFinal.delete();

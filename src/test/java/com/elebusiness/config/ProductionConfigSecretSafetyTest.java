@@ -26,5 +26,16 @@ class ProductionConfigSecretSafetyTest {
         assertTrue(yaml.contains("${LIBLIB_SECRET_KEY:}"));
         assertTrue(yaml.contains("${COS_SECRET_ID:}"));
         assertTrue(yaml.contains("${COS_SECRET_KEY:}"));
+        assertTrue(yaml.contains("${SUIXIANG_GROK_VIDEO_API_KEY:}"));
+        assertTrue(yaml.contains("${SUIXIANG_JIMENG_VIDEO_API_KEY:}"));
+    }
+
+    @Test
+    void localConfigCanResolveIgnoredLocalVideoCredentials() throws Exception {
+        ClassPathResource resource = new ClassPathResource("application.yml");
+        String yaml = new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+
+        assertTrue(yaml.contains("${SUIXIANG_GROK_VIDEO_API_KEY:}"));
+        assertTrue(yaml.contains("${SUIXIANG_JIMENG_VIDEO_API_KEY:}"));
     }
 }

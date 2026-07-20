@@ -112,7 +112,7 @@
             }
 
             if (data.status === 'stopping') {
-                updateCard(taskId, pct, progress + '/' + total, '正在停止', '正在停止生成，等待当前调用结束...');
+                updateCard(taskId, pct, progress + '/' + total, '正在停止', '正在中断当前调用...');
             }
 
             if (data.status !== 'running' && data.status !== 'pending' && data.status !== 'stopping') {

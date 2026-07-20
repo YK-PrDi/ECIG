@@ -9,6 +9,9 @@ import com.elebusiness.service.VideoGenerationService;
 import com.elebusiness.service.auth.CurrentUserService;
 import com.elebusiness.service.billing.BillingService;
 import com.elebusiness.service.billing.GenerationPricingService;
+import com.elebusiness.service.video.OpenAiCompatibleVideoService;
+import com.elebusiness.service.video.VideoModelCatalog;
+import com.elebusiness.service.video.VideoOutputNormalizer;
 import com.elebusiness.service.workspace.UserStorageService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
@@ -43,6 +46,9 @@ public class VideoController {
     private final UserStorageService userStorageService;
     private final BillingService billingService;
     private final GenerationPricingService pricingService;
+    private final OpenAiCompatibleVideoService compatibleVideoService;
+    private final VideoModelCatalog videoModelCatalog;
+    private final VideoOutputNormalizer videoOutputNormalizer;
 
     public VideoController(VideoGenerationService videoGenerationService,
                            SeedanceVideoService seedanceVideoService,
@@ -52,7 +58,10 @@ public class VideoController {
                            CurrentUserService currentUserService,
                            UserStorageService userStorageService,
                            BillingService billingService,
-                           GenerationPricingService pricingService) {
+                           GenerationPricingService pricingService,
+                           OpenAiCompatibleVideoService compatibleVideoService,
+                           VideoModelCatalog videoModelCatalog,
+                           VideoOutputNormalizer videoOutputNormalizer) {
         this.videoGenerationService = videoGenerationService;
         this.seedanceVideoService = seedanceVideoService;
         this.taskService = taskService;
@@ -62,6 +71,24 @@ public class VideoController {
         this.userStorageService = userStorageService;
         this.billingService = billingService;
         this.pricingService = pricingService;
+        this.compatibleVideoService = compatibleVideoService;
+        this.videoModelCatalog = videoModelCatalog;
+        this.videoOutputNormalizer = videoOutputNormalizer;
+    }
+
+    @GetMapping("/models")
+    public ResponseEntity<List<Map<String, Object>>> models() {
+        List<Map<String, Object>> models = videoModelCatalog.models().stream()
+                .map(model -> Map.<String, Object>of(
+                        "id", model.id(),
+                        "name", model.name(),
+                        "providerId", model.providerId(),
+                        "provider", model.providerLabel(),
+                        "level", model.level(),
+                        "inputMode", model.inputMode().name().toLowerCase(java.util.Locale.ROOT),
+                        "configured", model.configured()))
+                .toList();
+        return ResponseEntity.ok(models);
     }
 
     @PostMapping(value = "/generate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -76,27 +103,58 @@ public class VideoController {
             @RequestParam(value = "generateAudio", defaultValue = "true") boolean generateAudio,
             @RequestParam(value = "sessionId", defaultValue = "default") String sessionId,
             HttpSession httpSession) {
-        long userId = currentUserService.requireUserId(httpSession);
+        var currentUser = currentUserService.require(httpSession);
+        long userId = currentUser.id();
+
+        final VideoModelCatalog.ModelView selectedModel;
+        try {
+            selectedModel = videoModelCatalog.require(model);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+        if (!selectedModel.configured()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("success", false, "message", missingCredentialMessage(selectedModel)));
+        }
+
+        int imageCount = images == null
+                ? 0
+                : (int) images.stream().filter(image -> image != null && !image.isEmpty()).count();
+        if (selectedModel.inputMode() == VideoModelCatalog.InputMode.TEXT_ONLY && imageCount > 0) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("success", false, "message", "Grok 文生视频不支持参考图，请移除图片后重试"));
+        }
+        if (selectedModel.inputMode() == VideoModelCatalog.InputMode.IMAGE_ONLY && imageCount != 1) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("success", false, "message", "Grok 图生视频必须上传且只能上传一张参考图"));
+        }
 
         String prompt = promptParam == null ? "" : promptParam.trim();
         if (prompt.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(Map.of("success", false, "message", "提示词不能为空"));
         }
+        log.info("[video generate] userId={}, model={}, provider={}, aspectRatio={}, durationSeconds={}, images={}",
+                userId, selectedModel.id(), selectedModel.providerLabel(), aspectRatio, durationSeconds,
+                images == null ? 0 : images.size());
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         File videoTempDir = userStorageService.ensureDirectory(
                 userStorageService.tempOutputRoot(userId).resolve("视频")).toFile();
-        String outputPath = new File(videoTempDir, "video_" + timestamp + ".mp4").getAbsolutePath();
+        GenerationTask task = taskService.createTask(userId, 1, currentUser.role());
+        String outputPath = new File(
+                videoTempDir,
+                "video_" + timestamp + "_" + task.getId() + ".mp4"
+        ).getAbsolutePath();
 
-        GenerationTask task = taskService.createTask(userId, 1);
         int estimatedPoints = pricingService.estimateVideoGeneration(model, durationSeconds);
         task.setUsageLogId(billingService.recordGenerationStarted(userId, task.getId(), "video", model, estimatedPoints).getId());
         final int dur = durationSeconds;
-        final boolean isSeedance = model.startsWith("doubao-seedance");
+        final List<String> imageDataUris = filesToDataUris(images);
 
         final SeedanceVideoService.Request seedReq;
-        if (isSeedance) {
+        if (selectedModel.provider() == VideoModelCatalog.Provider.SEEDANCE) {
             seedReq = new SeedanceVideoService.Request();
             seedReq.prompt = prompt;
             seedReq.aspectRatio = aspectRatio;
@@ -104,19 +162,20 @@ public class VideoController {
             seedReq.videoUrl = videoUrl;
             seedReq.audioUrl = audioUrl;
             seedReq.generateAudio = generateAudio;
-            seedReq.imageUrls = filesToDataUris(images);
+            seedReq.imageUrls = imageDataUris;
         } else {
             seedReq = null;
         }
 
         taskService.submit(task, () -> {
             try {
-                String savedPath;
-                if (isSeedance) {
-                    savedPath = seedanceVideoService.generateVideo(seedReq, outputPath, task::isCancelled);
-                } else {
-                    savedPath = videoGenerationService.generateVideo(prompt, aspectRatio, dur, outputPath);
-                }
+                String savedPath = switch (selectedModel.provider()) {
+                    case VEO -> videoGenerationService.generateVideo(prompt, aspectRatio, dur, outputPath);
+                    case SEEDANCE -> seedanceVideoService.generateVideo(seedReq, outputPath, task::isCancelled);
+                    case SUIXIANG_GROK, SUIXIANG_JIMENG -> compatibleVideoService.generateVideo(
+                            selectedModel, prompt, imageDataUris, aspectRatio, dur, outputPath);
+                };
+                savedPath = videoOutputNormalizer.normalize(savedPath, aspectRatio);
                 String filename = new File(savedPath).getName();
                 task.addResult(Map.of("type", "video", "filename", filename, "status", "success"));
                 task.incrementProgress();
@@ -151,7 +210,7 @@ public class VideoController {
     }
 
     private List<String> filesToDataUris(List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) return null;
+        if (files == null || files.isEmpty()) return List.of();
         List<String> uris = new ArrayList<>();
         for (MultipartFile f : files) {
             if (f == null || f.isEmpty()) continue;
@@ -164,7 +223,17 @@ public class VideoController {
                 log.warn("读取图片失败: {}", f.getOriginalFilename(), e);
             }
         }
-        return uris.isEmpty() ? null : uris;
+        return List.copyOf(uris);
+    }
+
+    private String missingCredentialMessage(VideoModelCatalog.ModelView model) {
+        String variable = switch (model.provider()) {
+            case VEO -> "GEMINI_API_KEY";
+            case SEEDANCE -> "VOLCENGINE_API_KEY";
+            case SUIXIANG_GROK -> "SUIXIANG_GROK_VIDEO_API_KEY";
+            case SUIXIANG_JIMENG -> "SUIXIANG_JIMENG_VIDEO_API_KEY";
+        };
+        return model.providerLabel() + " API Key 未配置，请填写 " + variable;
     }
 
     @GetMapping("/file")

@@ -19,6 +19,7 @@ public class AppProperties {
     private Auth auth = new Auth();
     private Qwen qwen = new Qwen();
     private Billing billing = new Billing();
+    private SuiXiangVideo suiXiangVideo = new SuiXiangVideo();
 
     public Gemini getGemini() { return gemini; }
     public void setGemini(Gemini gemini) { this.gemini = gemini; }
@@ -44,6 +45,8 @@ public class AppProperties {
     public void setQwen(Qwen qwen) { this.qwen = qwen; }
     public Billing getBilling() { return billing; }
     public void setBilling(Billing billing) { this.billing = billing; }
+    public SuiXiangVideo getSuiXiangVideo() { return suiXiangVideo; }
+    public void setSuiXiangVideo(SuiXiangVideo suiXiangVideo) { this.suiXiangVideo = suiXiangVideo; }
 
     public static class Gemini {
         private String apiKey;
@@ -143,6 +146,8 @@ public class AppProperties {
         private int timeoutSeconds = 75;
         private int maxRetries = 2;
         private int maxConcurrent = 6;
+        private int userMaxConcurrentTasks = 3;
+        private int adminMaxConcurrentTasks = 10;
 
         public int getDelaySeconds() { return delaySeconds; }
         public void setDelaySeconds(int delaySeconds) { this.delaySeconds = delaySeconds; }
@@ -152,6 +157,61 @@ public class AppProperties {
         public void setMaxRetries(int maxRetries) { this.maxRetries = maxRetries; }
         public int getMaxConcurrent() { return maxConcurrent; }
         public void setMaxConcurrent(int maxConcurrent) { this.maxConcurrent = maxConcurrent; }
+        public int getUserMaxConcurrentTasks() { return userMaxConcurrentTasks; }
+        public void setUserMaxConcurrentTasks(int userMaxConcurrentTasks) {
+            this.userMaxConcurrentTasks = userMaxConcurrentTasks;
+        }
+        public int getAdminMaxConcurrentTasks() { return adminMaxConcurrentTasks; }
+        public void setAdminMaxConcurrentTasks(int adminMaxConcurrentTasks) {
+            this.adminMaxConcurrentTasks = adminMaxConcurrentTasks;
+        }
+    }
+
+    public static class SuiXiangVideo {
+        private String baseUrl = "https://sui-xiang.com/v1";
+        private ProviderCredential grok = new ProviderCredential();
+        private ProviderCredential jimeng = new ProviderCredential();
+        private MediaProxy mediaProxy = new MediaProxy();
+
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public ProviderCredential getGrok() { return grok; }
+        public void setGrok(ProviderCredential grok) { this.grok = grok; }
+        public ProviderCredential getJimeng() { return jimeng; }
+        public void setJimeng(ProviderCredential jimeng) { this.jimeng = jimeng; }
+        public MediaProxy getMediaProxy() { return mediaProxy; }
+        public void setMediaProxy(MediaProxy mediaProxy) {
+            this.mediaProxy = mediaProxy == null ? new MediaProxy() : mediaProxy;
+        }
+    }
+
+    public static class MediaProxy {
+        private boolean enabled;
+        private String type = "socks5";
+        private String host = "127.0.0.1";
+        private int port = 40000;
+        private java.util.List<String> hosts = new java.util.ArrayList<>(java.util.List.of("vidgen.x.ai"));
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type == null ? "" : type.trim(); }
+        public String getHost() { return host; }
+        public void setHost(String host) { this.host = host == null ? "" : host.trim(); }
+        public int getPort() { return port; }
+        public void setPort(int port) { this.port = port; }
+        public java.util.List<String> getHosts() { return hosts; }
+        public void setHosts(java.util.List<String> hosts) {
+            this.hosts = hosts == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(hosts);
+        }
+    }
+
+    public static class ProviderCredential {
+        private String apiKey = "";
+
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey == null ? "" : apiKey; }
+        public boolean isConfigured() { return apiKey != null && !apiKey.isBlank(); }
     }
 
     public static class Proxy {

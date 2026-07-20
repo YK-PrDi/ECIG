@@ -153,6 +153,10 @@ public class GptImageAgent implements ImageGeneratorAgent {
         List<File> imageFiles = resolveImageFiles(refImagePaths);
         String size = pickSize(aspect);
         for (RequestCredential credential : credentials) {
+            if (GenerationCancellationContext.isCancellationRequested()) {
+                log.info("GPT-Image 任务已取消，停止后续 key 尝试");
+                return false;
+            }
             String apiKey = credential.apiKey();
             String baseUrl = credential.baseUrl();
             log.info("GPT-Image 尝试 key [{}], baseUrl={}", maskKey(apiKey), baseUrl);
@@ -160,6 +164,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
                     ? generateWithImages(prompt, imageFiles, outputPath, apiKey, baseUrl, size)
                     : generateTextOnly(prompt, outputPath, apiKey, baseUrl, size);
             if (ok) return true;
+            if (GenerationCancellationContext.isCancellationRequested()) return false;
             log.warn("GPT-Image key [{}] 失败，尝试下一个", maskKey(apiKey));
         }
 
@@ -216,45 +221,48 @@ public class GptImageAgent implements ImageGeneratorAgent {
             String boundary = "----GptImageBoundary" + Long.toHexString(System.currentTimeMillis());
             URL url = new URL(baseUrl + "/v1/images/edits");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(300_000);
+            try (var ignored = GenerationCancellationContext.register(conn::disconnect)) {
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(30_000);
+                conn.setReadTimeout(300_000);
 
-            try (OutputStream os = conn.getOutputStream()) {
-                String sizeHint = buildSizeHint(size);
-                String finalPrompt = (prompt != null ? prompt : "product photo on clean background") + sizeHint;
-                writeField(os, boundary, "model", "gpt-image-2");
-                writeField(os, boundary, "prompt", finalPrompt);
-                writeField(os, boundary, "size", size);
-                writeField(os, boundary, "quality", "medium");
-                writeField(os, boundary, "output_format", "jpeg");
-                for (File f : preparedFiles) {
-                    writeFile(os, boundary, "image[]", f);
+                try (OutputStream os = conn.getOutputStream()) {
+                    String sizeHint = buildSizeHint(size);
+                    String finalPrompt = (prompt != null ? prompt : "product photo on clean background") + sizeHint;
+                    writeField(os, boundary, "model", "gpt-image-2");
+                    writeField(os, boundary, "prompt", finalPrompt);
+                    writeField(os, boundary, "size", size);
+                    writeField(os, boundary, "quality", "medium");
+                    writeField(os, boundary, "output_format", "jpeg");
+                    for (File f : preparedFiles) {
+                        writeFile(os, boundary, "image[]", f);
+                    }
+                    os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
                 }
-                os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-            }
 
-            int status = conn.getResponseCode();
-            String respBody;
-            try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
-                respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                int status = conn.getResponseCode();
+                String respBody;
+                try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
+                    respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+
+                if (GenerationCancellationContext.isCancellationRequested()) return false;
+                if (status < 200 || status >= 300) {
+                    log.error("GPT-Image edits 失败 ({}): {}", status, respBody);
+                    return false;
+                }
+
+                boolean saved = saveFromResponse(respBody, outputPath);
+                if (saved && !GenerationCancellationContext.isCancellationRequested()) ensureSize(outputPath, size);
+                return saved;
             } finally {
                 conn.disconnect();
             }
-
-            if (status < 200 || status >= 300) {
-                log.error("GPT-Image edits 失败 ({}): {}", status, respBody);
-                return false;
-            }
-
-            boolean saved = saveFromResponse(respBody, outputPath);
-            if (saved) ensureSize(outputPath, size);
-            return saved;
         } catch (Exception e) {
-            log.error("GPT-Image edits 异常: {}", e.getMessage(), e);
+            logRequestException("GPT-Image edits", e);
             return false;
         } finally {
             for (File t : tempFiles) { try { t.delete(); } catch (Exception ignored) {} }
@@ -315,6 +323,7 @@ public class GptImageAgent implements ImageGeneratorAgent {
             log.info("GPT-Image inpaint 尝试 key [{}], baseUrl={}", maskKey(apiKey), baseUrl);
             boolean ok = doGenerateWithMask(prompt, imageFile, maskFile, outputPath, apiKey, baseUrl, size);
             if (ok) return true;
+            if (GenerationCancellationContext.isCancellationRequested()) return false;
             log.warn("GPT-Image inpaint key [{}] 失败，尝试下一个", maskKey(apiKey));
         }
 
@@ -328,42 +337,45 @@ public class GptImageAgent implements ImageGeneratorAgent {
             String boundary = "----GptImageBoundary" + Long.toHexString(System.currentTimeMillis());
             URL url = new URL(baseUrl + "/v1/images/edits");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(240_000);
+            try (var ignored = GenerationCancellationContext.register(conn::disconnect)) {
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(30_000);
+                conn.setReadTimeout(240_000);
 
-            try (OutputStream os = conn.getOutputStream()) {
-                writeField(os, boundary, "model", "gpt-image-2");
-                writeField(os, boundary, "prompt", prompt != null ? prompt : "");
-                writeField(os, boundary, "size", size);
-                writeField(os, boundary, "quality", "medium");
-                writeField(os, boundary, "output_format", "jpeg");
-                writeFile(os, boundary, "image", imageFile);
-                writeFile(os, boundary, "mask", maskFile);
-                os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-            }
+                try (OutputStream os = conn.getOutputStream()) {
+                    writeField(os, boundary, "model", "gpt-image-2");
+                    writeField(os, boundary, "prompt", prompt != null ? prompt : "");
+                    writeField(os, boundary, "size", size);
+                    writeField(os, boundary, "quality", "medium");
+                    writeField(os, boundary, "output_format", "jpeg");
+                    writeFile(os, boundary, "image", imageFile);
+                    writeFile(os, boundary, "mask", maskFile);
+                    os.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+                }
 
-            int status = conn.getResponseCode();
-            String respBody;
-            try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
-                respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                int status = conn.getResponseCode();
+                String respBody;
+                try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
+                    respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+
+                if (GenerationCancellationContext.isCancellationRequested()) return false;
+                if (status < 200 || status >= 300) {
+                    log.error("GPT-Image inpaint 失败 ({}): {}", status, respBody);
+                    return false;
+                }
+
+                boolean saved = saveFromResponse(respBody, outputPath);
+                if (saved && !GenerationCancellationContext.isCancellationRequested()) ensureSize(outputPath, size);
+                return saved;
             } finally {
                 conn.disconnect();
             }
-
-            if (status < 200 || status >= 300) {
-                log.error("GPT-Image inpaint 失败 ({}): {}", status, respBody);
-                return false;
-            }
-
-            boolean saved = saveFromResponse(respBody, outputPath);
-            if (saved) ensureSize(outputPath, size);
-            return saved;
         } catch (Exception e) {
-            log.error("GPT-Image inpaint 异常: {}", e.getMessage(), e);
+            logRequestException("GPT-Image inpaint", e);
             return false;
         }
     }
@@ -381,41 +393,45 @@ public class GptImageAgent implements ImageGeneratorAgent {
             String jsonBody = mapper.writeValueAsString(payload);
             URL url = new URL(baseUrl + "/v1/images/generations");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(240_000);
+            try (var ignored = GenerationCancellationContext.register(conn::disconnect)) {
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(30_000);
+                conn.setReadTimeout(240_000);
 
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-            }
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+                }
 
-            int status = conn.getResponseCode();
-            String respBody;
-            try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
-                respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                int status = conn.getResponseCode();
+                String respBody;
+                try (InputStream is = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream()) {
+                    respBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+
+                if (GenerationCancellationContext.isCancellationRequested()) return false;
+                if (status < 200 || status >= 300) {
+                    log.error("GPT-Image generations 失败 ({}): {}", status, respBody);
+                    return false;
+                }
+
+                boolean saved = saveFromResponse(respBody, outputPath);
+                if (saved && !GenerationCancellationContext.isCancellationRequested()) ensureSize(outputPath, size);
+                return saved;
             } finally {
                 conn.disconnect();
             }
-
-            if (status < 200 || status >= 300) {
-                log.error("GPT-Image generations 失败 ({}): {}", status, respBody);
-                return false;
-            }
-
-            boolean saved = saveFromResponse(respBody, outputPath);
-            if (saved) ensureSize(outputPath, size);
-            return saved;
         } catch (Exception e) {
-            log.error("GPT-Image generations 异常: {}", e.getMessage(), e);
+            logRequestException("GPT-Image generations", e);
             return false;
         }
     }
 
     @SuppressWarnings("unchecked")
     private boolean saveFromResponse(String respBody, String outputPath) throws Exception {
+        if (GenerationCancellationContext.isCancellationRequested()) return false;
         Map<String, Object> resp = mapper.readValue(respBody, Map.class);
         List<Map<String, Object>> data = (List<Map<String, Object>>) resp.get("data");
         if (data == null || data.isEmpty()) {
@@ -429,9 +445,17 @@ public class GptImageAgent implements ImageGeneratorAgent {
 
         if (item.containsKey("b64_json")) {
             byte[] imgBytes = Base64.getDecoder().decode((String) item.get("b64_json"));
-            try (FileOutputStream fos = new FileOutputStream(outputPath)) {
+            if (GenerationCancellationContext.isCancellationRequested()) return false;
+            File tempFile = new File(outputPath + ".part");
+            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
                 fos.write(imgBytes);
             }
+            if (GenerationCancellationContext.isCancellationRequested()) {
+                Files.deleteIfExists(tempFile.toPath());
+                return false;
+            }
+            Files.move(tempFile.toPath(), new File(outputPath).toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             log.info("GPT-Image 生成成功 (base64) -> {}", outputPath);
             return true;
         }
@@ -517,24 +541,46 @@ public class GptImageAgent implements ImageGeneratorAgent {
     }
 
     private boolean downloadUrl(String imgUrl, String outputPath) {
+        File tempFile = new File(outputPath + ".part");
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(imgUrl).openConnection();
-            conn.setConnectTimeout(15_000);
-            conn.setReadTimeout(60_000);
-            File parent = new File(outputPath).getParentFile();
-            if (parent != null) parent.mkdirs();
-            try (InputStream in = conn.getInputStream();
-                 FileOutputStream fos = new FileOutputStream(outputPath)) {
-                in.transferTo(fos);
+            try (var ignored = GenerationCancellationContext.register(conn::disconnect)) {
+                conn.setConnectTimeout(15_000);
+                conn.setReadTimeout(60_000);
+                File parent = new File(outputPath).getParentFile();
+                if (parent != null) parent.mkdirs();
+                try (InputStream in = conn.getInputStream();
+                     FileOutputStream fos = new FileOutputStream(tempFile)) {
+                    in.transferTo(fos);
+                }
+                if (GenerationCancellationContext.isCancellationRequested()) {
+                    Files.deleteIfExists(tempFile.toPath());
+                    return false;
+                }
+                Files.move(tempFile.toPath(), new File(outputPath).toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             } finally {
                 conn.disconnect();
             }
             log.info("GPT-Image 生成成功 (url) -> {}", outputPath);
             return true;
         } catch (Exception e) {
-            log.error("GPT-Image 下载图片失败: {}", e.getMessage(), e);
+            logRequestException("GPT-Image 下载图片", e);
             return false;
+        } finally {
+            try {
+                Files.deleteIfExists(tempFile.toPath());
+            } catch (Exception ignored) {
+            }
         }
+    }
+
+    private void logRequestException(String operation, Exception exception) {
+        if (GenerationCancellationContext.isCancellationRequested()) {
+            log.info("{} 已取消", operation);
+            return;
+        }
+        log.error("{} 异常: {}", operation, exception.getMessage(), exception);
     }
 
     public record RequestCredential(String source, String apiKey, String baseUrl) {

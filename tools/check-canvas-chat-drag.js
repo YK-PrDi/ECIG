@@ -34,7 +34,13 @@ async function run() {
         if (!login.ok() || !loginBody.success) throw new Error('画布拖拽检查登录失败');
 
         const page = await context.newPage();
-        await page.goto(`${baseUrl}/index.html`, { waitUntil: 'networkidle', timeout: 30000 });
+        await page.route('https://fonts.googleapis.com/**', route => route.abort());
+        await page.route('https://fonts.gstatic.com/**', route => route.abort());
+        await page.goto(`${baseUrl}/index.html`, { waitUntil: 'commit', timeout: 30000 });
+        await page.waitForSelector('#boardCanvas', { state: 'visible', timeout: 30000 });
+        await page.waitForFunction(() => typeof board !== 'undefined' && board && Array.isArray(board.nodes), null, {
+            timeout: 30000
+        });
         await page.evaluate(() => {
             const source = document.createElement('canvas');
             source.width = 640;
