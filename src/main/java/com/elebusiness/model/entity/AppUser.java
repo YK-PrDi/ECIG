@@ -29,6 +29,9 @@ public class AppUser {
     @Column(nullable = false, length = 32)
     private String role = "USER";
 
+    /** 所属企业（enterprise.id）。SUPERADMIN（平台中控）为空 */
+    private Long enterpriseId;
+
     @Column(nullable = false)
     private boolean enabled = true;
 
@@ -60,6 +63,8 @@ public class AppUser {
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+    public Long getEnterpriseId() { return enterpriseId; }
+    public void setEnterpriseId(Long enterpriseId) { this.enterpriseId = enterpriseId; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public LocalDateTime getCreatedAt() { return createdAt; }

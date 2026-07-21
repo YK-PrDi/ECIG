@@ -75,7 +75,7 @@ class SettingsControllerAuthorizationTest {
     private MockHttpSession userSession(String role) {
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", role));
+        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", role, 1L));
         return session;
     }
 }

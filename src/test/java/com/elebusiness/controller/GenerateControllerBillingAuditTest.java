@@ -62,7 +62,7 @@ class GenerateControllerBillingAuditTest {
 
             CurrentUserService currentUserService = new CurrentUserService();
             MockHttpSession session = new MockHttpSession();
-            currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER"));
+            currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER", 1L));
 
             BillingService billingService = mock(BillingService.class);
             GenerationUsageLog usageLog = new GenerationUsageLog();
@@ -119,7 +119,7 @@ class GenerateControllerBillingAuditTest {
 
             CurrentUserService currentUserService = new CurrentUserService();
             MockHttpSession session = new MockHttpSession();
-            currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER"));
+            currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER", 1L));
 
             BillingService billingService = mock(BillingService.class);
             GenerationUsageLog usageLog = new GenerationUsageLog();
@@ -150,7 +150,7 @@ class GenerateControllerBillingAuditTest {
         props.getPaths().setUserDataDir(Files.createTempDirectory("inpaint-user-data").toString());
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER"));
+        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER", 1L));
         AtomicReference<Long> capturedUserId = new AtomicReference<>(0L);
         GptImageAgent gptImageAgent = new GptImageAgent(props, mock(UserProviderCredentialService.class)) {
             @Override

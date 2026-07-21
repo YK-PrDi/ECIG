@@ -29,13 +29,17 @@ public class ConfigController {
 
     public ConfigController(ConfigService configService, DingTalkService dingTalkService,
                             ImageGenerationService imageGenerationService, PromptService promptService,
-                            CurrentUserService currentUserService) {
+                            CurrentUserService currentUserService,
+                            com.elebusiness.config.AppProperties appProperties) {
         this.configService = configService;
         this.dingTalkService = dingTalkService;
         this.imageGenerationService = imageGenerationService;
         this.promptService = promptService;
         this.currentUserService = currentUserService;
+        this.appProperties = appProperties;
     }
+
+    private final com.elebusiness.config.AppProperties appProperties;
 
     @GetMapping("/api/prompts")
     public List<Map<String, Object>> getPrompts() {
@@ -74,7 +78,9 @@ public class ConfigController {
                 && hasText(dingtalk.get("union_id"))
                 && hasText(dingtalk.get("app_uuid"))
                 && hasText(dingtalk.get("sheet_id"));
-        return Map.of("dingtalkConfigured", configured);
+        return Map.of(
+                "dingtalkConfigured", configured,
+                "registrationEnabled", appProperties.getAuth().isRegistrationEnabled());
     }
 
     @PostMapping("/api/config")

@@ -16,10 +16,39 @@ public class AuthController {
 
     private final AuthService authService;
     private final CurrentUserService currentUserService;
+    private final com.elebusiness.config.AppProperties appProperties;
 
-    public AuthController(AuthService authService, CurrentUserService currentUserService) {
+    public AuthController(AuthService authService, CurrentUserService currentUserService,
+                          com.elebusiness.config.AppProperties appProperties) {
         this.authService = authService;
         this.currentUserService = currentUserService;
+        this.appProperties = appProperties;
+    }
+
+    /**
+     * 自助注册（模块化开关：app.auth.registration-enabled / REGISTRATION_ENABLED）。
+     * 默认关闭 —— 只保留接口，开关联通后即可恢复，无需改代码。
+     */
+    @PostMapping("/register")
+    public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> body,
+                                                        HttpSession session) {
+        if (!appProperties.getAuth().isRegistrationEnabled()) {
+            return ResponseEntity.status(403).body(Map.of(
+                    "success", false, "error", "注册暂未开放，请联系管理员开通账号"));
+        }
+        try {
+            AuthService.AuthUser user = authService.register(
+                    body == null ? null : body.get("username"),
+                    body == null ? null : body.get("password"),
+                    body == null ? null : body.get("displayName"),
+                    body == null ? null : body.get("enterpriseName"));
+            currentUserService.bind(session, user);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "user", currentUserService.toMap(user)));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
+        }
     }
 
     @PostMapping("/login")

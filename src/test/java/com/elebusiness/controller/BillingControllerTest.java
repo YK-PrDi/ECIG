@@ -194,13 +194,21 @@ class BillingControllerTest {
     @Test
     void onlyAdminCanCreditWallet() {
         BillingService billingService = mock(BillingService.class);
-        BillingController controller = controller(billingService, mock(WalletLedgerRepository.class),
-                mock(GenerationUsageLogRepository.class), mock(PaymentOrderRepository.class), mock(PaymentOrderService.class));
+        com.elebusiness.repository.AppUserRepository appUserRepository =
+                mock(com.elebusiness.repository.AppUserRepository.class);
+        BillingController controller = new BillingController(billingService, mock(WalletLedgerRepository.class),
+                mock(GenerationUsageLogRepository.class), mock(PaymentOrderRepository.class),
+                mock(PaymentOrderService.class), mock(UserWalletRepository.class),
+                mock(BillingDailySummaryService.class), new CurrentUserService(), appUserRepository);
 
         assertThrows(ResponseStatusException.class, () -> controller.credit(
                 Map.<String, Object>of("userId", 2002L, "points", 100),
                 userSession(1001L, "USER")));
 
+        com.elebusiness.model.entity.AppUser target = new com.elebusiness.model.entity.AppUser();
+        target.setId(2002L);
+        target.setEnterpriseId(1L);
+        when(appUserRepository.findById(2002L)).thenReturn(java.util.Optional.of(target));
         WalletLedger ledger = new WalletLedger();
         ledger.setUserId(2002L);
         ledger.setPointsDelta(100);
@@ -459,13 +467,13 @@ class BillingControllerTest {
                                          BillingDailySummaryService dailySummaryService) {
         return new BillingController(billingService, ledgerRepository, usageLogRepository,
                 paymentOrderRepository, paymentOrderService, walletRepository, dailySummaryService,
-                new CurrentUserService());
+                new CurrentUserService(), mock(com.elebusiness.repository.AppUserRepository.class));
     }
 
     private MockHttpSession userSession(long userId, String role) {
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(userId, "user" + userId, "User " + userId, role));
+        currentUserService.bind(session, new AuthService.AuthUser(userId, "user" + userId, "User " + userId, role, 1L));
         return session;
     }
 

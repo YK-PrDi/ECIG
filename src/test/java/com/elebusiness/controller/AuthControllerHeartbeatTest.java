@@ -18,9 +18,9 @@ class AuthControllerHeartbeatTest {
     @Test
     void heartbeatReturnsAuthenticatedUserAndServerTime() {
         CurrentUserService currentUserService = new CurrentUserService();
-        AuthController controller = new AuthController(mock(AuthService.class), currentUserService);
+        AuthController controller = new AuthController(mock(AuthService.class), currentUserService, mock(com.elebusiness.config.AppProperties.class));
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(7L, "user7", "User 7", "USER"));
+        currentUserService.bind(session, new AuthService.AuthUser(7L, "user7", "User 7", "USER", 1L));
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setSession(session);
 
@@ -37,7 +37,7 @@ class AuthControllerHeartbeatTest {
 
     @Test
     void heartbeatDoesNotCreateAnonymousSession() {
-        AuthController controller = new AuthController(mock(AuthService.class), new CurrentUserService());
+        AuthController controller = new AuthController(mock(AuthService.class), new CurrentUserService(), mock(com.elebusiness.config.AppProperties.class));
         MockHttpServletRequest request = new MockHttpServletRequest();
 
         Map<String, Object> body = controller.heartbeat(request).getBody();

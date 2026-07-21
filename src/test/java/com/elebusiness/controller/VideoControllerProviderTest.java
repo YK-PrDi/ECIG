@@ -152,7 +152,7 @@ class VideoControllerProviderTest {
                 });
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(1001L, "admin", "Admin", "ADMIN"));
+        currentUserService.bind(session, new AuthService.AuthUser(1001L, "admin", "Admin", "ADMIN", 1L));
         VideoModelCatalog catalog = new VideoModelCatalog(properties);
         OpenAiCompatibleVideoService compatible = mock(OpenAiCompatibleVideoService.class);
         VideoController controller = new VideoController(

@@ -41,6 +41,7 @@ public class BillingController {
     private final UserWalletRepository walletRepository;
     private final BillingDailySummaryService dailySummaryService;
     private final CurrentUserService currentUserService;
+    private final com.elebusiness.repository.AppUserRepository appUserRepository;
 
     public BillingController(BillingService billingService,
                              WalletLedgerRepository ledgerRepository,
@@ -49,7 +50,8 @@ public class BillingController {
                              PaymentOrderService paymentOrderService,
                              UserWalletRepository walletRepository,
                              BillingDailySummaryService dailySummaryService,
-                             CurrentUserService currentUserService) {
+                             CurrentUserService currentUserService,
+                             com.elebusiness.repository.AppUserRepository appUserRepository) {
         this.billingService = billingService;
         this.ledgerRepository = ledgerRepository;
         this.usageLogRepository = usageLogRepository;
@@ -58,6 +60,7 @@ public class BillingController {
         this.walletRepository = walletRepository;
         this.dailySummaryService = dailySummaryService;
         this.currentUserService = currentUserService;
+        this.appUserRepository = appUserRepository;
     }
 
     @GetMapping("/api/billing/wallet")
@@ -485,11 +488,18 @@ public class BillingController {
     @PostMapping("/api/billing/admin/credit")
     public ResponseEntity<Map<String, Object>> credit(@RequestBody Map<String, Object> body,
                                                       HttpSession session) {
-        currentUserService.requireAdmin(session);
+        com.elebusiness.service.auth.AuthService.AuthUser operator = currentUserService.requireAdmin(session);
         long userId = longValue(body, "userId", 0);
         long points = longValue(body, "points", 0);
         if (userId <= 0 || points <= 0) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId 和 points 必须大于 0"));
+        }
+        // 企业负责人只能给本企业成员充值；平台中控不受限
+        if (!operator.isSuperadmin()) {
+            var target = appUserRepository.findById(userId).orElse(null);
+            if (target == null || !java.util.Objects.equals(operator.enterpriseId(), target.getEnterpriseId())) {
+                return ResponseEntity.status(403).body(Map.of("success", false, "error", "只能给本企业成员充值"));
+            }
         }
         String remark = stringValue(body, "remark", "");
         String idempotencyKey = stringValue(body, "idempotencyKey", "");

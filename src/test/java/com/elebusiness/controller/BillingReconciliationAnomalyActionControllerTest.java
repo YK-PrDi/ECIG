@@ -65,7 +65,7 @@ class BillingReconciliationAnomalyActionControllerTest {
     private MockHttpSession userSession(long userId, String role) {
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(userId, "user" + userId, "User " + userId, role));
+        currentUserService.bind(session, new AuthService.AuthUser(userId, "user" + userId, "User " + userId, role, 1L));
         return session;
     }
 }

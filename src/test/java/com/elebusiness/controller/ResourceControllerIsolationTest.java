@@ -36,7 +36,7 @@ class ResourceControllerIsolationTest {
         UserStorageService storageService = new UserStorageService(props);
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER"));
+        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER", 1L));
 
         ResourceController controller = new ResourceController(
                 null, props, null, null, currentUserService, storageService);
@@ -61,7 +61,7 @@ class ResourceControllerIsolationTest {
         UserStorageService storageService = new UserStorageService(props);
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER"));
+        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER", 1L));
 
         Path galleryRoot = storageService.ensureDirectory(storageService.galleryRoot(1001L));
         Path batchDir = Files.createDirectories(galleryRoot.resolve("batch"));

@@ -66,7 +66,7 @@ class VideoControllerConcurrencyTest {
                 });
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER"));
+        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER", 1L));
         VideoController controller = new VideoController(
                 videoService,
                 mock(SeedanceVideoService.class),

@@ -263,6 +263,8 @@ public class AppProperties {
         private String username = "admin";
         private String password = "123456";
         private String displayName = "Admin 用户";
+        /** 自助注册开关：默认关闭，REGISTRATION_ENABLED=true 可随时开回 */
+        private boolean registrationEnabled = false;
 
         public String getUsername() { return username; }
         public void setUsername(String username) { this.username = username; }
@@ -270,6 +272,8 @@ public class AppProperties {
         public void setPassword(String password) { this.password = password; }
         public String getDisplayName() { return displayName; }
         public void setDisplayName(String displayName) { this.displayName = displayName; }
+        public boolean isRegistrationEnabled() { return registrationEnabled; }
+        public void setRegistrationEnabled(boolean registrationEnabled) { this.registrationEnabled = registrationEnabled; }
     }
 
     public static class Qwen {

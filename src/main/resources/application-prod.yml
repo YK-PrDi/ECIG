@@ -78,6 +78,7 @@ app:
   auth:
     username: "${APP_USERNAME:admin}"
     password: "${APP_PASSWORD:}"
+    registration-enabled: "${REGISTRATION_ENABLED:false}"
 
   billing:
     callback-token: "${BILLING_CALLBACK_TOKEN:}"

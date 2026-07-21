@@ -3,6 +3,8 @@ package com.elebusiness.service.auth;
 import com.elebusiness.config.AppProperties;
 import com.elebusiness.model.entity.AppUser;
 import com.elebusiness.repository.AppUserRepository;
+import com.elebusiness.repository.CompanyAssetRepository;
+import com.elebusiness.repository.EnterpriseRepository;
 import com.elebusiness.service.billing.BillingService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +15,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,7 +44,9 @@ class AuthServiceTest {
 
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
 
-        AuthService service = new AuthService(userRepository, billingService, props, hasher);
+        AuthService service = new AuthService(userRepository,
+                mock(EnterpriseRepository.class), mock(CompanyAssetRepository.class),
+                billingService, props, hasher);
 
         Optional<AuthService.AuthUser> result = service.authenticate("", "123456");
 

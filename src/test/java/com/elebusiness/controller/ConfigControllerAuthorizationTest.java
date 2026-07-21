@@ -44,13 +44,14 @@ class ConfigControllerAuthorizationTest {
     }
 
     private ConfigController controller(ConfigService configService) {
-        return new ConfigController(configService, null, null, null, new CurrentUserService());
+        return new ConfigController(configService, null, null, null, new CurrentUserService(),
+                new com.elebusiness.config.AppProperties());
     }
 
     private MockHttpSession userSession(String role) {
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
-        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", role));
+        currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", role, 1L));
         return session;
     }
 }
