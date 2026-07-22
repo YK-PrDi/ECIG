@@ -383,9 +383,9 @@
       state.stopPoll = App.pollTask(data.taskId, {
         onProgress: (d) => showProgress(d.progress || 0, d.total || 1, d.currentProduct, d.status),
         onResult: (r) => {
-          const out = r.output || '';
-          if (out) {
-            const raw = r.localPath || out;
+          // 优先使用localPath(通过/api/image代理),fallback到output(COS直链)
+          const raw = r.localPath || r.output;
+          if (raw) {
             addImage(App.toImgUrl(raw), r.name, raw, 'custom');
           }
         },
