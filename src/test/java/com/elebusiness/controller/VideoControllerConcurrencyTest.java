@@ -67,6 +67,7 @@ class VideoControllerConcurrencyTest {
         CurrentUserService currentUserService = new CurrentUserService();
         MockHttpSession session = new MockHttpSession();
         currentUserService.bind(session, new AuthService.AuthUser(1001L, "alice", "Alice", "USER", 1L));
+        VideoModelCatalog catalog = new VideoModelCatalog(properties);
         VideoController controller = new VideoController(
                 videoService,
                 mock(SeedanceVideoService.class),
@@ -77,9 +78,10 @@ class VideoControllerConcurrencyTest {
                 new UserStorageService(properties),
                 billingService,
                 new GenerationPricingService(properties),
-                mock(OpenAiCompatibleVideoService.class),
-                new VideoModelCatalog(properties),
-                passthroughNormalizer()
+                mock(com.elebusiness.service.video.OpenAiCompatibleVideoService.class),
+                catalog,
+                mock(com.elebusiness.service.video.VideoOutputNormalizer.class),
+                mock(com.elebusiness.service.video.VideoConnectivityTestService.class)
         );
 
         ResponseEntity<Map<String, Object>> first = controller.generate(

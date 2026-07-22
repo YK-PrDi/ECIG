@@ -10,6 +10,7 @@ import com.elebusiness.service.auth.CurrentUserService;
 import com.elebusiness.service.billing.BillingService;
 import com.elebusiness.service.billing.GenerationPricingService;
 import com.elebusiness.service.video.OpenAiCompatibleVideoService;
+import com.elebusiness.service.video.VideoConnectivityTestService;
 import com.elebusiness.service.video.VideoModelCatalog;
 import com.elebusiness.service.video.VideoOutputNormalizer;
 import com.elebusiness.service.workspace.UserStorageService;
@@ -49,6 +50,7 @@ public class VideoController {
     private final OpenAiCompatibleVideoService compatibleVideoService;
     private final VideoModelCatalog videoModelCatalog;
     private final VideoOutputNormalizer videoOutputNormalizer;
+    private final VideoConnectivityTestService connectivityTestService;
 
     public VideoController(VideoGenerationService videoGenerationService,
                            SeedanceVideoService seedanceVideoService,
@@ -61,7 +63,8 @@ public class VideoController {
                            GenerationPricingService pricingService,
                            OpenAiCompatibleVideoService compatibleVideoService,
                            VideoModelCatalog videoModelCatalog,
-                           VideoOutputNormalizer videoOutputNormalizer) {
+                           VideoOutputNormalizer videoOutputNormalizer,
+                           VideoConnectivityTestService connectivityTestService) {
         this.videoGenerationService = videoGenerationService;
         this.seedanceVideoService = seedanceVideoService;
         this.taskService = taskService;
@@ -74,6 +77,7 @@ public class VideoController {
         this.compatibleVideoService = compatibleVideoService;
         this.videoModelCatalog = videoModelCatalog;
         this.videoOutputNormalizer = videoOutputNormalizer;
+        this.connectivityTestService = connectivityTestService;
     }
 
     @GetMapping("/models")
@@ -89,6 +93,33 @@ public class VideoController {
                         "configured", model.configured()))
                 .toList();
         return ResponseEntity.ok(models);
+    }
+
+    @GetMapping("/connectivity")
+    public ResponseEntity<Map<String, Object>> connectivity() {
+        log.info("[connectivity test] 开始测试视频提供商连通性");
+        long startTime = System.currentTimeMillis();
+
+        List<VideoConnectivityTestService.ConnectivityResult> results = connectivityTestService.testAll();
+        long totalTime = System.currentTimeMillis() - startTime;
+
+        long okCount = results.stream().filter(r -> "OK".equals(r.status())).count();
+        long failedCount = results.stream().filter(r -> "FAILED".equals(r.status()) || "AUTH_FAILED".equals(r.status())).count();
+        long skippedCount = results.stream().filter(r -> "SKIPPED".equals(r.status())).count();
+
+        log.info("[connectivity test] 完成 - 总耗时{}ms, OK:{}, FAILED:{}, SKIPPED:{}",
+                totalTime, okCount, failedCount, skippedCount);
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "totalTimeMs", totalTime,
+                "summary", Map.of(
+                        "ok", okCount,
+                        "failed", failedCount,
+                        "skipped", skippedCount
+                ),
+                "results", results
+        ));
     }
 
     @PostMapping(value = "/generate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

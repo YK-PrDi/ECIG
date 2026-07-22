@@ -167,7 +167,8 @@ class VideoControllerProviderTest {
                 new GenerationPricingService(properties),
                 compatible,
                 catalog,
-                passthroughNormalizer()
+                passthroughNormalizer(),
+                mock(com.elebusiness.service.video.VideoConnectivityTestService.class)
         );
         return new Fixture(controller, session, billingService, compatible);
     }
