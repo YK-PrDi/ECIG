@@ -67,6 +67,8 @@ public class OpenAiCompatibleVideoService {
     private final long mediaRetryDelayMillis;
     private final OkHttpClient apiClient;
     private final VideoMediaProxyPolicy mediaProxyPolicy;
+    /** 传递当前轮询请求的 apiKey，供 findMedia 解析相对路径视频地址时携带认证 */
+    private final ThreadLocal<String> currentApiKeyHolder = new ThreadLocal<>();
 
     @Autowired
     public OpenAiCompatibleVideoService(AppProperties properties, VideoModelCatalog catalog) {
@@ -121,6 +123,7 @@ public class OpenAiCompatibleVideoService {
         Path partial = output.resolveSibling(output.getFileName() + ".part");
         Files.createDirectories(output.toAbsolutePath().getParent());
         Files.deleteIfExists(partial);
+        currentApiKeyHolder.set(credential.getApiKey());
         try {
             JsonNode submission = switch (model.provider()) {
                 case SUIXIANG_GROK -> submitGrok(
@@ -147,6 +150,8 @@ public class OpenAiCompatibleVideoService {
             Files.deleteIfExists(partial);
             Files.deleteIfExists(output);
             throw e;
+        } finally {
+            currentApiKeyHolder.remove();
         }
     }
 
@@ -445,7 +450,35 @@ public class OpenAiCompatibleVideoService {
         if (matcher.find()) {
             return new MediaResult(stripTrailingPunctuation(matcher.group()), null, null);
         }
+        // Grok 等 provider 返回相对路径视频地址（如 /v1/videos/{id}/content），
+        // 拼接 base-url 的 host 根，并携带 apiKey 以便下载受保护资源
+        String relative = resolveRelativeMediaPath(trimmed);
+        if (relative != null) {
+            return new MediaResult(relative, null, currentApiKeyHolder.get());
+        }
         return null;
+    }
+
+    /**
+     * 将相对路径视频地址解析为完整 URL。
+     * base-url 形如 https://host/v1，相对路径形如 /v1/videos/{id}/content，
+     * 二者可能重复 /v1 前缀，需按 host 根拼接避免出现 /v1/v1。
+     */
+    private String resolveRelativeMediaPath(String value) {
+        if (value == null) return null;
+        String path = value.trim();
+        if (!path.startsWith("/") || path.contains(" ")) return null;
+        if (!(path.contains("/video") || path.endsWith("/content"))) return null;
+        String base = baseUrl();
+        try {
+            java.net.URI baseUri = java.net.URI.create(base);
+            String origin = baseUri.getScheme() + "://" + baseUri.getAuthority();
+            return origin + path;
+        } catch (Exception e) {
+            // 兜底：去掉 base 末尾的 /vN 段后拼接
+            String origin = base.replaceAll("/v\\d+$", "");
+            return origin + path;
+        }
     }
 
     private String extractTaskId(JsonNode root) {
