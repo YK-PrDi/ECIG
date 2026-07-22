@@ -50,7 +50,23 @@
               <select id="vdAspect"><option>16:9</option><option>9:16</option><option>1:1</option></select>
             </div>
             <div class="form-row"><label>时长（秒）</label>
-              <select id="vdDuration"><option>4</option><option selected>8</option><option>10</option></select>
+              <select id="vdDuration">
+                <option>1</option>
+                <option>2</option>
+                <option>3</option>
+                <option>4</option>
+                <option>5</option>
+                <option>6</option>
+                <option>7</option>
+                <option selected>8</option>
+                <option>9</option>
+                <option>10</option>
+                <option>11</option>
+                <option>12</option>
+                <option>13</option>
+                <option>14</option>
+                <option>15</option>
+              </select>
             </div>
             <button class="btn btn-primary btn-block" id="vdRun">开始生成视频</button>
           </div>
@@ -221,7 +237,7 @@
     $('#vdResults').innerHTML = `
       <div class="card reveal">
         <div class="card-head"><b>生成视频</b><small class="muted">${esc(filename)}</small></div>
-        <video controls preload="metadata" style="width:100%;border-radius:8px;background:#000" src="${esc(url)}"></video>
+        <video controls preload="metadata" style="max-width:100%;max-height:600px;width:auto;height:auto;display:block;margin:0 auto;border-radius:8px;background:#000" src="${esc(url)}"></video>
         <div class="ri-actions" style="padding:10px 0 0">
           <a class="btn btn-outline" href="${esc(url)}" download="${esc(filename)}">⬇ 下载到电脑</a>
           <button class="ri-btn" data-publish-asset="${esc(filename)}" data-title="${esc(filename)}" data-type="video" data-mode="video">☁ 存入企业库</button>
