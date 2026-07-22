@@ -193,19 +193,19 @@ public class OpenAiCompatibleVideoService {
                                   List<String> imageDataUris,
                                   String aspectRatio,
                                   int durationSeconds) throws Exception {
+        // 即梦只支持文生视频,不支持图生视频(参考图会导致任务失败)
+        if (imageDataUris != null && !imageDataUris.isEmpty()) {
+            throw new IllegalArgumentException("即梦视频只支持文本提示词,不支持上传参考图");
+        }
+
+        // 即梦要求: model、prompt、seconds(字符串)、aspect_ratio(字符串,如"16:9")
+        // 不能传 size/width/height/image 等其他参数,否则任务失败
         MultipartBody.Builder body = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("model", model.id())
                 .addFormDataPart("prompt", normalizePrompt(prompt))
                 .addFormDataPart("seconds", String.valueOf(Math.max(1, Math.min(15, durationSeconds))))
-                .addFormDataPart("size", toVideoSize(aspectRatio));
-        firstImage(imageDataUris).ifPresent(image -> {
-            DataUri dataUri = decodeDataUri(image);
-            body.addFormDataPart(
-                    "input_reference",
-                    dataUri.fileName(),
-                    RequestBody.create(dataUri.bytes(), MediaType.get(dataUri.mediaType())));
-        });
+                .addFormDataPart("aspect_ratio", normalizeAspectRatio(aspectRatio));
 
         Request request = authorizedRequest(apiKey, "/videos")
                 .post(body.build())
@@ -563,6 +563,16 @@ public class OpenAiCompatibleVideoService {
         return Set.of("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3").contains(value)
                 ? value
                 : "16:9";
+    }
+
+    private String normalizeAspectRatio(String aspectRatio) {
+        // 即梦只支持 16:9 横屏和 9:16 竖屏,固定 720P
+        String value = aspectRatio == null ? "" : aspectRatio.trim();
+        if ("9:16".equals(value)) {
+            return "9:16";
+        }
+        // 其他比例一律映射到 16:9
+        return "16:9";
     }
 
     private String toVideoSize(String aspectRatio) {

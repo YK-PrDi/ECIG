@@ -158,10 +158,11 @@ class OpenAiCompatibleVideoServiceTest {
         OpenAiCompatibleVideoService service = service(properties, catalog, Duration.ofSeconds(2));
         Path output = tempDir.resolve("jimeng.mp4");
 
+        // 即梦只支持文生视频,不传图片
         service.generateVideo(
                 catalog.require("video-ds-2.0"),
                 "镜头缓慢推进",
-                List.of("data:image/png;base64,aW1hZ2U="),
+                List.of(),  // 即梦不支持图片
                 "9:16",
                 6,
                 output.toString());
@@ -170,8 +171,8 @@ class OpenAiCompatibleVideoServiceTest {
         assertMultipartField(createBody.get(), "model", "video-ds-2.0");
         assertMultipartField(createBody.get(), "prompt", "镜头缓慢推进");
         assertMultipartField(createBody.get(), "seconds", "6");
-        assertMultipartField(createBody.get(), "size", "720x1280");
-        assertTrue(createBody.get().contains("name=\"input_reference\""));
+        assertMultipartField(createBody.get(), "aspect_ratio", "9:16");
+        assertFalse(createBody.get().contains("input_reference"), "即梦不应包含图片字段");
         assertEquals("Bearer jimeng-key", contentAuthorization.get());
         assertArrayEquals(expectedVideo, Files.readAllBytes(output));
     }
