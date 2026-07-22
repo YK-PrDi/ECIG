@@ -9,12 +9,12 @@ import java.util.List;
 public class VideoModelCatalog {
 
     private static final List<ModelDefinition> DEFINITIONS = List.of(
-            new ModelDefinition("veo-3.1-generate-preview", "Veo 3.1", "google", "Google", Provider.VEO, 0, InputMode.FLEXIBLE),
-            new ModelDefinition("doubao-seedance-2-0-260128", "Seedance 2.0", "seedance", "火山方舟", Provider.SEEDANCE, 0, InputMode.FLEXIBLE),
-            new ModelDefinition("grok-imagine-video", "Grok 文生视频", "suixiang-grok-text", "Grok 文生视频", Provider.SUIXIANG_GROK, 0, InputMode.TEXT_ONLY),
-            new ModelDefinition("grok-imagine-video-1.5", "Grok 图生视频", "suixiang-grok-image", "Grok 图生视频", Provider.SUIXIANG_GROK, 0, InputMode.IMAGE_ONLY),
-            new ModelDefinition("as-sd2.0-fast", "即梦 SD 2.0 Fast", "suixiang-jimeng", "即梦", Provider.SUIXIANG_JIMENG, 0, InputMode.FLEXIBLE),
-            new ModelDefinition("video-ds-2.0", "即梦 Video DS 2.0", "suixiang-jimeng", "即梦", Provider.SUIXIANG_JIMENG, 1, InputMode.FLEXIBLE)
+            new ModelDefinition("veo-3.1-generate-preview", "Veo 3.1", "google", "Google", Provider.VEO, 0, InputMode.FLEXIBLE, 5, 8),
+            new ModelDefinition("doubao-seedance-2-0-260128", "Seedance 2.0", "seedance", "火山方舟", Provider.SEEDANCE, 0, InputMode.FLEXIBLE, 2, 10),
+            new ModelDefinition("grok-imagine-video", "Grok 文生视频", "suixiang-grok-text", "Grok 文生视频", Provider.SUIXIANG_GROK, 0, InputMode.TEXT_ONLY, 3, 10),
+            new ModelDefinition("grok-imagine-video-1.5", "Grok 图生视频", "suixiang-grok-image", "Grok 图生视频", Provider.SUIXIANG_GROK, 0, InputMode.IMAGE_ONLY, 3, 10),
+            new ModelDefinition("as-sd2.0-fast", "即梦 SD 2.0 Fast", "suixiang-jimeng", "即梦", Provider.SUIXIANG_JIMENG, 0, InputMode.FLEXIBLE, 1, 15),
+            new ModelDefinition("video-ds-2.0", "即梦 Video DS 2.0", "suixiang-jimeng", "即梦", Provider.SUIXIANG_JIMENG, 1, InputMode.FLEXIBLE, 1, 15)
     );
 
     private final AppProperties properties;
@@ -52,7 +52,9 @@ public class VideoModelCatalog {
                 definition.provider(),
                 definition.level(),
                 definition.inputMode(),
-                configured(definition.provider())
+                configured(definition.provider()),
+                definition.minDurationSeconds(),
+                definition.maxDurationSeconds()
         );
     }
 
@@ -89,7 +91,9 @@ public class VideoModelCatalog {
             String providerLabel,
             Provider provider,
             int level,
-            InputMode inputMode) {
+            InputMode inputMode,
+            int minDurationSeconds,
+            int maxDurationSeconds) {
     }
 
     public record ModelView(
@@ -100,6 +104,8 @@ public class VideoModelCatalog {
             Provider provider,
             int level,
             InputMode inputMode,
-            boolean configured) {
+            boolean configured,
+            int minDurationSeconds,
+            int maxDurationSeconds) {
     }
 }

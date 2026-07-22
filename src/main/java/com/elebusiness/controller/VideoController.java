@@ -90,7 +90,9 @@ public class VideoController {
                         "provider", model.providerLabel(),
                         "level", model.level(),
                         "inputMode", model.inputMode().name().toLowerCase(java.util.Locale.ROOT),
-                        "configured", model.configured()))
+                        "configured", model.configured(),
+                        "minDurationSeconds", model.minDurationSeconds(),
+                        "maxDurationSeconds", model.maxDurationSeconds()))
                 .toList();
         return ResponseEntity.ok(models);
     }
@@ -147,6 +149,14 @@ public class VideoController {
         if (!selectedModel.configured()) {
             return ResponseEntity.badRequest()
                     .body(Map.of("success", false, "message", missingCredentialMessage(selectedModel)));
+        }
+
+        // 校验时长是否在模型支持范围内
+        if (durationSeconds < selectedModel.minDurationSeconds() || durationSeconds > selectedModel.maxDurationSeconds()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("success", false, "message",
+                            selectedModel.name() + " 支持的时长范围为 " + selectedModel.minDurationSeconds() +
+                                    "-" + selectedModel.maxDurationSeconds() + " 秒，当前设置 " + durationSeconds + " 秒超出范围"));
         }
 
         int imageCount = images == null

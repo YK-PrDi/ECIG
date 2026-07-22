@@ -9,12 +9,12 @@
 
   // 本地兜底模型目录（与老前端一致：接口失败或非 6 个时使用）
   const FALLBACK_MODELS = [
-    { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', provider: 'Google', inputMode: 'flexible', configured: true },
-    { id: 'doubao-seedance-2-0', name: 'Seedance 2.0', provider: '火山方舟', inputMode: 'flexible', configured: true },
-    { id: 'grok-text-video', name: 'Grok 文生视频', provider: '随想', inputMode: 'text_only', configured: true },
-    { id: 'grok-image-video', name: 'Grok 图生视频', provider: '随想', inputMode: 'image_only', configured: true },
-    { id: 'jimeng-sd2-fast', name: '即梦 SD2.0-Fast', provider: '即梦', inputMode: 'flexible', configured: true },
-    { id: 'jimeng-ds2', name: '即梦 Video DS 2.0', provider: '即梦', inputMode: 'flexible', configured: true },
+    { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', provider: 'Google', inputMode: 'flexible', configured: true, minDurationSeconds: 5, maxDurationSeconds: 8 },
+    { id: 'doubao-seedance-2-0', name: 'Seedance 2.0', provider: '火山方舟', inputMode: 'flexible', configured: true, minDurationSeconds: 2, maxDurationSeconds: 10 },
+    { id: 'grok-text-video', name: 'Grok 文生视频', provider: '随想', inputMode: 'text_only', configured: true, minDurationSeconds: 3, maxDurationSeconds: 10 },
+    { id: 'grok-image-video', name: 'Grok 图生视频', provider: '随想', inputMode: 'image_only', configured: true, minDurationSeconds: 3, maxDurationSeconds: 10 },
+    { id: 'jimeng-sd2-fast', name: '即梦 SD2.0-Fast', provider: '即梦', inputMode: 'flexible', configured: true, minDurationSeconds: 1, maxDurationSeconds: 15 },
+    { id: 'jimeng-ds2', name: '即梦 Video DS 2.0', provider: '即梦', inputMode: 'flexible', configured: true, minDurationSeconds: 1, maxDurationSeconds: 15 },
   ];
 
   const state = {
@@ -50,23 +50,7 @@
               <select id="vdAspect"><option>16:9</option><option>9:16</option><option>1:1</option></select>
             </div>
             <div class="form-row"><label>时长（秒）</label>
-              <select id="vdDuration">
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
-                <option>5</option>
-                <option>6</option>
-                <option>7</option>
-                <option selected>8</option>
-                <option>9</option>
-                <option>10</option>
-                <option>11</option>
-                <option>12</option>
-                <option>13</option>
-                <option>14</option>
-                <option>15</option>
-              </select>
+              <select id="vdDuration"></select>
             </div>
             <button class="btn btn-primary btn-block" id="vdRun">开始生成视频</button>
           </div>
@@ -112,6 +96,7 @@
       </label>`).join('');
     box.addEventListener('change', updateImgHint);
     updateImgHint();
+    updateDurationOptions();
   }
 
   function inputModeLabel(mode) {
@@ -126,6 +111,23 @@
   function updateImgHint() {
     const m = selectedModel();
     $('#vdImgHint').textContent = m ? `（${inputModeLabel(m.inputMode)}）` : '';
+    updateDurationOptions();
+  }
+
+  function updateDurationOptions() {
+    const m = selectedModel();
+    if (!m) return;
+
+    const minDur = m.minDurationSeconds || 1;
+    const maxDur = m.maxDurationSeconds || 15;
+    const currentVal = parseInt($('#vdDuration').value) || 8;
+
+    let html = '';
+    for (let i = minDur; i <= maxDur; i++) {
+      const selected = (i === 8 && currentVal >= minDur && currentVal <= maxDur) || i === currentVal ? 'selected' : '';
+      html += `<option ${selected}>${i}</option>`;
+    }
+    $('#vdDuration').innerHTML = html;
   }
 
   function bindUpload(view) {
